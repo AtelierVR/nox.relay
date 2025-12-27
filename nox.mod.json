@@ -1,0 +1,51 @@
+{
+  "type": "mod",
+  "id": "nox.relay",
+  "provides": [
+    "relay"
+  ],
+  "name": "Relay Networking",
+  "version": "1.0.0",
+  "description": "Provides relay networking functionality.",
+  "license": "GPL-3.0",
+  "icon": null,
+  "contact": {
+    "email": "hactazia@gmail.com",
+    "source": "https://github.com/AtelierVR/nox.relay",
+    "website": "https://nox.hactazia.fr/",
+    "issues": "https://github.com/AtelierVR/nox.relay/issues"
+  },
+  "authors": [
+    {
+      "name": "Hactazia",
+      "email": "hactazia@gmail.com",
+      "website": "https://hactazia.fr/"
+    }
+  ],
+  "contributors": [],
+  "relations": [
+    {
+      "id": "entity",
+      "type": "depends"
+    },
+    {
+      "id": "controller",
+      "type": "depends"
+    },
+    {
+      "id": "user",
+      "type": "depends"
+    },
+    {
+      "id": "session",
+      "type": "depends"
+    }
+  ],
+  "entrypoints": {
+    "main": [
+      "Nox.Relay.Runtime.Main"
+    ]
+  },
+  "references": [],
+  "permissions": []
+}

@@ -1,0 +1,19 @@
+{
+  "name": "Nox.Relay.Core",
+  "rootNamespace": "",
+  "references": [
+    "UniTask",
+    "Nox.CCK",
+    "Nox.Users",
+    "Nox.CCK.Users"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": true,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

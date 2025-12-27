@@ -1,0 +1,30 @@
+{
+  "name": "Nox.Mods.Relay",
+  "rootNamespace": "",
+  "references": [
+    "Nox.CCK",
+    "UniTask",
+    "Nox.Relay",
+    "Nox.Offline",
+    "Nox.Entities",
+    "Nox.Players",
+    "Nox.CCK.Worlds",
+    "Nox.Worlds",
+    "Nox.Users",
+    "Nox.Avatars",
+    "Nox.Worlds.Spawns",
+    "Nox.Controllers",
+    "Nox.CCK.Sessions",
+    "Nox.Relay.Connectors",
+    "Nox.Relay.Types"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}
