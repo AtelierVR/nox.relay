@@ -1,3 +1,4 @@
+using System;
 using System.Net;
 using Cysharp.Threading.Tasks;
 using UnityEngine.Events;
@@ -56,5 +57,16 @@ namespace Nox.Relay.Core.Connectors {
 		/// <param name="buffer"></param>
 		/// <returns></returns>
 		UniTask<bool> Send(Buffer buffer);
+
+		/// <summary>
+		/// Event triggered when the connector is connected.
+		/// </summary>
+		UnityEvent OnConnected { get; }
+
+		/// <summary>
+		/// Event triggered when the connector is disconnected.
+		/// <remarks>The string parameter contains the reason for disconnection.</remarks>
+		/// </summary>
+		UnityEvent<string> OnDisconnected { get; }
 	}
 }

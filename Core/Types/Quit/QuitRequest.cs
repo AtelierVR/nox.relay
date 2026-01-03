@@ -18,10 +18,11 @@ namespace Nox.Relay.Core.Types.Quit {
 
 		public override Buffer ToBuffer() {
 			var buffer = new Buffer();
-			buffer.Write(InternalId);
+			
 			buffer.Write(Type);
 			if (!string.IsNullOrEmpty(Reason))
 				buffer.Write(Reason);
+			
 			return buffer;
 		}
 	}

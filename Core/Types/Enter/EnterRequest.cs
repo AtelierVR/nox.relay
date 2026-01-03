@@ -24,7 +24,6 @@ namespace Nox.Relay.Core.Types.Enter {
 
 		public override Buffer ToBuffer() {
 			var buffer = new Buffer();
-			buffer.Write(InternalId);
 
 			if (string.IsNullOrEmpty(Display))
 				Flags  &= ~EnterFlags.UsePseudonyme;

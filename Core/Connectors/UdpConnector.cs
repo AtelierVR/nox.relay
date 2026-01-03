@@ -22,6 +22,10 @@ namespace Nox.Relay.Core.Connectors {
 
 		public UnityEvent<Buffer> OnReceived { get; } = new();
 
+		public UnityEvent         OnConnected    { get; } = new();
+		
+		public UnityEvent<string> OnDisconnected { get; } = new();
+
 		public ushort Mtu {
 			get => (ushort)(_socket?.ReceiveBufferSize ?? _bufferSize);
 			set {
@@ -50,6 +54,8 @@ namespace Nox.Relay.Core.Connectors {
 
 			if (!IPAddress.TryParse(address, out var ip)) {
 				var hostEntry = await Dns.GetHostEntryAsync(address);
+				if (hostEntry.AddressList.Length == 0) 
+					return false;
 				ip = hostEntry.AddressList[0];
 			}
 
@@ -62,10 +68,13 @@ namespace Nox.Relay.Core.Connectors {
 
 			await _socket.ConnectAsync(ip, port);
 
-			if (_socket.Connected)
+			if (_socket.Connected) {
 				StartReceiveLoop();
+				OnConnected.Invoke();
+				return true;
+			}
 
-			return _socket.Connected;
+			return false;
 		}
 
 		/// <summary>
@@ -101,25 +110,35 @@ namespace Nox.Relay.Core.Connectors {
 		private void OnReceiveCompleted(object sender, SocketAsyncEventArgs e) {
 			if (e.SocketError != SocketError.Success || e.BytesTransferred == 0) {
 				_receiving = false;
+				OnDisconnected.Invoke("Disconnected");
 				return;
 			}
 
-			var buffer = new Buffer();
-			buffer.Write(e.Buffer.AsSpan(0, e.BytesTransferred).ToArray());
-			buffer.Start();
+		var buffer = new Buffer();
+		buffer.Write(e.Buffer.AsSpan(0, e.BytesTransferred).ToArray());
+		buffer.Start();
 
-			while (buffer.Remaining >= sizeof(ushort)) {
-				var len = buffer.ReadUShort();
-				buffer.Move(-sizeof(ushort));
+		while (buffer.Remaining >= sizeof(ushort)) {
+			var len = buffer.ReadUShort();
+			
+			// Move back to include the length field in the packet
+			buffer.Move(-sizeof(ushort));
+			
+			// Check if we have enough data (len includes the 2-byte length field itself)
+			if (buffer.Remaining < len)
+				break;
 
-				if (buffer.Remaining < len)
-					break;
-
-				var data   = buffer.ReadBytes(len);
-				var packet = new Buffer();
-				packet.Write(data);
-				OnReceived.Invoke(packet);
+			// Skip empty or invalid packets (length must be at least 2 for the length field itself)
+			if (len < 2) {
+				buffer.ReadBytes(2); // Consume at least the length field to avoid infinite loop
+				continue;
 			}
+
+			var data   = buffer.ReadBytes(len); // Read complete packet including length field
+			var packet = new Buffer();
+			packet.Write(data);
+			OnReceived.Invoke(packet);
+		}
 
 			if (_receiving)
 				TryReceive();
@@ -141,6 +160,8 @@ namespace Nox.Relay.Core.Connectors {
 			_socket?.Close();
 			_socket = null;
 
+			OnDisconnected.Invoke("Closed");
+
 			return UniTask.CompletedTask;
 		}
 
@@ -153,7 +174,7 @@ namespace Nox.Relay.Core.Connectors {
 			if (!IsConnected)
 				return UniTask.FromResult(false);
 
-			var data = buffer.ToBuffer();
+			var data = buffer.ToArray();
 			var args = new SocketAsyncEventArgs();
 			args.SetBuffer(data, 0, data.Length);
 

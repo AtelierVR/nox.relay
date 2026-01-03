@@ -1,192 +1,298 @@
 using System;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.Threading;
 using Cysharp.Threading.Tasks;
-using Nox.CCK.Utils;
+using UnityEngine;
 using UnityEngine.Events;
 using Buffer = Nox.CCK.Utils.Buffer;
+using Logger = Nox.CCK.Utils.Logger;
 
 namespace Nox.Relay.Core.Connectors {
-	/// <summary>
-	/// TCP connector implementation for handling TCP network connections.
-	/// </summary>
 	public class TcpConnector : IConnector {
-		public const string ProtocolName = "tcp";
+		public const string PROTOCOL_NAME = "tcp";
+		private const int DEFAULT_BUFFER_SIZE = 65536; // Augmenté de 8192 à 65536
+		private const int MAX_MESSAGE_SIZE = 65535; // ushort.MaxValue
+		private const int CONNECT_TIMEOUT_MS = 5000;
 
-		private Socket               _socket;
-		private ushort               _bufferSize = 1024;
-		private SocketAsyncEventArgs _recArgs;
+		private Socket _socket;
+		private CancellationTokenSource _receiveCts;
+		private readonly Buffer _receiveBuffer = new();
+		private readonly byte[] _tempBuffer = new byte[DEFAULT_BUFFER_SIZE];
+		private readonly object _sendLock = new object();
+		private bool _isDisposing;
 
-		// Cumulative buffer for TCP (data arriving in pieces)
-		private Buffer _accumulator = new();
-		private bool   _receiving;
-
-		public EndPoint EndPoint
-			=> _socket?.RemoteEndPoint;
-
+		public string Protocol => PROTOCOL_NAME;
+		
+		public bool IsConnected => _socket is { Connected: true } && !_isDisposing;
+		
+		public EndPoint EndPoint => _socket?.LocalEndPoint;
+		
+		public ushort Mtu { get; set; } = 1460; 
+		
 		public UnityEvent<Buffer> OnReceived { get; } = new();
+		
+		public UnityEvent OnConnected { get; } = new();
+		
+		public UnityEvent<string> OnDisconnected { get; } = new ();
 
-		public ushort Mtu {
-			get => (ushort)(_socket?.ReceiveBufferSize ?? _bufferSize);
-			set {
-				_bufferSize = value;
-				_recArgs?.SetBuffer(new byte[value], 0, value);
-				if (_socket == null) return;
-				_socket.ReceiveBufferSize = value;
-				_socket.SendBufferSize    = value;
-			}
-		}
-
-		public string Protocol
-			=> ProtocolName;
-
-		public bool IsConnected
-			=> _socket is { Connected: true };
-
-		/// <summary>
-		/// Connects to the specified address and port asynchronously.
-		/// </summary>
-		/// <param name="address">The IP address or hostname to connect to.</param>
-		/// <param name="port">The port number to connect to.</param>
-		/// <returns>True if the connection was successful, false otherwise.</returns>
 		public async UniTask<bool> Connect(string address, ushort port) {
-			await Close();
-
-			if (!IPAddress.TryParse(address, out var ip)) {
-				var hostEntry = await Dns.GetHostEntryAsync(address);
-				ip = hostEntry.AddressList[0];
+			if (IsConnected) {
+				Logger.LogWarning($"Already connected to {address}", tag: nameof(TcpConnector));
+				return false;
 			}
 
-			_socket = new Socket(ip.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+			try {
+				if (!IPAddress.TryParse(address, out var ipAddress)) {
+					var hostEntry = await Dns.GetHostEntryAsync(address);
+					ipAddress = hostEntry.AddressList.FirstOrDefault(ip => ip.AddressFamily == AddressFamily.InterNetwork);
+					
+					if (ipAddress == null) {
+						Logger.LogError($"No IPv4 address found for {address}", tag: nameof(TcpConnector));
+						return false;
+					}
+				}
 
-			_recArgs           =  new SocketAsyncEventArgs();
-			_recArgs.Completed += OnReceiveCompleted;
-			Mtu                =  _bufferSize;
+				_socket = new Socket(ipAddress.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+				_socket.NoDelay = true;
+				_socket.ReceiveBufferSize = DEFAULT_BUFFER_SIZE;
+				_socket.SendBufferSize = DEFAULT_BUFFER_SIZE;
 
-			await _socket.ConnectAsync(ip, port);
+				var connectTask = _socket.ConnectAsync(ipAddress, port).AsUniTask();
+				var timeoutTask = UniTask.Delay(CONNECT_TIMEOUT_MS);
+				var winnerIndex = await UniTask.WhenAny(connectTask, timeoutTask);
 
-			if (_socket.Connected)
-				StartReceiveLoop();
+				if (winnerIndex == 1) {
+					_socket?.Close();
+					_socket = null;
+					Logger.LogError($"Trying to connect to {address}:{port}", tag: nameof(TcpConnector));
+					return false;
+				}
 
-			return _socket.Connected;
-		}
+				if (!_socket.Connected) {
+					Logger.LogError($"Failed to connect to {address}:{port}", tag: nameof(TcpConnector));
+					_socket?.Close();
+					_socket = null;
+					return false;
+				}
 
-		/// <summary>
-		/// Starts the receive loop if not already receiving.
-		/// </summary>
-		private void StartReceiveLoop() {
-			if (_receiving || _recArgs == null || _socket == null)
-				return;
+				_receiveCts = new CancellationTokenSource();
+				// Exécuter la boucle de réception sur un thread pool pour éviter les changements de contexte
+				UniTask.RunOnThreadPool(() => ReceiveLoopAsync(_receiveCts.Token), cancellationToken: _receiveCts.Token).Forget();
 
-			_receiving = true;
-			TryReceive();
-		}
+				await UniTask.SwitchToMainThread();
+				OnConnected?.Invoke();
 
-		/// <summary>
-		/// Attempts to receive data asynchronously.
-		/// </summary>
-		private void TryReceive() {
-			if (_socket == null || _recArgs == null)
-				return;
-
-			_recArgs.SetBuffer(_recArgs.Buffer, 0, _bufferSize);
-
-			// true => async; false => completed immediately
-			if (!_socket.ReceiveAsync(_recArgs))
-				OnReceiveCompleted(this, _recArgs);
-		}
-
-		/// <summary>
-		/// Handles the completion of a receive operation.
-		/// </summary>
-		/// <param name="sender">The sender of the event.</param>
-		/// <param name="e">The socket async event args.</param>
-		private void OnReceiveCompleted(object sender, SocketAsyncEventArgs e) {
-			if (e.SocketError != SocketError.Success || e.BytesTransferred == 0) {
-				_receiving = false;
-				return;
+				return true;
 			}
-
-			// Add the new bytes to the cumulative buffer
-			_accumulator.Write(e.Buffer.AsSpan(0, e.BytesTransferred).ToArray());
-
-			// Position at the beginning for reading
-			_accumulator.Start();
-
-
-			// As long as we can decode a complete message
-			while (_accumulator.Remaining >= sizeof(ushort)) {
-				var len = _accumulator.ReadUShort();
-				_accumulator.Move(-sizeof(ushort));
-
-				if (_accumulator.Remaining < len) 
-					break;
-
-				var payload = _accumulator.ReadBytes(len);
-				var packet  = new Buffer();
-				packet.Write(payload);
-
-				OnReceived.Invoke(packet);
+			catch (SocketException ex) {
+				Logger.LogException(new Exception("Socket exception during connecting", ex), tag: nameof(TcpConnector));
+				_socket?.Close();
+				_socket = null;
+				return false;
 			}
-
-			// Compact the buffer (remove what has been consumed)
-			_accumulator.Compact();
-
-			if (_receiving)
-				TryReceive();
+			catch (Exception ex) {
+				Logger.LogException(new Exception("Unexpected error during connecting", ex), tag: nameof(TcpConnector));
+				_socket?.Close();
+				_socket = null;
+				return false;
+			}
 		}
 
-		/// <summary>
-		/// Closes the connection and cleans up resources.
-		/// </summary>
-		/// <returns>A completed task.</returns>
-		public UniTask Close() {
-			_receiving = false;
+		public async UniTask Close() {
+			if (_socket == null) return;
 
-			if (_recArgs != null) {
-				_recArgs.Completed -= OnReceiveCompleted;
-				_recArgs.Dispose();
-				_recArgs = null;
+			_isDisposing = true;
+
+			try {
+				// Annuler la boucle de réception
+				_receiveCts?.Cancel();
+				_receiveCts?.Dispose();
+				_receiveCts = null;
+
+				await UniTask.Delay(100);
+
+				// Fermeture gracieuse
+				if (_socket.Connected) 
+					_socket.Shutdown(SocketShutdown.Both);
+
+				_socket.Close();
 			}
-
-			_socket?.Close();
-			_socket = null;
-
-			_accumulator = new Buffer();
-
-			return UniTask.CompletedTask;
+			catch (Exception ex) {
+				Logger.LogException(new Exception("Error during TcpConnector.Close", ex), tag: nameof(TcpConnector));
+			}
+			finally {
+				_socket = null;
+				_isDisposing = false;
+			}
 		}
 
-		/// <summary>
-		/// Sends data asynchronously over the connection.
-		/// </summary>
-		/// <param name="buffer">The buffer containing the data to send.</param>
-		/// <returns>True if the send was successful, false otherwise.</returns>
 		public UniTask<bool> Send(Buffer buffer) {
-			if (!IsConnected)
+			if (!IsConnected) {
+				Logger.LogError("Cannot send: not connected", tag: nameof(TcpConnector));
 				return UniTask.FromResult(false);
+			}
 
-			var data = buffer.ToBuffer();
-			var args = new SocketAsyncEventArgs();
-			args.SetBuffer(data, 0, data.Length);
+			if (buffer == null || buffer.Length == 0) {
+				Logger.LogError("Cannot send: empty buffer", tag: nameof(TcpConnector));
+				return UniTask.FromResult(false);
+			}
 
-			var tcs = new UniTaskCompletionSource<bool>();
+			try {
+				lock (_sendLock) {
+					var sent = 0;
+					while (sent < buffer.Length) {
+						var bytesToSend = Math.Min(buffer.Length - sent, Mtu);
+						var sentNow = _socket.Send(buffer.Data, sent, bytesToSend, SocketFlags.None);
+						
+						if (sentNow <= 0) {
+							Logger.LogError("Send failed: connection closed", tag: nameof(TcpConnector));
+							HandleDisconnection("Send failed");
+							return UniTask.FromResult(false);
+						}
+						
+						sent += sentNow;
+					}
+				}
 
-			args.Completed += Handler;
+				return UniTask.FromResult(true);
+			}
+			catch (SocketException ex) {
+				Logger.LogException(new Exception("Socket exception during send", ex), tag: nameof(TcpConnector));
+				HandleDisconnection($"Send error: {ex.Message}");
+				return UniTask.FromResult(false);
+			}
+			catch (Exception ex) {
+				Logger.LogException(new Exception("Unexpected error during send", ex), tag: nameof(TcpConnector));
+				return UniTask.FromResult(false);
+			}
+		}
 
-			// true => async; false => completed immediately
-			if (!_socket.SendAsync(args))
-				Complete(args);
+		private async UniTaskVoid ReceiveLoopAsync(CancellationToken cancellationToken) {
+			try {
+				while (!cancellationToken.IsCancellationRequested && IsConnected) {
+					int received;
+					try {
+						// Utilisation de ConfigureAwait(false) pour éviter de capturer le SynchronizationContext sur le ThreadPool
+						var receiveTask = _socket.ReceiveAsync(new ArraySegment<byte>(_tempBuffer), SocketFlags.None);
+						received = await receiveTask.ConfigureAwait(false);
+					}
+					catch (OperationCanceledException) {
+						break;
+					}
 
-			return tcs.Task;
+					if (received <= 0) {
+						HandleDisconnection("Connection closed by remote host");
+						break;
+					}
 
-			void Handler(object s, SocketAsyncEventArgs e)
-				=> Complete(e);
+					if (!AppendToReceiveBuffer(received)) {
+						Logger.LogError("Receive buffer overflow", tag: nameof(TcpConnector));
+						HandleDisconnection("Buffer overflow");
+						break;
+					}
 
-			void Complete(SocketAsyncEventArgs e) {
-				tcs.TrySetResult(e.SocketError == SocketError.Success);
-				args.Completed -= Handler;
-				args.Dispose();
+					ProcessReceivedData();
+				}
+			}
+			catch (SocketException ex) {
+				if (!cancellationToken.IsCancellationRequested && !_isDisposing) {
+					Logger.LogException(new Exception("Socket exception in receive loop", ex), tag: nameof(TcpConnector));
+					HandleDisconnection($"Receive error: {ex.Message}");
+				}
+			}
+			catch (Exception ex) {
+				if (!cancellationToken.IsCancellationRequested && !_isDisposing) {
+					Logger.LogException(new Exception("Unexpected error in receive loop", ex), tag: nameof(TcpConnector));
+					HandleDisconnection($"Unexpected error: {ex.Message}");
+				}
+			}
+		}
+
+		private bool AppendToReceiveBuffer(int bytesReceived) {
+			var newLength = _receiveBuffer.Length + bytesReceived;
+			if (newLength > _receiveBuffer.Data.Length) {
+				var newSize = Math.Max(_receiveBuffer.Data.Length * 2, newLength);
+				
+				if (newSize > MAX_MESSAGE_SIZE * 2) {
+					Logger.LogError($"Receive buffer too large: {newSize} bytes", tag: nameof(TcpConnector));
+					return false;
+				}
+
+				var newData = new byte[newSize];
+				Array.Copy(_receiveBuffer.Data, newData, _receiveBuffer.Length);
+				_receiveBuffer.Data = newData;
+			}
+
+			Array.Copy(_tempBuffer, 0, _receiveBuffer.Data, _receiveBuffer.Length, bytesReceived);
+			_receiveBuffer.Length = (ushort)newLength;
+
+			return true;
+		}
+
+		private void ProcessReceivedData() {
+			_receiveBuffer.Start(); 
+
+			while (_receiveBuffer.Remaining >= 2) {
+				var messageLength = _receiveBuffer.ReadUShort();
+
+				if (messageLength < 2) {
+					Logger.LogError($"Invalid message length: {messageLength} (must be >= 2)", tag: nameof(TcpConnector));
+					HandleDisconnection("Invalid message length");
+					return;
+				}
+				
+				var messageDataLength = messageLength - 2;
+				if (_receiveBuffer.Remaining < messageDataLength) {
+					_receiveBuffer.Move(-2);
+					break;
+				}
+
+				var messageBuffer = new Buffer();
+				messageBuffer.Write(messageLength); 
+				var messageData = _receiveBuffer.ReadBytes((ushort)messageDataLength);
+				messageBuffer.Write(messageData);
+				messageBuffer.Start(); 
+				
+				// Invocation sur le main thread depuis le ThreadPool
+				UniTask.Post(() => {
+					try {
+						OnReceived?.Invoke(messageBuffer);
+					}
+					catch (Exception ex) {
+						Logger.LogException(new Exception("Error in OnReceived handler", ex), tag: nameof(TcpConnector));
+					}
+				});
+			}
+
+			_receiveBuffer.Compact();
+		}
+
+		private void HandleDisconnection(string reason) {
+			if (_isDisposing) return;
+
+			_isDisposing = true;
+
+			try {
+				_receiveCts?.Cancel();
+				_socket?.Close();
+				_socket = null;
+
+				UniTask.Post(() => {
+					try {
+						OnDisconnected?.Invoke(reason);
+					}
+					catch (Exception ex) {
+						Logger.LogException(new Exception("Error in OnDisconnected handler", ex), tag: nameof(TcpConnector));
+					}
+				});
+			}
+			catch (Exception ex) {
+				Logger.LogException(new Exception("Error in OnDisconnected handler", ex), tag: nameof(TcpConnector));
+			}
+			finally {
+				_isDisposing = false;
 			}
 		}
 	}

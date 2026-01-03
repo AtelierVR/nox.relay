@@ -53,8 +53,9 @@ namespace Nox.Relay.Core.Types.Latency {
 		public override bool FromBuffer(Buffer buffer) {
 			buffer.Start();
 			
+			
 			if (buffer.Remaining != 24) {
-				Logger.LogWarning($"LatencyResponse buffer size mismatch: expected 24, got {buffer.Remaining}");
+				Logger.LogWarning($"LatencyResponse buffer size mismatch: expected 24, got {buffer.Remaining} {buffer}");
 				return false;
 			}
 

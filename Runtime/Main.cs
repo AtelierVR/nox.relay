@@ -4,7 +4,6 @@ using Cysharp.Threading.Tasks;
 using Nox.CCK.Mods.Cores;
 using Nox.CCK.Mods.Events;
 using Nox.Controllers;
-using Nox.Relay.Core;
 using Nox.Relay.Core.Connectors;
 using Nox.Relay.Core.Types.Latency;
 using Nox.Sessions;
@@ -14,7 +13,7 @@ using Nox.Worlds;
 namespace Nox.Relay.Runtime {
 	public class Main : ISessionRegister {
 		public bool TryMakeSession(string name, Dictionary<string, object> options, out ISession session) {
-			if (name != "relay") {
+			if (name != "relay" && name != "external:relay") {
 				session = null;
 				return false;
 			}
@@ -32,12 +31,16 @@ namespace Nox.Relay.Runtime {
 				api.EventAPI.Subscribe("controller_changed", OnControllerChanged)
 			};
 			SessionAPI.Register(this);
+			
+			#if UNITY_EDITOR
+			CoreAPI.LoggerAPI.Log("Starting relay tests...");
 			TestRelay().Forget();
+			#endif
 		}
 
-		private async UniTask TestRelay() {
-			var relay = Core.Relay.New<UdpConnector>();
-
+		private static async UniTask TestRelay() {
+			var relay = Core.Relay.New<TcpConnector>();
+			
 			if (!await relay.Connect("hactazia.fr", 30000)) {
 				CoreAPI.LoggerAPI.LogError("Failed to connect to relay server");
 				return;
@@ -83,11 +86,21 @@ namespace Nox.Relay.Runtime {
 			avgLatency /= ls.Count;
 
 			CoreAPI.LoggerAPI.Log(
-				$"Relay latency over {ls.Count} tests: " 
-				+ $"avg={avgLatency:F2}ms, " 
-				+ $"min={minLatency:F2}ms, " 
+				$"Relay latency over {ls.Count} tests: "
+				+ $"avg={avgLatency:F2}ms, "
+				+ $"min={minLatency:F2}ms, "
 				+ $"max={maxLatency:F2}ms"
 			);
+
+			var rooms = await relay.List();
+			if (rooms == null) {
+				CoreAPI.LoggerAPI.LogError("Failed to list relay rooms");
+				await relay.Disconnect("List rooms failed");
+				return;
+			}
+
+			foreach (var room in rooms.Rooms)
+				CoreAPI.LoggerAPI.Log($"Found room: {room}");
 
 			// var tasks = new List<UniTask<LatencyResponse>>();
 			// for (var i = 0; i < 1000; i++)

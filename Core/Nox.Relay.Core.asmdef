@@ -5,7 +5,10 @@
     "UniTask",
     "Nox.CCK",
     "Nox.Users",
-    "Nox.CCK.Users"
+    "Nox.CCK.Users",
+    "Nox.Entities",
+    "Nox.Worlds",
+    "Nox.CCK.Worlds"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

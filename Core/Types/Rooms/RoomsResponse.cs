@@ -1,8 +1,9 @@
 using Nox.CCK.Utils;
 using Nox.Relay.Core.Rooms;
+using Nox.Relay.Core.Types.Contents;
 using Nox.Relay.Core.Types.Rooms;
 
-namespace Nox.Relay.Core.Types.Contents.Rooms {
+namespace Nox.Relay.Core.Types.Rooms {
 	/// <summary>
 	/// Response containing a list of rooms with pagination details.
 	/// </summary>
@@ -10,7 +11,7 @@ namespace Nox.Relay.Core.Types.Contents.Rooms {
 		/// <summary>
 		/// The list of room instances returned in the response.
 		/// </summary>
-		public Room[] Instances;
+		public Room[] Rooms;
 
 		/// <summary>
 		/// The current page number of the room list.
@@ -37,11 +38,11 @@ namespace Nox.Relay.Core.Types.Contents.Rooms {
 				};
 			Page      = buffer.ReadByte();
 			PageCount = buffer.ReadByte();
-			Instances = instances;
+			Rooms = instances;
 			return true;
 		}
 
 		public override string ToString()
-			=> $"{GetType().Name}[Instances={Instances.Length}, Page={Page}/{PageCount}]";
+			=> $"{GetType().Name}[Instances={Rooms.Length}, Page={Page}/{PageCount}]";
 	}
 }
