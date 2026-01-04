@@ -69,7 +69,7 @@ namespace Nox.Relay.Runtime {
 		public ResourceIdentifier WorldResource   = ResourceIdentifier.Invalid;
 		public string             WorldHash       = null;
 
-		public string              Title              = "Offline Session";
+		public string              Title              = "Relay Session";
 		public IInstanceIdentifier InstanceIdentifier = null;
 		public Texture2D           Thumbnail          = null;
 		public bool                DisposeOnChange    = false;
