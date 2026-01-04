@@ -41,6 +41,12 @@
       "type": "depends"
     }
   ],
+  "constraints": [
+    {
+      "type": "after",
+      "id": "session"
+    }
+  ],
   "entrypoints": {
     "main": [
       "Nox.Relay.Runtime.Main"
