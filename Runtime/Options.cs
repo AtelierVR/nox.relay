@@ -72,7 +72,7 @@ namespace Nox.Relay.Runtime {
 		public string              Title              = "Relay Session";
 		public IInstanceIdentifier InstanceIdentifier = null;
 		public Texture2D           Thumbnail          = null;
-		public bool                DisposeOnChange    = false;
+		public bool                DisposeOnChange    = true;
 		public string              ShortName          = null;
 		public bool                ChangeCurrent      = true;
 		public string[]            Connections        = Array.Empty<string>();
