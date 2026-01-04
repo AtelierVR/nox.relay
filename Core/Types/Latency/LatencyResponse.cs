@@ -52,21 +52,34 @@ namespace Nox.Relay.Core.Types.Latency {
 
 		public override bool FromBuffer(Buffer buffer) {
 			buffer.Start();
-			
-			
+
+
 			if (buffer.Remaining != 24) {
 				Logger.LogWarning($"LatencyResponse buffer size mismatch: expected 24, got {buffer.Remaining} {buffer}");
 				return false;
 			}
 
-			InitialTime      = buffer.ReadDateTime();
+			InitialTime = buffer.ReadDateTime();
 			IntermediateTime = buffer.ReadDateTime();
-			FinalTime        = DateTime.UtcNow;
-			Challenge        = buffer.ReadLong();
+			FinalTime = DateTime.UtcNow;
+			Challenge = buffer.ReadLong();
 			return true;
 		}
 
 		public override string ToString()
 			=> $"{GetType().Name}[ping={GetLatency().TotalMilliseconds}ms, up={GetUpLatency().TotalMilliseconds}ms, down={GetDownLatency().TotalMilliseconds}ms]";
+		
+		/// <summary>
+		/// Creates a failed LatencyResponse.
+		/// Created when the latency test could not be completed.
+		/// </summary>
+		/// <returns></returns>
+		public static LatencyResponse Failed()
+			=> new LatencyResponse {
+				InitialTime = DateTime.MinValue,
+				IntermediateTime = DateTime.MinValue,
+				FinalTime = DateTime.MinValue,
+				Challenge = -1
+			};
 	}
 }

@@ -116,11 +116,12 @@ namespace Nox.Relay.Runtime {
             var adapter = session.Adapter;
             if (adapter != null)
                 await adapter.Dispose();
+            
+            Logger.LogDebug($"Using connector {con.Protocol} for session {session.Id}...");
             adapter = new Core.Relay(con);
             session.SetAdapter(adapter);
-
-
-            session.UpdateState(Status.Pending, "Handshaking...", 0.9f);
+            
+            session.UpdateState(Status.Pending, "Handshaking...", 0.2f);
             var handshake = await adapter.Handshake();
             if (handshake is not { IsValid: true }) {
                 session.UpdateState(Status.Error, "Handshake failed", 1f);
@@ -141,8 +142,7 @@ namespace Nox.Relay.Runtime {
             }
 
             var challenge = auth.Challenge;
-            Logger.LogDebug(
-                $"Received challenge: {challenge.Length}{string.Join(", ", challenge.Select(c => c.ToString("X2")))}");
+            Logger.LogDebug($"Received challenge: {challenge.Length:X4}/{string.Join(":", challenge.Select(c => c.ToString("X2")))}");
 
             var keys = Crypto.GetKeys();
             var sign = Crypto.Sign(challenge, keys);

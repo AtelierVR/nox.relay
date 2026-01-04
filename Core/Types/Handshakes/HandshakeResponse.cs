@@ -65,8 +65,6 @@ namespace Nox.Relay.Core.Types.Handshakes {
         public override bool FromBuffer(Buffer buffer) {
             buffer.Start();
             
-            Logger.LogDebug($"Starting {nameof(HandshakeResponse)} {buffer}");
-
             Protocol = buffer.ReadUShort();
             ClientId = buffer.ReadUShort();
 
@@ -92,7 +90,6 @@ namespace Nox.Relay.Core.Types.Handshakes {
         }
 
         public override string ToString()
-            =>
-                $"{GetType().Name}[Protocol={Protocol}, ClientId={ClientId}, Address={Address}, MaxPacketSize={MaxPacketSize}]";
+            => $"{GetType().Name}[Protocol={Protocol}, ClientId={ClientId}, Address={Address}, MaxPacketSize={MaxPacketSize}]";
     }
 }
