@@ -6,8 +6,8 @@ using CorePlayer = Nox.Relay.Core.Players.Player;
 namespace Nox.Relay.Runtime.Players {
 	public class LocalPlayer : Player {
 		public LocalPlayer(Entities context, CorePlayer player) : base(context, player) { }
-		
-		Dictionary<ushort, Part> _parts  = new();
+
+		public override bool IsLocal => true;
 
 		internal void UpdateController(IController controller) {
 			if (controller == null) {
@@ -18,7 +18,6 @@ namespace Nox.Relay.Runtime.Players {
 			var cParts = controller.GetParts();
 
 			// remove parts not in controller
-			
 			var keysToRemove = _parts.Keys.Except(cParts.Select(p => p.Key)).ToList();
 			foreach (var key in keysToRemove)
 				_parts.Remove(key);
@@ -30,13 +29,17 @@ namespace Nox.Relay.Runtime.Players {
 			}
 
 			// restore parts
-			foreach (var part in _parts.Values)
-				part.Restore(controller);
+			foreach (var part in _parts.Values) {
+				if (part is Part p)
+					p.Restore(controller);
+			}
 		}
 
 		internal void RemoveController() {
-			foreach (var part in _parts.Values)
-				part.Store();
+			foreach (var part in _parts.Values) {
+				if (part is Part p)
+					p.Store();
+			}
 		}
 	}
 }

@@ -214,8 +214,9 @@ namespace Nox.Relay.Runtime {
 
         internal void OnPlayerEnteredHandler(EnterResponse @event, bool travel) {
             Logger.LogDebug($"OnEnter: {@event}");
-            var player = new RemotePlayer(InterEntities, @event.Player);
-
+            var player = new LocalPlayer(InterEntities, @event.Player);
+            InterEntities.LocalId = player.Id;
+            
             Room = @event.Room;
             Room.Tps = @event.Tps;
             Room.Threshold = @event.Threshold;
