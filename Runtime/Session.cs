@@ -130,6 +130,9 @@ namespace Nox.Relay.Runtime {
             InterDimensions.SetCurrent();
 
             OnControllerChanged(Main.ControllerAPI.Current);
+            
+            foreach (var module in GetAllModules())
+                module.OnSessionSelected();
         }
 
         public void OnControllerChanged(IController controller)
@@ -143,6 +146,9 @@ namespace Nox.Relay.Runtime {
                 await UniTask.Yield();
                 return;
             }
+
+            foreach (var module in GetAllModules())
+                module.OnSessionDeselected();
 
             InterDimensions.SetActive(Runtime.Dimensions.MainIndex, false);
 
