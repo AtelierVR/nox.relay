@@ -16,9 +16,9 @@ namespace Nox.Relay.Runtime.Players {
 			Identifier = player.Identifier;
 		}
 
-		public readonly CorePlayer Reference;
+	public readonly CorePlayer Reference;
 
-		protected readonly Dictionary<ushort, IPart> _parts = new();
+	internal readonly Dictionary<ushort, IPart> _parts = new();
 
 		public IPart[] GetParts()
 			=> _parts.Values.ToArray();
@@ -111,7 +111,14 @@ namespace Nox.Relay.Runtime.Players {
 			}
 		}
 
-		public override string ToString()
-			=> $"{GetType().Name}[Id={Id}, Display={Display ?? "null"}, Identifier={Identifier?.ToString() ?? "null"}, IsMaster={IsMaster}, IsLocal={IsLocal}]";
+	public override string ToString() {
+		try {
+			return $"{GetType().Name}[Id={Id}, Display={Display}, Identifier={Identifier?.ToString() ?? "null"}, IsMaster={IsMaster}, IsLocal={IsLocal}]";
+		}
+		catch {
+			// During construction, some properties may not be initialized yet
+			return $"{GetType().Name}[Id={Id}, <initializing>]";
+		}
+	}
 	}
 }

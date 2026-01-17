@@ -26,7 +26,7 @@ namespace Nox.Relay.Runtime {
 			session.SetProperty("connections".Hash(), options.Connections);
 			session.SetProperty("change_current".Hash(), options.ChangeCurrent);
 			session.Connect(true).Forget();
-			session.OnStateChanged.AddListener(e => Logger.LogDebug($"Session {session.Id} state changed: {e.Status} - {e.Message} ({e.Progress:P1})"));
+			session.OnStateChanged.AddListener(e => Logger.LogDebug($"State changed: {e.Status} - {e.Message} ({e.Progress:P1})", session.Tag));
 			return session;
 		}
 
@@ -47,7 +47,7 @@ namespace Nox.Relay.Runtime {
 					.FirstOrDefault();
 
 				if (asset == null) {
-					Logger.LogError($"Failed to find asset for world {world} with version {world.Version}");
+					Logger.LogError($"Failed to find asset for world {world} with version {world.Version}", session.Tag);
 					session.UpdateState(Status.Error, $"World '{world}' not found", 1f);
 					return;
 				}
@@ -66,7 +66,7 @@ namespace Nox.Relay.Runtime {
 				}
 
 				if (!Main.WorldAPI.HasSceneInCache(asset.GetHash())) {
-					Logger.LogError($"Failed to download asset for world {world} with version {world.Version}");
+					Logger.LogError($"Failed to download asset for world {world} with version {world.Version}", session.Tag);
 					session.UpdateState(Status.Error, $"Failed to download world '{world}'", 1f);
 					return;
 				}
@@ -77,7 +77,7 @@ namespace Nox.Relay.Runtime {
 
 			if (token == null) {
 				session.UpdateState(Status.Error, "Failed to fetch token", -1f);
-				Logger.LogError($"Failed to fetch token for server {instance.GetServerAddress()}");
+				Logger.LogError($"Failed to fetch token for server {instance.GetServerAddress()}", session.Tag);
 				if (doE) await session.Dispose();
 				return;
 			}
@@ -95,12 +95,12 @@ namespace Nox.Relay.Runtime {
 
 				con = ConnectorHelper.From(proto);
 				if (con == null) {
-					Logger.LogWarning($"No connection for protocol {proto} found, trying to create a new one");
+					Logger.LogWarning($"No connection for protocol {proto} found, trying to create a new one", session.Tag);
 					continue;
 				}
 
 				if (!await con.Connect(endPoint.Address.ToString(), (ushort)endPoint.Port)) {
-					Logger.LogWarning($"Failed to connect to {addr}");
+					Logger.LogWarning($"Failed to connect to {addr}", session.Tag);
 					continue;
 				}
 
@@ -109,7 +109,7 @@ namespace Nox.Relay.Runtime {
 
 			if (con == null) {
 				session.UpdateState(Status.Error, "Failed to connect to any relay", -1f);
-				Logger.LogError("Failed to connect to any relay");
+				Logger.LogError("Failed to connect to any relay", session.Tag);
 				if (doE) await session.Dispose();
 				return;
 			}
@@ -118,7 +118,7 @@ namespace Nox.Relay.Runtime {
 			if (adapter != null)
 				await adapter.Dispose();
 
-			Logger.LogDebug($"Using connector {con.Protocol} for session {session.Id}...");
+			Logger.LogDebug($"Using connector {con.Protocol} for session {session.Id}...", session.Tag);
 			adapter = new Core.Relay(con);
 			session.SetAdapter(adapter);
 
@@ -126,7 +126,7 @@ namespace Nox.Relay.Runtime {
 			var handshake = await adapter.Handshake();
 			if (handshake is not { IsValid: true }) {
 				session.UpdateState(Status.Error, "Handshake failed", 1f);
-				Logger.LogError("Handshake with relay server failed");
+				Logger.LogError("Handshake with relay server failed", session.Tag);
 				if (doE) await session.Dispose();
 				return;
 			}
@@ -137,13 +137,13 @@ namespace Nox.Relay.Runtime {
 			var auth = await adapter.Authenticate(request);
 			if (auth.IsError) {
 				session.UpdateState(Status.Error, $"Authentication failed: {auth.Reason}", -1f);
-				Logger.LogError($"Authentication failed: {auth.Result} - {auth.Reason}");
+				Logger.LogError($"Authentication failed: {auth.Result} - {auth.Reason}", session.Tag);
 				if (doE) await session.Dispose();
 				return;
 			}
 
 			var challenge = auth.Challenge;
-			Logger.LogDebug($"Received challenge: {challenge.Length:X4}/{string.Join(":", challenge.Select(c => c.ToString("X2")))}");
+			Logger.LogDebug($"Received challenge: {challenge.Length:X4}/{string.Join(":", challenge.Select(c => c.ToString("X2")))}", session.Tag);
 
 			var keys = Crypto.GetKeys();
 			var sign = Crypto.Sign(challenge, keys);
@@ -159,7 +159,7 @@ namespace Nox.Relay.Runtime {
 			auth = await adapter.Authenticate(request);
 			if (auth.IsError) {
 				session.UpdateState(Status.Error, $"Authentication failed: {auth.Reason}", -1f);
-				Logger.LogError($"Authentication failed: {auth.Result} - {auth.Reason}");
+				Logger.LogError($"Authentication failed: {auth.Result} - {auth.Reason}", session.Tag);
 				if (doE) await session.Dispose();
 				return;
 			}
@@ -168,7 +168,7 @@ namespace Nox.Relay.Runtime {
 			var room = await adapter.List(instance.GetId());
 			if (room == null) {
 				session.UpdateState(Status.Error, $"Failed to get room {instance}", -1f);
-				Logger.LogError($"Failed to get room {instance}");
+				Logger.LogError($"Failed to get room {instance}", session.Tag);
 				if (doE) await session.Dispose();
 				return;
 			}
@@ -187,7 +187,7 @@ namespace Nox.Relay.Runtime {
 			var enter = await room.Enter(new EnterRequest());
 			if (enter.IsError) {
 				session.UpdateState(Status.Error, $"Failed to connect to room: {enter.Result} - {enter.Reason}", -1f);
-				Logger.LogError($"Failed to connect to room {instance}: {enter.Result} - {enter.Reason}");
+				Logger.LogError($"Failed to connect to room {instance}: {enter.Result} - {enter.Reason}", session.Tag);
 				if (doE) await session.Dispose();
 				return;
 			}
@@ -201,7 +201,7 @@ namespace Nox.Relay.Runtime {
 			var travelInfos = await room.Traveling(TravelingRequest.Travel());
 			if (!travelInfos.IsSuccess) {
 				session.UpdateState(Status.Error, $"Failed to travel to room: {travelInfos.Reason}", -1f);
-				Logger.LogError($"Failed to travel to room {instance}: {travelInfos.Results} - {travelInfos.Reason}");
+				Logger.LogError($"Failed to travel to room {instance}: {travelInfos.Results} - {travelInfos.Reason}", session.Tag);
 				if (doE) await session.Dispose();
 				return;
 			}
@@ -214,7 +214,7 @@ namespace Nox.Relay.Runtime {
 
 			if (!traveling) {
 				session.UpdateState(Status.Pending, "Failed to travel to room", -1f);
-				Logger.LogError($"Failed to travel to room {instance}");
+				Logger.LogError($"Failed to travel to room {instance}", session.Tag);
 				await session.Dispose();
 				return;
 			}
@@ -224,7 +224,7 @@ namespace Nox.Relay.Runtime {
 			var travelReady = await room.Traveling(TravelingRequest.Ready());
 			if (!travelReady.IsReady) {
 				session.UpdateState(Status.Error, $"Failed to travel to room {travelInfos.Reason}", -1f);
-				Logger.LogError($"Failed to travel to room {instance}: {travelReady.Results} - {travelReady.Reason}");
+				Logger.LogError($"Failed to travel to room {instance}: {travelReady.Results} - {travelReady.Reason}", session.Tag);
 				if (doE) await session.Dispose();
 				return;
 			}
@@ -232,7 +232,7 @@ namespace Nox.Relay.Runtime {
 			room.OnTraveling.AddListener(session.OnTraveling);
 			room.OnEntered.AddListener(session.OnPlayerEnteredHandler);
 
-			Logger.LogDebug($"Local player: {enter.Player.Display} ({enter.Player.Id}, {enter.Player.Flags})");
+			Logger.LogDebug($"Local player: {enter.Player.Display} ({enter.Player.Id}, {enter.Player.Flags})", session.Tag);
 			session.OnPlayerEnteredHandler(enter, false);
 
 			if (session.TryGetProperty<bool>("change_current".Hash(), out var current) && current) {

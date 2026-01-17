@@ -1,6 +1,5 @@
 using System;
 using System.Linq;
-using System.Threading.Tasks;
 using Cysharp.Threading.Tasks;
 using Nox.CCK.Properties;
 using Nox.CCK.Sessions;
@@ -24,6 +23,7 @@ using Nox.Worlds;
 using UnityEngine;
 using UnityEngine.Events;
 using Logger = Nox.CCK.Utils.Logger;
+using Object = UnityEngine.Object;
 using Player = Nox.Relay.Runtime.Players.Player;
 
 namespace Nox.Relay.Runtime {
@@ -145,7 +145,7 @@ namespace Nox.Relay.Runtime {
 			Main.CoreAPI.EventAPI.Emit("session_scene_added", this, index, descriptor, anchor);
 
 			var modules = descriptor.GetModules<ISessionModule>();
-			Logger.LogDebug($"OnDescriptorAdded: {descriptor} with {modules.Length} modules");
+			Logger.LogDebug($"OnDescriptorAdded: {descriptor} with {modules.Length} modules", descriptor as Object, Tag);
 
 			foreach (var module in modules)
 				module.OnLoaded(this);
@@ -212,10 +212,10 @@ namespace Nox.Relay.Runtime {
 			=> Room.Event(EventRequest.Broadcast(@event, raw));
 
 		internal void OnPlayerQuitedHandler(QuitEvent @event) {
-			Logger.LogDebug($"OnQuit: {@event}");
+			Logger.LogDebug($"OnQuit: {@event}", tag: Tag);
 			var player = InterEntities.LocalPlayer;
 			if (player == null) {
-				Logger.LogWarning("Local player not found for Quit event");
+				Logger.LogWarning("Local player not found for Quit event", tag: Tag);
 				return;
 			}
 
@@ -225,7 +225,7 @@ namespace Nox.Relay.Runtime {
 		}
 
 		internal void OnPlayerJoinedHandler(JoinEvent @event) {
-			Logger.LogDebug($"OnJoin: {@event} {@event.Player.Flags}");
+			Logger.LogDebug($"OnJoin: {@event} {@event.Player.Flags}", tag: Tag);
 			var player = new RemotePlayer(InterEntities, @event.Player);
 
 			if (player.IsLocal)
@@ -260,7 +260,7 @@ namespace Nox.Relay.Runtime {
 			=> OnPlayerEnteredHandler(@event, true);
 
 		internal void OnPlayerEnteredHandler(EnterResponse @event, bool travel) {
-			Logger.LogDebug($"OnEnter: {@event}");
+			Logger.LogDebug($"OnEnter: {@event}", tag: Tag);
 			var player = new LocalPlayer(InterEntities, @event.Player);
 			InterEntities.LocalId = player.Id;
 
@@ -274,7 +274,7 @@ namespace Nox.Relay.Runtime {
 		}
 
 		internal void OnPlayerLeftHandler(LeaveEvent @event) {
-			Logger.LogDebug($"OnLeave: {@event}");
+			Logger.LogDebug($"OnLeave: {@event}", tag: Tag);
 			var player = InterEntities.GetEntity<RemotePlayer>(@event.PlayerId);
 			if (player == null) {
 				Logger.LogWarning($"Player with ID {@event.PlayerId} not found for Leave event");
@@ -286,20 +286,64 @@ namespace Nox.Relay.Runtime {
 			OnPlayerLeftOrQuitedHandler(player);
 		}
 
-		internal void OnTransformHandler(TransformEvent @event) {
-			throw new NotImplementedException();
+	internal void OnTransformHandler(TransformEvent @event) {
+		if (@event.Type == TransformType.EntityPart) {
+			// Handle player part transformation
+			var player = InterEntities.GetEntity<Player>(@event.EntityId);
+			if (player == null) {
+				Logger.LogWarning($"Player with ID {@event.EntityId} not found for Transform event", tag: Tag);
+				return;
+			}
+
+			// Update the remote player part if it's a remote player
+			if (player is RemotePlayer remotePlayer) {
+				// Get or create the part
+				if (!remotePlayer.TryGetPart(@event.PartRig, out var part)) {
+					Logger.LogDebug($"Creating new part {@event.PartRig} for remote player {@event.EntityId}", tag: Tag);
+					part = new RemotePart(remotePlayer, @event.PartRig);
+					remotePlayer._parts[@event.PartRig] = part;
+				}
+
+				// Apply transform data from the event
+				var transform = @event.Transform;
+				if (transform.Flags.HasFlag(TransformFlags.Position))
+					part.Position = transform.GetPosition();
+				if (transform.Flags.HasFlag(TransformFlags.Rotation))
+					part.Rotation = transform.GetRotation();
+				if (transform.Flags.HasFlag(TransformFlags.Scale))
+					part.Scale = transform.GetScale();
+				if (transform.Flags.HasFlag(TransformFlags.Velocity))
+					part.Velocity = transform.GetVelocity();
+				if (transform.Flags.HasFlag(TransformFlags.AngularVelocity))
+					part.Angular = transform.GetAngularVelocity();
+			}
+			else if (player is LocalPlayer) {
+				// Local player transforms should be handled by controller, ignore remote updates
+				// Only log if it's not from the local player itself
+				if (@event.SenderId != player.Id)
+					Logger.LogDebug($"Ignoring remote transform update for local player part {@event.PartRig}", tag: Tag);
+			}
 		}
+		else if (@event.Type == TransformType.ByPath) {
+			// Handle object transformation by path
+			Logger.LogWarning($"Transform by path not yet implemented: Path={@event.Path}", tag: Tag);
+			// TODO: Implement path-based transform when needed
+		}
+		else {
+			Logger.LogWarning($"Unknown transform type: {@event.Type}", tag: Tag);
+		}
+	}
 
 		internal void OnPropertiesHandler(PropertiesEvent @event) {
 			var entity = InterEntities.GetEntity<Entity>(@event.EntityId);
 			if (entity == null) {
-				Logger.LogWarning($"Entity with ID {@event.EntityId} not found for Properties event");
+				Logger.LogWarning($"Entity with ID {@event.EntityId} not found for Properties event", tag: Tag);
 				return;
 			}
 
 			var sender = InterEntities.GetEntity<Entity>(@event.SenderId);
 			if (sender == null) {
-				Logger.LogWarning($"Entity with ID {@event.SenderId} not found for Properties event");
+				Logger.LogWarning($"Entity with ID {@event.SenderId} not found for Properties event", tag: Tag);
 				return;
 			}
 
@@ -310,16 +354,14 @@ namespace Nox.Relay.Runtime {
 
 			foreach (var param in @event.Parameters) {
 				if (!table.TryGetValue(param.Key, out var property)) {
-					Logger.LogWarning(
-						$"Property with key {param.Key} not found for entity {entity.Id}, creating unassigned property.");
+					Logger.LogWarning($"Property with key {param.Key} not found for entity {entity.Id}, creating unassigned property.", tag: Tag);
 					property = new UnassignedProperty(entity, param.Key, param.Value);
 					entity.SetProperty(property);
 					continue;
 				}
 
 				if (!property.Flags.HasFlag(fromLocal ? PropertyFlags.LocalEmit : PropertyFlags.RemoteEmit)) {
-					Logger.LogWarning(
-						$"Ignoring non-synced property: {sender.Id} -> {entity.Id} ({property.Name ?? property.Key.ToString()})");
+					Logger.LogWarning($"Ignoring non-synced property: {sender.Id} -> {entity.Id} ({property.Name ?? property.Key.ToString()})", tag: Tag);
 					continue;
 				}
 
@@ -332,7 +374,7 @@ namespace Nox.Relay.Runtime {
 			Logger.LogDebug($"OnEvent: {@event} from SenderId={@event.SenderId}");
 			var player = InterEntities.GetEntity<Player>(@event.SenderId);
 			if (player == null) {
-				Logger.LogWarning($"Player with ID {@event.SenderId} not found for Event event");
+				Logger.LogWarning($"Player with ID {@event.SenderId} not found for Event event", tag: Tag);
 				return;
 			}
 
@@ -344,7 +386,7 @@ namespace Nox.Relay.Runtime {
 		}
 
 		public void OnAuthorityTransferredHandler(Player @new, Player old) {
-			Logger.LogDebug($"OnAuthorityTransferred: {old} -> {@new}");
+			Logger.LogDebug($"OnAuthorityTransferred: {old} -> {@new}", tag: Tag);
 
 			Main.CoreAPI.EventAPI.Emit("session_authority_transferred", this, @new, old);
 			OnAuthorityTransferred.Invoke(@new, old);
@@ -354,7 +396,7 @@ namespace Nox.Relay.Runtime {
 		}
 
 		public void OnEntityRegisteredHandler(IEntity entity) {
-			Logger.LogDebug($"OnEntityRegistered: {entity}");
+			Logger.LogDebug($"OnEntityRegistered: {entity}", tag: Tag);
 
 			Main.CoreAPI.EventAPI.Emit("session_entity_registered", this, entity);
 			OnEntityRegistered.Invoke(entity);
@@ -364,7 +406,7 @@ namespace Nox.Relay.Runtime {
 		}
 
 		public void OnEntityUnregisteredHandler(IEntity entity) {
-			Logger.LogDebug($"OnEntityUnregistered: {entity}");
+			Logger.LogDebug($"OnEntityUnregistered: {entity}", tag: Tag);
 
 			Main.CoreAPI.EventAPI.Emit("session_entity_unregistered", this, entity);
 			OnEntityUnregistered.Invoke(entity);
@@ -373,8 +415,7 @@ namespace Nox.Relay.Runtime {
 				module.OnEntityUnregistered(entity);
 		}
 
-		public async UniTask<bool> OnTravelingAsync(TravelingEvent @event, bool response = true,
-			Action<float, string> progress = null) {
+		public async UniTask<bool> OnTravelingAsync(TravelingEvent @event, bool response = true, Action<float, string> progress = null) {
 			string hash;
 			string url;
 
@@ -390,7 +431,7 @@ namespace Nox.Relay.Runtime {
 			else if (@event.UseNode) {
 				var identifier = @event.WorldIdentifier.ToString(Adapter.LastHandshake.MasterAddress);
 				progress?.Invoke(0.1f, "Searching for master asset for world travel");
-				Logger.LogDebug($"Searching {identifier}");
+				Logger.LogDebug($"Searching {identifier}", tag: Tag);
 				var asset = (await Main.WorldAPI.SearchAssets(
 						identifier,
 						Main.WorldAPI.MakeAssetSearchRequest()
@@ -403,7 +444,7 @@ namespace Nox.Relay.Runtime {
 
 				if (asset == null) {
 					progress?.Invoke(0.2f, $"No master asset found for world {identifier}");
-					Logger.LogError($"No asset found for world {identifier}");
+					Logger.LogError($"No asset found for world {identifier}", tag: Tag);
 					if (response)
 						await OnTravelingFailed(@event, "No master asset found");
 					return false;
@@ -414,7 +455,7 @@ namespace Nox.Relay.Runtime {
 			}
 			else {
 				progress?.Invoke(0.1f, "The traveling does not contain valid URL or master asset information");
-				Logger.LogError($"{@event} does not contain valid URL or master asset information");
+				Logger.LogError($"{@event} does not contain valid URL or master asset information", tag: Tag);
 				if (response)
 					await OnTravelingFailed(@event, "Invalid traveling information");
 				return false;
@@ -437,7 +478,7 @@ namespace Nox.Relay.Runtime {
 			);
 			if (scene == null) {
 				progress?.Invoke(0.9f, "Failed to load scene for world");
-				Logger.LogError($"Failed to load scene for world {@event.WorldIdentifier.ToString()}");
+				Logger.LogError($"Failed to load scene for world {@event.WorldIdentifier.ToString()}", tag: Tag);
 				if (response)
 					await OnTravelingFailed(@event, "Failed to load scene");
 				return false;

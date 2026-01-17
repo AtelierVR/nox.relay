@@ -514,6 +514,9 @@ namespace Nox.Relay.Core {
 				ResponseType.Rooms,
 				NextState()
 			);
+			
+			if (sessions == null) 
+				return null;
 
 			foreach (var room in sessions.Rooms) {
 				room.Connection = this;
