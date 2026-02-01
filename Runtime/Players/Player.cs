@@ -17,7 +17,7 @@ namespace Nox.Relay.Runtime.Players {
 
 	public abstract class Player : Entity, IPlayer, IPlayerAvatar {
 
-		public Player(Entities context, CorePlayer player) : base(context, player.Id) {
+		protected Player(Entities context, CorePlayer player) : base(context, player.Id) {
 			Reference = player;
 			Identifier = player.Identifier;
 		}
@@ -27,7 +27,7 @@ namespace Nox.Relay.Runtime.Players {
 		readonly internal Dictionary<ushort, IPart> Parts = new();
 
 		public IPart[] GetParts()
-			=> Parts.Values.Cast<IPart>().ToArray();
+			=> Parts.Values.ToArray();
 
 		public bool TryGetPart(ushort name, out IPart part) {
 			if (Parts.TryGetValue(name, out var p)) {

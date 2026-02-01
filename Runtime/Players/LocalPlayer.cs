@@ -5,9 +5,7 @@ using Nox.CCK.Utils;
 using Nox.Controllers;
 using Nox.Relay.Core.Rooms;
 using Nox.Relay.Core.Types.Transform;
-using UnityEngine;
 using CorePlayer = Nox.Relay.Core.Players.Player;
-using Logger = Nox.CCK.Utils.Logger;
 
 namespace Nox.Relay.Runtime.Players {
 	public class LocalPlayer : Player {
@@ -16,18 +14,19 @@ namespace Nox.Relay.Runtime.Players {
 		public override bool IsLocal => true;
 
 		public override void Update() {
-			// disabled for local player
+			// Disabled for local player - no interpolation needed
 		}
 
 		public override void Tick() {
 			base.Tick();
 
-			// Send transforms for parts that have moved beyond threshold
-			// Note: Tick() is already called at the Room's TPS rate by Session.Update()
+			// Check if any parts need transform updates and send them
+			// Note: Tick() is already rate-limited by the Room's TPS via Session.Update()
 			if (!_startTransform)
 				SendTransformsIfNeeded().Forget();
 		}
 
+		// Prevents concurrent execution of SendTransformsIfNeeded()
 		private bool _startTransform = false;
 
 		internal void UpdateController(IController controller) {
@@ -38,18 +37,18 @@ namespace Nox.Relay.Runtime.Players {
 
 			var cParts = controller.GetParts();
 
-			// remove parts not in controller
+			// Remove parts that no longer exist in the controller
 			var keysToRemove = Parts.Keys.Except(cParts.Select(p => p.Key)).ToList();
 			foreach (var key in keysToRemove)
 				Parts.Remove(key);
 
-			// add parts from controller
+			// Add new parts from the controller (initialize cache)
 			foreach (var cPart in cParts) {
 				if (Parts.ContainsKey(cPart.Key)) continue;
 				Parts[cPart.Key] = new Part(this, cPart.Key);
 			}
 
-			// restore parts
+			// Initialize each part's cache with current controller values
 			foreach (var part in Parts.Values)
 				if (part is Part p)
 					p.Restore(controller);
@@ -64,7 +63,8 @@ namespace Nox.Relay.Runtime.Players {
 		/// <summary>
 		/// Sends transform updates for parts that have moved beyond the threshold.
 		/// Called from Tick() which is already rate-limited by the Room's TPS.
-		/// Uses the controller for current values and Parts for last sent values (cache).
+		/// Compares current controller values against cached (last-sent) values in Parts.
+		/// Updates the cache immediately after detection to prevent duplicate sends.
 		/// </summary>
 		private async UniTask SendTransformsIfNeeded() {
 			_startTransform = true;
@@ -72,29 +72,30 @@ namespace Nox.Relay.Runtime.Players {
 			var room = Context?.Context.Room;
 			if (room == null) goto end;
 
-			// Need active controller to read current values
+			// Need active controller to read current transform values
 			var controller = Main.ControllerAPI.Current;
 			if (controller == null) goto end;
 
-			// Collect parts that need to be sent based on threshold
+			// Collect parts that need updates (moved beyond threshold)
 			var dirtyParts = new List<(ushort partId, TransformObject delta)>();
-			// Use a minimum threshold to avoid floating point precision issues
-			// If room.Threshold is too small (like float.Epsilon), use a sensible minimum
+			
+			// Ensure a sensible minimum threshold to avoid floating point precision issues
 			var threshold = room.Threshold < 0.0001f ? 0.0001f : room.Threshold;
 
 			foreach (var (index, value) in Parts) {
 				if (value is not Part cachedPart) continue;
 
-				// Get current values from controller
+				// Get current transform from controller
 				if (!controller.TryGetPart(index, out var currentTransform)) continue;
 
-				// Get only the changed values that exceed threshold
+				// Compare current vs cached and get only changed values exceeding threshold
 				var deltaTransform = GetChangedTransform(cachedPart, currentTransform, threshold);
 				if (deltaTransform == null) continue;
+				
 				dirtyParts.Add((partId: index, deltaTransform));
 
-				// Update cached part with new sent values	
-				// so we don't resend the same values next time
+				// Update cache with values we're about to send
+				// This prevents re-sending the same delta on the next Tick()
 				if (deltaTransform.Flags.HasFlag(TransformFlags.Position))
 					cachedPart.SetPosition(deltaTransform.GetPosition());
 				if (deltaTransform.Flags.HasFlag(TransformFlags.Rotation))
@@ -107,7 +108,7 @@ namespace Nox.Relay.Runtime.Players {
 					cachedPart.SetAngular(deltaTransform.GetAngular());
 			}
 
-			// Send all dirty parts in batch
+			// Send all changes in a batch
 			if (dirtyParts.Count > 0)
 				await SendTransformsBatch(room, dirtyParts);
 
@@ -117,52 +118,53 @@ namespace Nox.Relay.Runtime.Players {
 		}
 
 		/// <summary>
-		/// Compares current transform with cached values and returns a TransformObject
-		/// containing ONLY the values that have changed beyond the threshold.
-		/// Returns null if nothing has changed.
+		/// Compares current transform with cached (last-sent) values and builds a delta TransformObject
+		/// containing ONLY the properties that have changed beyond the threshold.
+		/// Returns null if nothing has changed significantly.
 		/// </summary>
-		/// <param name="cached">Cached part with last sent values</param>
-		/// <param name="current">Current transform from controller</param>
-		/// <param name="threshold">Threshold for position, scale, velocities (in Unity units)</param>
+		/// <param name="cached">Cached part containing the last-sent transform values</param>
+		/// <param name="current">Current transform from the controller</param>
+		/// <param name="threshold">Distance/magnitude threshold for detecting changes (Unity units)</param>
+		/// <returns>Delta TransformObject with only changed properties, or null if no changes</returns>
 		private static TransformObject GetChangedTransform(Part cached, TransformObject current, float threshold) {
 			var delta = new TransformObject();
 
-			// Check and add only changed position
+			// Compare position and add to delta if changed beyond threshold
 			if (current.Flags.HasFlag(TransformFlags.Position) && !current.IsSamePosition(cached.GetPosition(), threshold))
 				delta.SetPosition(current.GetPosition());
 
-			// Check and add only changed rotation
-			if (current.Flags.HasFlag(TransformFlags.Rotation) && !current.IsSameRotation(cached.GetRotation(), threshold)) {
-				Logger.Log(Quaternion.Angle(current.GetRotation(), cached.GetRotation()));
+			// Compare rotation and add to delta if changed beyond threshold
+			if (current.Flags.HasFlag(TransformFlags.Rotation) && !current.IsSameRotation(cached.GetRotation(), threshold)) 
 				delta.SetRotation(current.GetRotation());
-			}
 
-			// Check and add only changed scale
+			// Compare scale and add to delta if changed beyond threshold
 			if (current.Flags.HasFlag(TransformFlags.Scale) && !current.IsSameScale(cached.GetScale(), threshold))
 				delta.SetScale(current.GetScale());
 
-			// Check and add only changed velocity
+			// Compare velocity and add to delta if changed beyond threshold
 			if (current.Flags.HasFlag(TransformFlags.Velocity) && !current.IsSameVelocity(cached.GetVelocity(), threshold))
 				delta.SetVelocity(current.GetVelocity());
 
-			// Check and add only changed angular velocity
+			// Compare angular velocity and add to delta if changed beyond threshold
 			if (current.Flags.HasFlag(TransformFlags.Angular) && !current.IsSameAngular(cached.GetAngular(), threshold))
 				delta.SetAngular(current.GetAngular());
 
-			// If no changes, return null
+			// Return delta only if at least one property changed
 			return delta.Flags != TransformFlags.None
 				? delta
 				: null;
 		}
 
 		/// <summary>
-		/// Sends a batch of transform updates to the room.
-		/// Only sends the changed values (delta) for each part.
-		/// Updates the cache BEFORE sending to prevent race conditions with Tick().Forget().
+		/// Sends a batch of transform updates to the room in parallel.
+		/// Each part is sent individually (as required by the relay protocol).
+		/// All requests are initiated without blocking, then awaited together for efficiency.
 		/// </summary>
+		/// <param name="room">The room to send transforms to</param>
+		/// <param name="dirtyParts">List of parts with their delta transforms to send</param>
 		private static async UniTask SendTransformsBatch(Room room, List<(ushort partId, TransformObject delta)> dirtyParts) {
-			// Send each part individually (the relay protocol requires per-part requests)
-			// But we can optimize by sending them without awaiting each one
+			// Initiate all transform requests without blocking
+			// This allows parallel network operations for better performance
 			var tasks = new List<UniTask<bool>>();
 
 			foreach (var (partId, deltaTransform) in dirtyParts) {
@@ -170,7 +172,7 @@ namespace Nox.Relay.Runtime.Players {
 				tasks.Add(room.Transform(request));
 			}
 
-			// Wait for all sends to complete
+			// Wait for all network operations to complete
 			await UniTask.WhenAll(tasks);
 		}
 	}
