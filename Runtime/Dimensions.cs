@@ -1,3 +1,4 @@
+using System.Linq;
 using Cysharp.Threading.Tasks;
 using Nox.Sessions;
 using Nox.Worlds;
@@ -17,20 +18,20 @@ namespace Nox.Relay.Runtime {
 		internal Dimensions(Session session, IRuntimeWorld world) {
 			_world = world;
 			_session = session;
-			_ids = new int[world.GetDimensionCount()];
+			_ids = new int[world.Dimensions.Count()];
 			for (var i = 0; i < _ids.Length; i++)
 				_ids[i] = UnloadedIndex;
 		}
 
 		public async UniTask<bool> CreateIfMissing(int index) {
 			if (index < 0 || index >= _ids.Length) {
-				Logger.LogWarning($"Tried to create dimension instance at invalid index {index} for world {_world.GetIdentifier()}", tag: nameof(Dimensions));
+				Logger.LogWarning($"Tried to create dimension instance at invalid index {index} for world {_world.Identifier}", tag: nameof(Dimensions));
 				return false;
 			}
 
 			if (IsLoaded(index)) return true;
 			if (!TryDimension(index, out var dimension)) {
-				Logger.LogWarning($"Tried to create dimension instance at index {index} for world {_world.GetIdentifier()}, but dimension not found", tag: nameof(Dimensions));
+				Logger.LogWarning($"Tried to create dimension instance at index {index} for world {_world.Identifier}, but dimension not found", tag: nameof(Dimensions));
 				return false;
 			}
 
@@ -50,13 +51,13 @@ namespace Nox.Relay.Runtime {
 		private bool TryDimension(int index, out IRuntimeWorldDimension dimension) {
 			dimension = null;
 			if (index < 0 || index >= _ids.Length) {
-				Logger.LogWarning($"Tried to get dimension at invalid index {index} for world {_world.GetIdentifier()}", tag: nameof(Dimensions));
+				Logger.LogWarning($"Tried to get dimension at invalid index {index} for world {_world.Identifier}", tag: nameof(Dimensions));
 				return false;
 			}
 
 			dimension = _world.GetDimension(index);
 			if (dimension == null) {
-				Logger.LogWarning($"Tried to get dimension at index {index} for world {_world.GetIdentifier()}, but dimension not found", tag: nameof(Dimensions));
+				Logger.LogWarning($"Tried to get dimension at index {index} for world {_world.Identifier}, but dimension not found", tag: nameof(Dimensions));
 				return false;
 			}
 
@@ -64,7 +65,7 @@ namespace Nox.Relay.Runtime {
 		}
 
 		public IWorldIdentifier Identifier
-			=> _world.GetIdentifier();
+			=> _world.Identifier;
 
 		public bool IsLoaded(int index)
 			=> index >= 0 && index < _ids.Length && _ids[index] != UnloadedIndex;
@@ -85,7 +86,7 @@ namespace Nox.Relay.Runtime {
 				: default;
 
 		public void SetCurrent()
-			=> _world.SetCurrent();
+			=> _world.IsCurrent = true;
 
 		public void Dispose() {
 			for (var i = 0; i < _ids.Length; i++) {

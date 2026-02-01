@@ -1,3 +1,4 @@
+using System;
 using Nox.CCK.Utils;
 using Nox.Entities;
 using UnityEngine;
@@ -8,11 +9,12 @@ namespace Nox.Relay.Runtime.Players {
 	/// </summary>
 	public class RemotePart : TransformObject, IPart {
 		internal RemotePart(RemotePlayer context, ushort id) {
-			Id      = id;
+			Id = id;
 			Context = context;
 		}
 
-		internal readonly RemotePlayer Context;
+		readonly internal RemotePlayer Context;
+		public DateTime Updated { get; private set; } = DateTime.UtcNow;
 
 		public ushort Id { get; }
 
@@ -23,28 +25,42 @@ namespace Nox.Relay.Runtime.Players {
 
 		public Vector3 Position {
 			get => GetPosition();
-			set => SetPosition(value);
+			set {
+				SetPosition(value);
+				Updated = DateTime.UtcNow;
+			}
 		}
 
 		public Quaternion Rotation {
 			get => GetRotation();
-			set => SetRotation(value);
+			set {
+				SetRotation(value);
+				Updated = DateTime.UtcNow;
+			}
 		}
 
 		public Vector3 Scale {
 			get => GetScale();
-			set => SetScale(value);
+			set {
+				SetScale(value);
+				Updated = DateTime.UtcNow;
+			}
 		}
 
 		public Vector3 Velocity {
 			get => GetVelocity();
-			set => SetVelocity(value);
+			set {
+				SetVelocity(value);
+				Updated = DateTime.UtcNow;
+			}
 		}
 
 		public Vector3 Angular {
-			get => GetAngularVelocity();
-			set => SetAngular(value);
+			get => GetAngular();
+			set {
+				SetAngular(value);
+				Updated = DateTime.UtcNow;
+			}
 		}
 	}
 }
-

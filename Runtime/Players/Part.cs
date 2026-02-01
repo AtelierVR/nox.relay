@@ -1,3 +1,4 @@
+using System;
 using Nox.CCK.Utils;
 using Nox.Controllers;
 using Nox.Entities;
@@ -7,6 +8,8 @@ namespace Nox.Relay.Runtime.Players {
 	public class Part : TransformObject, IPart {
 		// if the controller is null, the new values are stored but not applied
 		private IController _controller;
+
+		public DateTime Updated { get; private set; } = DateTime.UtcNow;
 
 		internal void Restore(IController controller) {
 			if (_controller == controller) return;
@@ -29,15 +32,16 @@ namespace Nox.Relay.Runtime.Players {
 					SetScale(part.GetScale());
 				if (!IsSameVelocity(part.GetVelocity()))
 					SetVelocity(part.GetVelocity());
-				if (!IsSameAngularVelocity(part.GetAngularVelocity()))
-					SetAngular(part.GetAngularVelocity());
+				if (!IsSameAngular(part.GetAngular()))
+					SetAngular(part.GetAngular());
+				Updated = DateTime.UtcNow;
 			}
 
 			_controller = null;
 		}
 
 		internal Part(LocalPlayer context, ushort id) {
-			Id      = id;
+			Id = id;
 			Context = context;
 		}
 
@@ -59,10 +63,12 @@ namespace Nox.Relay.Runtime.Players {
 				if (_controller != null) {
 					var part = new TransformObject();
 					part.SetPosition(value);
+					Updated = DateTime.UtcNow;
 					_controller.SetPart(Id, part);
 				}
 
 				SetPosition(value);
+				Updated = DateTime.UtcNow;
 			}
 		}
 
@@ -79,6 +85,7 @@ namespace Nox.Relay.Runtime.Players {
 				}
 
 				SetRotation(value);
+				Updated = DateTime.UtcNow;
 			}
 		}
 
@@ -95,6 +102,7 @@ namespace Nox.Relay.Runtime.Players {
 				}
 
 				SetScale(value);
+				Updated = DateTime.UtcNow;
 			}
 		}
 
@@ -111,14 +119,15 @@ namespace Nox.Relay.Runtime.Players {
 				}
 
 				SetVelocity(value);
+				Updated = DateTime.UtcNow;
 			}
 		}
 
 		public Vector3 Angular {
 			get
 				=> _controller != null && _controller.TryGetPart(Id, out var part)
-					? part.GetAngularVelocity()
-					: GetAngularVelocity();
+					? part.GetAngular()
+					: GetAngular();
 			set {
 				if (_controller != null) {
 					var part = new TransformObject();
@@ -127,6 +136,7 @@ namespace Nox.Relay.Runtime.Players {
 				}
 
 				SetAngular(value);
+				Updated = DateTime.UtcNow;
 			}
 		}
 	}

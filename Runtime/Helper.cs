@@ -4,6 +4,7 @@ using Cysharp.Threading.Tasks;
 using Nox.CCK.Network;
 using Nox.CCK.Sessions;
 using Nox.CCK.Utils;
+using Nox.CCK.Worlds;
 using Nox.Relay.Core.Connectors;
 using Nox.Relay.Core.Types.Authentication;
 using Nox.Relay.Core.Types.Enter;
@@ -36,15 +37,16 @@ namespace Nox.Relay.Runtime {
 
 			if (world is { IsValid: true }) {
 				session.UpdateState(Status.Pending, "Fetching world data...", 0.05f);
-				var asset = (await Main.WorldAPI.SearchAssets(
-						world.ToString(),
-						Main.WorldAPI.MakeAssetSearchRequest()
-							.SetEngines(new[] { EngineExtensions.CurrentEngine.GetEngineName() })
-							.SetPlatforms(new[] { PlatformExtensions.CurrentPlatform.GetPlatformName() })
-							.SetVersions(new[] { world.Version })
-							.SetLimit(1)
-					)).GetAssets()
-					.FirstOrDefault();
+
+				var req = new AssetSearchRequest {
+					Engines = new[] { EngineExtensions.CurrentEngine.GetEngineName() },
+					Platforms = new[] { PlatformExtensions.CurrentPlatform.GetPlatformName() },
+					Versions = new[] { world.Version },
+					Limit = 1
+				};
+
+				var asset = (await Main.WorldAPI.SearchAssets(world, req))
+					.Assets.FirstOrDefault();
 
 				if (asset == null) {
 					Logger.LogError($"Failed to find asset for world {world} with version {world.Version}", session.Tag);
@@ -54,18 +56,18 @@ namespace Nox.Relay.Runtime {
 
 				session.UpdateState(Status.Pending, $"Preparing world '{world}'...", 0.1f);
 
-				if (!Main.WorldAPI.HasSceneInCache(asset.GetHash())) {
+				if (!Main.WorldAPI.HasInCache(asset.Hash)) {
 					session.UpdateState(Status.Pending, $"Downloading world '{world}'...", 0.15f);
-					var download = Main.WorldAPI.DownloadSceneToCache(
-						asset.GetUrl(),
-						hash: asset.GetHash(),
+					var download = Main.WorldAPI.DownloadToCache(
+						asset.Url,
+						hash: asset.Hash,
 						progress: arg0 => session.UpdateState(Status.Pending, $"Downloading world '{world}'...",
 							0.15f + arg0 * 0.45f)
 					);
 					await download.Start();
 				}
 
-				if (!Main.WorldAPI.HasSceneInCache(asset.GetHash())) {
+				if (!Main.WorldAPI.HasInCache(asset.Hash)) {
 					Logger.LogError($"Failed to download asset for world {world} with version {world.Version}", session.Tag);
 					session.UpdateState(Status.Error, $"Failed to download world '{world}'", 1f);
 					return;
@@ -179,10 +181,9 @@ namespace Nox.Relay.Runtime {
 			room.OnTransform.AddListener(session.OnTransformHandler);
 			room.OnProperties.AddListener(session.OnPropertiesHandler);
 			room.OnEvent.AddListener(session.OnEventHandler);
-			// adapter.Instance.OnAvatarChanged.AddListener(adapter.OnAvatarChanged);
+			room.OnAvatarChanged.AddListener(session.OnAvatarChanged);
 			// adapter.Instance.OnPlayerUpdated.AddListener(adapter.OnPlayerUpdated);
-
-
+			
 			session.UpdateState(Status.Pending, "Entering room...", 0.3f);
 			var enter = await room.Enter(new EnterRequest());
 			if (enter.IsError) {

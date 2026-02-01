@@ -8,6 +8,7 @@ using Nox.Relay.Core.Connectors;
 using Nox.Relay.Core.Rooms;
 using Nox.Relay.Core.Types;
 using Nox.Relay.Core.Types.Authentication;
+using Nox.Relay.Core.Types.Avatars;
 using Nox.Relay.Core.Types.Contents;
 using Nox.Relay.Core.Types.Latency;
 using Nox.Relay.Core.Types.Rooms;
@@ -268,7 +269,7 @@ namespace Nox.Relay.Core {
 			} catch (OperationCanceledException) {
 				// Normal cancellation, do nothing
 			} catch (Exception ex) {
-				Logger.LogException(new Exception("Error in keep-alive loop", ex), tag: nameof(Relay));
+				Logger.LogError(new Exception("Error in keep-alive loop", ex), tag: nameof(Relay));
 			}
 		}
 

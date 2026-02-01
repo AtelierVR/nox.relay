@@ -15,7 +15,12 @@
         "Nox.Worlds.Spawns",
         "Nox.Sessions",
         "Nox.Relay.Core",
-        "Nox.Instances"
+        "Nox.Instances",
+        "api.nox.ui",
+        "Nox.Avatars",
+        "Nox.Avatars.Parameters",
+        "Nox.CCK.Avatars",
+        "Nox.Avatars.Runtime"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

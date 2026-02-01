@@ -4,11 +4,13 @@ using Cysharp.Threading.Tasks;
 using Nox.CCK.Properties;
 using Nox.CCK.Sessions;
 using Nox.CCK.Utils;
+using Nox.CCK.Worlds;
 using Nox.Controllers;
 using Nox.Entities;
 using Nox.Players;
 using Nox.Relay.Core.Players;
 using Nox.Relay.Core.Rooms;
+using Nox.Relay.Core.Types.Avatars;
 using Nox.Relay.Core.Types.Enter;
 using Nox.Relay.Core.Types.Event;
 using Nox.Relay.Core.Types.Join;
@@ -50,6 +52,11 @@ namespace Nox.Relay.Runtime {
 		public UnityEvent<IEntity> OnEntityRegistered { get; } = new();
 		public UnityEvent<IEntity> OnEntityUnregistered { get; } = new();
 		public UnityEvent<IState> OnStateChanged { get; } = new();
+
+		public bool Match(IWorldIdentifier identifier)
+			=> InterDimensions.Identifier != null && InterDimensions.Identifier.Equals(identifier);
+
+
 		public UnityEvent<long, byte[], IPlayer> OnEventReceived { get; } = new();
 
 		public string Id { get; }
@@ -106,16 +113,33 @@ namespace Nox.Relay.Runtime {
 			=> GetType().Name + $"_{Id}";
 
 		private ISessionModule[] GetAllModules()
-			=> InterDimensions.GetDescriptors()
+			=> InterDimensions?.GetDescriptors()
 				.Where(e => e != null)
 				.SelectMany(d => d.GetModules<ISessionModule>())
-				.ToArray();
+				.ToArray() ?? Array.Empty<ISessionModule>();
 
 
 		public async UniTask Dispose() {
 			await UniTask.Yield();
 			InterEntities.Dispose();
 			InterDimensions.Dispose();
+		}
+
+		private DateTime _lastTick = DateTime.MinValue;
+
+		public void Update() {
+			var entities = InterEntities.GetEntities<Entity>();
+
+			foreach (var player in entities)
+				player.Update();
+
+			var now = DateTime.UtcNow;
+			var delta = (now - _lastTick).TotalSeconds;
+			if (!(delta >= 1.0 / Room.Tps)) return;
+			_lastTick = now;
+			
+			foreach (var player in entities)
+				player.Tick();
 		}
 
 		public async UniTask OnSelect(ISession old) {
@@ -139,6 +163,8 @@ namespace Nox.Relay.Runtime {
 			foreach (var module in GetAllModules())
 				module.OnSessionSelected();
 		}
+
+
 
 
 		public void OnSceneLoaded(int index, IWorldDescriptor descriptor, GameObject anchor) {
@@ -268,7 +294,9 @@ namespace Nox.Relay.Runtime {
 			Room.Tps = @event.Tps;
 			Room.Threshold = @event.Threshold;
 			Room.RenderEntity = @event.RenderEntity;
-			Room.Traveling(TravelingRequest.Travel()).Forget();
+
+			if (travel)
+				Room.Traveling(TravelingRequest.Travel()).Forget();
 
 			OnPlayerJoinedOrEnteredHandler(player);
 		}
@@ -286,53 +314,53 @@ namespace Nox.Relay.Runtime {
 			OnPlayerLeftOrQuitedHandler(player);
 		}
 
-	internal void OnTransformHandler(TransformEvent @event) {
-		if (@event.Type == TransformType.EntityPart) {
-			// Handle player part transformation
-			var player = InterEntities.GetEntity<Player>(@event.EntityId);
-			if (player == null) {
-				Logger.LogWarning($"Player with ID {@event.EntityId} not found for Transform event", tag: Tag);
-				return;
-			}
-
-			// Update the remote player part if it's a remote player
-			if (player is RemotePlayer remotePlayer) {
-				// Get or create the part
-				if (!remotePlayer.TryGetPart(@event.PartRig, out var part)) {
-					Logger.LogDebug($"Creating new part {@event.PartRig} for remote player {@event.EntityId}", tag: Tag);
-					part = new RemotePart(remotePlayer, @event.PartRig);
-					remotePlayer._parts[@event.PartRig] = part;
+		internal void OnTransformHandler(TransformEvent @event) {
+			if (@event.Type == TransformType.EntityPart) {
+				// Handle player part transformation
+				var player = InterEntities.GetEntity<Player>(@event.EntityId);
+				if (player == null) {
+					Logger.LogWarning($"Player with ID {@event.EntityId} not found for Transform event", tag: Tag);
+					return;
 				}
 
-				// Apply transform data from the event
-				var transform = @event.Transform;
-				if (transform.Flags.HasFlag(TransformFlags.Position))
-					part.Position = transform.GetPosition();
-				if (transform.Flags.HasFlag(TransformFlags.Rotation))
-					part.Rotation = transform.GetRotation();
-				if (transform.Flags.HasFlag(TransformFlags.Scale))
-					part.Scale = transform.GetScale();
-				if (transform.Flags.HasFlag(TransformFlags.Velocity))
-					part.Velocity = transform.GetVelocity();
-				if (transform.Flags.HasFlag(TransformFlags.AngularVelocity))
-					part.Angular = transform.GetAngularVelocity();
+				// Update the remote player part if it's a remote player
+				if (player is RemotePlayer remotePlayer) {
+					// Get or create the part
+					if (!remotePlayer.TryGetPart(@event.PartRig, out var part)) {
+						Logger.LogDebug($"Creating new part {@event.PartRig} for remote player {@event.EntityId}", tag: Tag);
+						part = new RemotePart(remotePlayer, @event.PartRig);
+						remotePlayer.Parts[@event.PartRig] = part;
+					}
+
+					// Apply transform data from the event
+					var transform = @event.Transform;
+					if (transform.Flags.HasFlag(TransformFlags.Position))
+						part.Position = transform.GetPosition();
+					if (transform.Flags.HasFlag(TransformFlags.Rotation))
+						part.Rotation = transform.GetRotation();
+					if (transform.Flags.HasFlag(TransformFlags.Scale))
+						part.Scale = transform.GetScale();
+					if (transform.Flags.HasFlag(TransformFlags.Velocity))
+						part.Velocity = transform.GetVelocity();
+					if (transform.Flags.HasFlag(TransformFlags.Angular))
+						part.Angular = transform.GetAngular();
+				}
+				else if (player is LocalPlayer) {
+					// Local player transforms should be handled by controller, ignore remote updates
+					// Only log if it's not from the local player itself
+					if (@event.SenderId != player.Id)
+						Logger.LogDebug($"Ignoring remote transform update for local player part {@event.PartRig}", tag: Tag);
+				}
 			}
-			else if (player is LocalPlayer) {
-				// Local player transforms should be handled by controller, ignore remote updates
-				// Only log if it's not from the local player itself
-				if (@event.SenderId != player.Id)
-					Logger.LogDebug($"Ignoring remote transform update for local player part {@event.PartRig}", tag: Tag);
+			else if (@event.Type == TransformType.ByPath) {
+				// Handle object transformation by path
+				Logger.LogWarning($"Transform by path not yet implemented: Path={@event.Path}", tag: Tag);
+				// TODO: Implement path-based transform when needed
+			}
+			else {
+				Logger.LogWarning($"Unknown transform type: {@event.Type}", tag: Tag);
 			}
 		}
-		else if (@event.Type == TransformType.ByPath) {
-			// Handle object transformation by path
-			Logger.LogWarning($"Transform by path not yet implemented: Path={@event.Path}", tag: Tag);
-			// TODO: Implement path-based transform when needed
-		}
-		else {
-			Logger.LogWarning($"Unknown transform type: {@event.Type}", tag: Tag);
-		}
-	}
 
 		internal void OnPropertiesHandler(PropertiesEvent @event) {
 			var entity = InterEntities.GetEntity<Entity>(@event.EntityId);
@@ -432,14 +460,17 @@ namespace Nox.Relay.Runtime {
 				var identifier = @event.WorldIdentifier.ToString(Adapter.LastHandshake.MasterAddress);
 				progress?.Invoke(0.1f, "Searching for master asset for world travel");
 				Logger.LogDebug($"Searching {identifier}", tag: Tag);
+				var req = new AssetSearchRequest {
+					Engines = new[] { EngineExtensions.CurrentEngine.GetEngineName() },
+					Platforms = new[] { PlatformExtensions.CurrentPlatform.GetPlatformName() },
+					Versions = new[] { @event.WorldIdentifier.Version },
+					Limit = 1
+				};
+
 				var asset = (await Main.WorldAPI.SearchAssets(
-						identifier,
-						Main.WorldAPI.MakeAssetSearchRequest()
-							.SetEngines(new[] { EngineExtensions.CurrentEngine.GetEngineName() })
-							.SetPlatforms(new[] { PlatformExtensions.CurrentPlatform.GetPlatformName() })
-							.SetVersions(new[] { @event.WorldIdentifier.Version })
-							.SetLimit(1)
-					))?.GetAssets()
+						WorldIdentifier.From(identifier),
+						req
+					))?.Assets
 					.FirstOrDefault();
 
 				if (asset == null) {
@@ -450,8 +481,8 @@ namespace Nox.Relay.Runtime {
 					return false;
 				}
 
-				hash = asset.GetHash();
-				url = asset.GetUrl();
+				hash = asset.Hash;
+				url = asset.Url;
 			}
 			else {
 				progress?.Invoke(0.1f, "The traveling does not contain valid URL or master asset information");
@@ -462,8 +493,8 @@ namespace Nox.Relay.Runtime {
 			}
 
 			progress?.Invoke(0.2f, "Searching for world");
-			if (!Main.WorldAPI.HasSceneInCache(hash)) {
-				var download = Main.WorldAPI.DownloadSceneToCache(
+			if (!Main.WorldAPI.HasInCache(hash)) {
+				var download = Main.WorldAPI.DownloadToCache(
 					url,
 					hash: hash,
 					progress: f => progress?.Invoke(0.2f + f * 0.45f, "Downloading world...")
@@ -484,7 +515,7 @@ namespace Nox.Relay.Runtime {
 				return false;
 			}
 
-			scene.SetIdentifier(@event.UseNode ? @event.WorldIdentifier : null);
+			scene.Identifier = @event.UseNode ? @event.WorldIdentifier : null;
 			SetDimension(scene);
 			progress?.Invoke(1f, "World loaded successfully");
 			if (response)
@@ -500,5 +531,16 @@ namespace Nox.Relay.Runtime {
 
 		private async UniTask OnTravelingSuccess(TravelingEvent @event)
 			=> await @event.Room.Traveling(TravelingRequest.Ready());
+
+
+		public void OnAvatarChanged(AvatarChangedEvent @event)
+			=> OnAvatarChangedAsync(@event).Forget();
+
+		private async UniTask OnAvatarChangedAsync(AvatarChangedEvent @event) {
+			if (@event.Result != AvatarChangedResult.Changing) return;
+			var player = InterEntities.GetEntity<Player>(@event.PlayerId);
+			if (player == null) return;
+			await player.SetAvatar(@event.AvatarIdentifier);
+		}
 	}
 }

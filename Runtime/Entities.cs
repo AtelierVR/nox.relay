@@ -11,7 +11,7 @@ namespace Nox.Relay.Runtime {
 		internal Entities(Session context)
 			=> Context = context;
 
-		internal readonly Session Context;
+		readonly internal Session Context;
 
 		private int _masterId = InvalidEntityId;
 

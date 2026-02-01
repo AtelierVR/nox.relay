@@ -87,13 +87,13 @@ namespace Nox.Relay.Core.Connectors {
 				return true;
 			}
 			catch (SocketException ex) {
-				Logger.LogException(new Exception("Socket exception during connecting", ex), tag: nameof(TcpConnector));
+				Logger.LogError(new Exception("Socket exception during connecting", ex), tag: nameof(TcpConnector));
 				_socket?.Close();
 				_socket = null;
 				return false;
 			}
 			catch (Exception ex) {
-				Logger.LogException(new Exception("Unexpected error during connecting", ex), tag: nameof(TcpConnector));
+				Logger.LogError(new Exception("Unexpected error during connecting", ex), tag: nameof(TcpConnector));
 				_socket?.Close();
 				_socket = null;
 				return false;
@@ -120,7 +120,7 @@ namespace Nox.Relay.Core.Connectors {
 				_socket.Close();
 			}
 			catch (Exception ex) {
-				Logger.LogException(new Exception("Error during TcpConnector.Close", ex), tag: nameof(TcpConnector));
+				Logger.LogError(new Exception("Error during TcpConnector.Close", ex), tag: nameof(TcpConnector));
 			}
 			finally {
 				_socket = null;
@@ -159,12 +159,12 @@ namespace Nox.Relay.Core.Connectors {
 				return UniTask.FromResult(true);
 			}
 			catch (SocketException ex) {
-				Logger.LogException(new Exception("Socket exception during send", ex), tag: nameof(TcpConnector));
+				Logger.LogError(new Exception("Socket exception during send", ex), tag: nameof(TcpConnector));
 				HandleDisconnection($"Send error: {ex.Message}");
 				return UniTask.FromResult(false);
 			}
 			catch (Exception ex) {
-				Logger.LogException(new Exception("Unexpected error during send", ex), tag: nameof(TcpConnector));
+				Logger.LogError(new Exception("Unexpected error during send", ex), tag: nameof(TcpConnector));
 				return UniTask.FromResult(false);
 			}
 		}
@@ -198,13 +198,13 @@ namespace Nox.Relay.Core.Connectors {
 			}
 			catch (SocketException ex) {
 				if (!cancellationToken.IsCancellationRequested && !_isDisposing) {
-					Logger.LogException(new Exception("Socket exception in receive loop", ex), tag: nameof(TcpConnector));
+					Logger.LogError(new Exception("Socket exception in receive loop", ex), tag: nameof(TcpConnector));
 					HandleDisconnection($"Receive error: {ex.Message}");
 				}
 			}
 			catch (Exception ex) {
 				if (!cancellationToken.IsCancellationRequested && !_isDisposing) {
-					Logger.LogException(new Exception("Unexpected error in receive loop", ex), tag: nameof(TcpConnector));
+					Logger.LogError(new Exception("Unexpected error in receive loop", ex), tag: nameof(TcpConnector));
 					HandleDisconnection($"Unexpected error: {ex.Message}");
 				}
 			}
@@ -261,7 +261,7 @@ namespace Nox.Relay.Core.Connectors {
 						OnReceived?.Invoke(messageBuffer);
 					}
 					catch (Exception ex) {
-						Logger.LogException(new Exception("Error in OnReceived handler", ex), tag: nameof(TcpConnector));
+						Logger.LogError(new Exception("Error in OnReceived handler", ex), tag: nameof(TcpConnector));
 					}
 				});
 			}
@@ -284,12 +284,12 @@ namespace Nox.Relay.Core.Connectors {
 						OnDisconnected?.Invoke(reason);
 					}
 					catch (Exception ex) {
-						Logger.LogException(new Exception("Error in OnDisconnected handler", ex), tag: nameof(TcpConnector));
+						Logger.LogError(new Exception("Error in OnDisconnected handler", ex), tag: nameof(TcpConnector));
 					}
 				});
 			}
 			catch (Exception ex) {
-				Logger.LogException(new Exception("Error in OnDisconnected handler", ex), tag: nameof(TcpConnector));
+				Logger.LogError(new Exception("Error in OnDisconnected handler", ex), tag: nameof(TcpConnector));
 			}
 			finally {
 				_isDisposing = false;

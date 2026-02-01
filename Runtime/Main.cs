@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Cysharp.Threading.Tasks;
+using Nox.Avatars;
 using Nox.CCK.Mods.Cores;
 using Nox.CCK.Mods.Events;
 using Nox.Controllers;
@@ -22,8 +23,8 @@ namespace Nox.Relay.Runtime {
 			return true;
 		}
 
-		internal static IMainModCoreAPI     CoreAPI;
-		private         EventSubscription[] _events = Array.Empty<EventSubscription>();
+		internal static IMainModCoreAPI CoreAPI;
+		private EventSubscription[] _events = Array.Empty<EventSubscription>();
 
 		public void OnInitializeMain(IMainModCoreAPI api) {
 			CoreAPI = api;
@@ -31,7 +32,7 @@ namespace Nox.Relay.Runtime {
 				api.EventAPI.Subscribe("controller_changed", OnControllerChanged)
 			};
 			SessionAPI.Register(this);
-			
+
 			#if UNITY_EDITOR
 			CoreAPI.LoggerAPI.Log("Starting relay tests...");
 			TestRelay().Forget();
@@ -40,7 +41,7 @@ namespace Nox.Relay.Runtime {
 
 		private static async UniTask TestRelay() {
 			var relay = Core.Relay.New<TcpConnector>();
-			
+
 			if (!await relay.Connect("hactazia.fr", 30000)) {
 				CoreAPI.LoggerAPI.LogError("Failed to connect to relay server");
 				return;
@@ -151,5 +152,10 @@ namespace Nox.Relay.Runtime {
 			=> CoreAPI.ModAPI
 				.GetMod("user")
 				.GetInstance<IUserAPI>();
+
+		internal static IAvatarAPI AvatarAPI
+			=> CoreAPI.ModAPI
+				.GetMod("avatar")
+				.GetInstance<IAvatarAPI>();
 	}
 }

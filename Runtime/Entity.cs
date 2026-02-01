@@ -2,16 +2,17 @@ using System.Collections.Generic;
 using System.Linq;
 using Nox.CCK.Utils;
 using Nox.Entities;
+using Logger = Nox.CCK.Utils.Logger;
 
 namespace Nox.Relay.Runtime {
 	public class Entity : IEntity {
-		internal readonly Entities Context;
-		private           Physical _physical;
+		readonly internal Entities Context;
+		protected Nox.Relay.Runtime.Physicals.Physical Physical;
 
 		internal readonly Dictionary<int, Property> Properties = new();
 
 		protected Entity(Entities context, int id) {
-			Id      = id;
+			Id = id;
 			Context = context;
 			context.RegisterEntity(this);
 		}
@@ -33,17 +34,35 @@ namespace Nox.Relay.Runtime {
 
 		public void SetProperty(Property property)
 			=> Properties[property.Key] = property;
-		
-		protected virtual Physical InstantiatePhysical() {
+
+		virtual protected Nox.Relay.Runtime.Physicals.Physical InstantiatePhysical() {
 			Logger.LogWarning($"Entity {Id} does not implement {nameof(InstantiatePhysical)}, cannot create physical representation.", tag: nameof(Entity));
 			return null;
 		}
 
+		virtual protected bool IsVisible
+			=> false;
+
+		public virtual void Update() {
+			switch (IsVisible) {
+				// instantiate physical if needed
+				case true when !HasPhysical():
+					MakePhysical();
+					break;
+				// destroy physical if not needed
+				case false when HasPhysical():
+					DestroyPhysical();
+					break;
+			}
+		}
+		
+		public virtual void Tick() {}
+
 		public bool HasPhysical()
-			=> _physical;
+			=> Physical;
 
 		public bool TryGetPhysical<T>(out T physical) where T : Physical {
-			if (_physical is T p) {
+			if (Physical is T p) {
 				physical = p;
 				return true;
 			}
@@ -53,15 +72,18 @@ namespace Nox.Relay.Runtime {
 		}
 
 		public bool MakePhysical() {
-			if (_physical) return true;
-			_physical = InstantiatePhysical();
-			return _physical;
+			if (Physical) return true;
+			Physical = InstantiatePhysical();
+			return Physical;
 		}
 
-		public void DestroyPhysical() {
-			if (!_physical) return;
-			_physical.Destroy();
-			_physical = null;
+		void IEntity.DestroyPhysical()
+			=> DestroyPhysical(true);
+
+		public void DestroyPhysical(bool immediate = false) {
+			if (!Physical) return;
+			Physical.Destroy(immediate);
+			Physical = null;
 		}
 
 		public void Dispose() {
@@ -71,5 +93,6 @@ namespace Nox.Relay.Runtime {
 
 		public override string ToString()
 			=> $"{GetType().Name}[Id={Id}]";
+
 	}
 }

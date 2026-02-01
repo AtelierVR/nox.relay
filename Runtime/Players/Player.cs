@@ -1,5 +1,9 @@
 using System.Collections.Generic;
 using System.Linq;
+using Cysharp.Threading.Tasks;
+using Nox.Avatars;
+using Nox.Avatars.Players;
+using Nox.CCK.Avatars;
 using Nox.CCK.Players;
 using Nox.Entities;
 using Nox.Players;
@@ -10,21 +14,23 @@ using Logger = Nox.CCK.Utils.Logger;
 using CorePlayer = Nox.Relay.Core.Players.Player;
 
 namespace Nox.Relay.Runtime.Players {
-	public abstract class Player : Entity, IPlayer {
+
+	public abstract class Player : Entity, IPlayer, IPlayerAvatar {
+
 		public Player(Entities context, CorePlayer player) : base(context, player.Id) {
-			Reference  = player;
+			Reference = player;
 			Identifier = player.Identifier;
 		}
 
-	public readonly CorePlayer Reference;
+		public readonly CorePlayer Reference;
 
-	internal readonly Dictionary<ushort, IPart> _parts = new();
+		readonly internal Dictionary<ushort, IPart> Parts = new();
 
 		public IPart[] GetParts()
-			=> _parts.Values.ToArray();
+			=> Parts.Values.Cast<IPart>().ToArray();
 
 		public bool TryGetPart(ushort name, out IPart part) {
-			if (_parts.TryGetValue(name, out var p)) {
+			if (Parts.TryGetValue(name, out var p)) {
 				part = p;
 				return true;
 			}
@@ -53,15 +59,15 @@ namespace Nox.Relay.Runtime.Players {
 			Position = position;
 			Rotation = rotation;
 			Velocity = Vector3.zero;
-			Angular  = Vector3.zero;
+			Angular = Vector3.zero;
 		}
 
 		public void Respawn() {
 			if (Context.Context.Dimensions
-				    .GetDescriptor(Dimensions.MainIndex)
-				    .GetModules()
-				    .FirstOrDefault(e => e is ISpawnModule)
-			    is not ISpawnModule module) {
+					.GetDescriptor(Dimensions.MainIndex)
+					.GetModules()
+					.FirstOrDefault(e => e is ISpawnModule)
+				is not ISpawnModule module) {
 				Logger.LogWarning("No spawn module found for respawning player.");
 				return;
 			}
@@ -72,53 +78,63 @@ namespace Nox.Relay.Runtime.Players {
 		}
 
 		public Vector3 Position {
-			get => _parts.TryGetValue(PlayerRig.Base.ToIndex(), out var p) ? p.Position : Vector3.zero;
+			get => Parts.TryGetValue(PlayerRig.Base.ToIndex(), out var p) ? p.Position : Vector3.zero;
 			set {
-				if (!_parts.TryGetValue(PlayerRig.Base.ToIndex(), out var p)) return;
+				if (!Parts.TryGetValue(PlayerRig.Base.ToIndex(), out var p)) return;
 				p.Position = value;
 			}
 		}
 
 		public Quaternion Rotation {
-			get => _parts.TryGetValue(PlayerRig.Base.ToIndex(), out var p) ? p.Rotation : Quaternion.identity;
+			get => Parts.TryGetValue(PlayerRig.Base.ToIndex(), out var p) ? p.Rotation : Quaternion.identity;
 			set {
-				if (!_parts.TryGetValue(PlayerRig.Base.ToIndex(), out var p)) return;
+				if (!Parts.TryGetValue(PlayerRig.Base.ToIndex(), out var p)) return;
 				p.Rotation = value;
 			}
 		}
 
 		public Vector3 Scale {
-			get => _parts.TryGetValue(PlayerRig.Base.ToIndex(), out var p) ? p.Scale : Vector3.one;
+			get => Parts.TryGetValue(PlayerRig.Base.ToIndex(), out var p) ? p.Scale : Vector3.one;
 			set {
-				if (!_parts.TryGetValue(PlayerRig.Base.ToIndex(), out var p)) return;
+				if (!Parts.TryGetValue(PlayerRig.Base.ToIndex(), out var p)) return;
 				p.Scale = value;
 			}
 		}
 
 		public Vector3 Velocity {
-			get => _parts.TryGetValue(PlayerRig.Base.ToIndex(), out var p) ? p.Velocity : Vector3.zero;
+			get => Parts.TryGetValue(PlayerRig.Base.ToIndex(), out var p) ? p.Velocity : Vector3.zero;
 			set {
-				if (!_parts.TryGetValue(PlayerRig.Base.ToIndex(), out var p)) return;
+				if (!Parts.TryGetValue(PlayerRig.Base.ToIndex(), out var p)) return;
 				p.Velocity = value;
 			}
 		}
 
 		public Vector3 Angular {
-			get => _parts.TryGetValue(PlayerRig.Base.ToIndex(), out var p) ? p.Angular : Vector3.zero;
+			get => Parts.TryGetValue(PlayerRig.Base.ToIndex(), out var p) ? p.Angular : Vector3.zero;
 			set {
-				if (!_parts.TryGetValue(PlayerRig.Base.ToIndex(), out var p)) return;
+				if (!Parts.TryGetValue(PlayerRig.Base.ToIndex(), out var p)) return;
 				p.Angular = value;
 			}
 		}
 
-	public override string ToString() {
-		try {
-			return $"{GetType().Name}[Id={Id}, Display={Display}, Identifier={Identifier?.ToString() ?? "null"}, IsMaster={IsMaster}, IsLocal={IsLocal}]";
+		public override string ToString() {
+			try {
+				return $"{GetType().Name}[Id={Id}, Display={Display}, Identifier={Identifier?.ToString() ?? "null"}, IsMaster={IsMaster}, IsLocal={IsLocal}]";
+			} catch {
+				// During construction, some properties may not be initialized yet
+				return $"{GetType().Name}[Id={Id}, <initializing>]";
+			}
 		}
-		catch {
-			// During construction, some properties may not be initialized yet
-			return $"{GetType().Name}[Id={Id}, <initializing>]";
+
+		protected internal IAvatarIdentifier Avatar = AvatarIdentifier.Invalid;
+
+		public virtual IAvatarIdentifier GetAvatar()
+			=> Avatar;
+
+		public virtual UniTask<bool> SetAvatar(IAvatarIdentifier identifier) {
+			Logger.LogDebug($"Changing avatar for {this} to {identifier?.ToString() ?? "null"}", tag: GetType().Name);
+			Avatar = identifier;
+			return UniTask.FromResult(true);
 		}
-	}
 	}
 }

@@ -71,7 +71,7 @@ namespace Nox.Relay.Core.Types.Transform {
 				Transform.SetScale(buffer.ReadVector3());
 			if (flags.HasFlag(TransformFlags.Velocity))
 				Transform.SetVelocity(buffer.ReadVector3());
-			if (flags.HasFlag(TransformFlags.AngularVelocity))
+			if (flags.HasFlag(TransformFlags.Angular))
 				Transform.SetAngular(buffer.ReadVector3());
 
 			SenderId = buffer.ReadUShort();

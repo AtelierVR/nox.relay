@@ -133,8 +133,8 @@ namespace Nox.Relay.Core.Types.Transform {
 				buffer.Write(Transform.GetScale());
 			if (Transform.Flags.HasFlag(TransformFlags.Velocity))
 				buffer.Write(Transform.GetVelocity());
-			if (Transform.Flags.HasFlag(TransformFlags.AngularVelocity))
-				buffer.Write(Transform.GetAngularVelocity());
+			if (Transform.Flags.HasFlag(TransformFlags.Angular))
+				buffer.Write(Transform.GetAngular());
 
 			return buffer;
 		}
