@@ -8,11 +8,14 @@ using Nox.Relay.Core.Types.Content.Rooms;
 using Nox.Relay.Core.Types.Contents.Rooms;
 using Nox.Relay.Core.Types.Enter;
 using Nox.Relay.Core.Types.Event;
+using Nox.Relay.Core.Types.PlayerUpdate;
 using Nox.Relay.Core.Types.Properties;
 using Nox.Relay.Core.Types.Quit;
 using Nox.Relay.Core.Types.Rooms;
+using Nox.Relay.Core.Types.ServerConfig;
 using Nox.Relay.Core.Types.Transform;
 using Nox.Relay.Core.Types.Traveling;
+using Nox.Relay.Core.Types.Voice;
 using UnityEngine.Events;
 using Buffer = Nox.CCK.Utils.Buffer;
 
@@ -132,6 +135,23 @@ namespace Nox.Relay.Core.Rooms {
 		public UnityEvent<AvatarChangedEvent> OnAvatarChanged { get; } = new();
 
 		/// <summary>
+		/// Event invoked when a player's display name or flags change in the room.
+		/// Also fired for direct responses to <see cref="PlayerUpdate"/>.
+		/// </summary>
+		public UnityEvent<PlayerUpdateResponse> OnPlayerUpdated { get; } = new();
+
+		/// <summary>
+		/// Event invoked when the instance configuration changes, or as a direct response
+		/// to <see cref="ServerConfig"/>.
+		/// </summary>
+		public UnityEvent<ServerConfigResponse> OnServerConfig { get; } = new();
+
+		/// <summary>
+		/// Event invoked when voice audio is received from a remote player.
+		/// </summary>
+		public UnityEvent<VoiceEvent> OnVoice { get; } = new();
+
+		/// <summary>
 		/// Handles the reception of data for this relay room.
 		/// Is called by <see cref="Relay.HandleInstance"/>, when data is received for this room.
 		/// </summary>
@@ -167,11 +187,18 @@ namespace Nox.Relay.Core.Rooms {
 				case ResponseType.AvatarChanged:
 					HandleAvatarChanged(state, buffer);
 					break;
-				case ResponseType.Custom:
 				case ResponseType.PlayerUpdate:
+					HandlePlayerUpdate(state, buffer);
+					break;
+				case ResponseType.ServerConfig:
+					HandleServerConfig(state, buffer);
+					break;
+				case ResponseType.Voice:
+					HandleVoice(state, buffer);
+					break;
+				case ResponseType.Custom:
 				case ResponseType.Traveling:
 				case ResponseType.Teleport:
-				case ResponseType.Voice:
 					break;
 				default:
 					Logger.LogWarning($"[] Unhandled room response type: {type} (state: {state}) {buffer}", tag: Tag);
@@ -279,6 +306,44 @@ namespace Nox.Relay.Core.Rooms {
 			Players.RemoveWhere(p => p.Id == leave.PlayerId);
 		}
 
+		private void HandlePlayerUpdate(ushort state, Buffer buffer) {
+			var response = new PlayerUpdateResponse { State = state, Connection = Connection, Room = this };
+			if (!response.FromBuffer(buffer)) {
+				Logger.LogWarning("Failed to parse PlayerUpdateResponse", tag: Tag);
+				return;
+			}
+
+			OnPlayerUpdated.Invoke(response);
+		}
+
+		private void HandleServerConfig(ushort state, Buffer buffer) {
+			var response = new ServerConfigResponse { State = state, Connection = Connection, Room = this };
+			if (!response.FromBuffer(buffer)) {
+				Logger.LogWarning("Failed to parse ServerConfigResponse", tag: Tag);
+				return;
+			}
+
+			// Keep local room state in sync with server-side changes
+			if (response.Flags.HasFlag(ServerConfigFlags.TPS))
+				Tps = response.Tps;
+			if (response.Flags.HasFlag(ServerConfigFlags.Capacity))
+				MaxPlayerCount = response.Capacity;
+			if (response.Flags.HasFlag(ServerConfigFlags.Flags))
+				Flags = response.InstanceFlags;
+
+			OnServerConfig.Invoke(response);
+		}
+
+		private void HandleVoice(ushort state, Buffer buffer) {
+			var voice = new VoiceEvent { State = state, Connection = Connection, Room = this };
+			if (!voice.FromBuffer(buffer)) {
+				Logger.LogWarning("Failed to parse VoiceEvent", tag: Tag);
+				return;
+			}
+
+			OnVoice.Invoke(voice);
+		}
+
 
 		/// <summary>
 		/// Sends an enter request to join this room.
@@ -363,6 +428,50 @@ namespace Nox.Relay.Core.Rooms {
 			=> (await Emit(
 				request.ToBuffer(),
 				RequestType.Event,
+				Connection.NextState()
+			)).Success;
+
+		/// <summary>
+		/// Sends a player-update request to the server.
+		/// Use <see cref="PlayerUpdateRequest.Flags"/> = <see cref="PlayerUpdateFlags.None"/> to request
+		/// a read-back of the current state without making changes.
+		/// </summary>
+		/// <param name="request"></param>
+		/// <returns></returns>
+		public async UniTask<PlayerUpdateResponse> PlayerUpdate(PlayerUpdateRequest request)
+			=> await Request<PlayerUpdateResponse>(
+				request,
+				RequestType.PlayerUpdate,
+				ResponseType.PlayerUpdate,
+				Connection.NextState()
+			);
+
+		/// <summary>
+		/// Reads or modifies the instance configuration.
+		/// Requires <c>INSTANCE_OWNER</c> or <c>MASTER_MODERATOR</c> player flags.
+		/// Set <see cref="ServerConfigRequest.Flags"/> = <see cref="ServerConfigFlags.None"/> to echo
+		/// the current configuration back without making any changes.
+		/// </summary>
+		/// <param name="request"></param>
+		/// <returns></returns>
+		public async UniTask<ServerConfigResponse> ServerConfig(ServerConfigRequest request)
+			=> await Request<ServerConfigResponse>(
+				request,
+				RequestType.ServerConfig,
+				ResponseType.ServerConfig,
+				Connection.NextState()
+			);
+
+		/// <summary>
+		/// Sends a voice audio packet as a QUIC datagram.
+		/// The server broadcasts the sample to all other players in the instance.
+		/// </summary>
+		/// <param name="request">Voice request carrying the raw PCM sample.</param>
+		/// <returns><c>true</c> if the datagram was queued successfully.</returns>
+		public async UniTask<bool> Voice(VoiceRequest request)
+			=> (await Emit(
+				request.ToBuffer(),
+				RequestType.Voice,
 				Connection.NextState()
 			)).Success;
 

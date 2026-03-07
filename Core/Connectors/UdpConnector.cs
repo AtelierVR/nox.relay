@@ -7,8 +7,10 @@ using Buffer = Nox.CCK.Utils.Buffer;
 
 namespace Nox.Relay.Core.Connectors {
 	/// <summary>
-	/// UDP connector implementation for handling UDP network connections.
+	/// UDP connector. Provided for legacy compatibility only.
+	/// The relay server uses QUIC exclusively — use <see cref="QuicConnector"/> for production.
 	/// </summary>
+	[Obsolete("The relay server speaks QUIC only. Use QuicConnector instead.")]
 	public class UdpConnector : IConnector {
 		public const string ProtocolName = "udp";
 
@@ -170,7 +172,9 @@ namespace Nox.Relay.Core.Connectors {
 		/// </summary>
 		/// <param name="buffer">The buffer containing the data to send.</param>
 		/// <returns>True if the send was successful, false otherwise.</returns>
-		public UniTask<bool> Send(Buffer buffer) {
+		/// <inheritdoc/>
+		/// <remarks>The <paramref name="type"/> parameter is ignored — UDP has only one channel.</remarks>
+		public UniTask<bool> Send(Buffer buffer, SendType type = SendType.Auto) {
 			if (!IsConnected)
 				return UniTask.FromResult(false);
 

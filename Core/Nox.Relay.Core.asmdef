@@ -14,9 +14,12 @@
   ],
   "includePlatforms": [],
   "excludePlatforms": [],
-  "allowUnsafeCode": false,
+  "allowUnsafeCode": true,
   "overrideReferences": true,
-  "precompiledReferences": [],
+  "precompiledReferences": [
+    "StirlingLabs.MsQuic.dll",
+    "StirlingLabs.MsQuic.Bindings.dll"
+  ],
   "autoReferenced": true,
   "defineConstraints": [],
   "versionDefines": [],

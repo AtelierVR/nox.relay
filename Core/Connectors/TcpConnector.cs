@@ -10,6 +10,11 @@ using Buffer = Nox.CCK.Utils.Buffer;
 using Logger = Nox.CCK.Utils.Logger;
 
 namespace Nox.Relay.Core.Connectors {
+	/// <summary>
+	/// TCP connector. Provided for legacy compatibility only.
+	/// The relay server uses QUIC exclusively — use <see cref="QuicConnector"/> for production.
+	/// </summary>
+	[Obsolete("The relay server speaks QUIC only. Use QuicConnector instead.")]
 	public class TcpConnector : IConnector {
 		public const string PROTOCOL_NAME = "tcp";
 		private const int DEFAULT_BUFFER_SIZE = 65536; // Augmenté de 8192 à 65536
@@ -128,7 +133,9 @@ namespace Nox.Relay.Core.Connectors {
 			}
 		}
 
-		public UniTask<bool> Send(Buffer buffer) {
+		/// <inheritdoc/>
+		/// <remarks>The <paramref name="type"/> parameter is ignored — TCP uses a single stream.</remarks>
+		public UniTask<bool> Send(Buffer buffer, SendType type = SendType.Auto) {
 			if (!IsConnected) {
 				Logger.LogError("Cannot send: not connected", tag: nameof(TcpConnector));
 				return UniTask.FromResult(false);

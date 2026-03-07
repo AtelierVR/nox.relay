@@ -3,6 +3,7 @@ using System.Linq;
 using Nox.CCK.Utils;
 using Nox.Entities;
 using Nox.Relay.Runtime.Players;
+using UnityEngine.Events;
 
 namespace Nox.Relay.Runtime {
 	public class Entities : IEntities {
@@ -18,7 +19,8 @@ namespace Nox.Relay.Runtime {
 		public int MasterId {
 			get => _masterId;
 			set {
-				if (_masterId == value) return;
+				if (_masterId == value)
+					return;
 				var pm = MasterPlayer;
 				_masterId = value;
 				var nm = MasterPlayer;
@@ -36,7 +38,6 @@ namespace Nox.Relay.Runtime {
 
 		private readonly Dictionary<int, Entity> _entities = new();
 
-
 		internal void RegisterEntity(Entity entity) {
 			if (!_entities.TryAdd(entity.Id, entity)) {
 				Logger.LogWarning($"Entity with ID {entity.Id} is already registered.", tag: Context.Tag);
@@ -44,6 +45,7 @@ namespace Nox.Relay.Runtime {
 			}
 
 			Context.OnEntityRegisteredHandler(entity);
+			OnEntityAdded.Invoke(entity);
 		}
 
 		internal void UnregisterEntity(Entity entity) {
@@ -53,6 +55,7 @@ namespace Nox.Relay.Runtime {
 			}
 
 			Context.OnEntityUnregisteredHandler(entity);
+			OnEntityRemoved.Invoke(entity);
 		}
 
 		public IEntity GetEntity(int id)
@@ -78,6 +81,9 @@ namespace Nox.Relay.Runtime {
 
 		public int GetCount<T>() where T : IEntity
 			=> _entities.Values.OfType<T>().Count();
+
+		public UnityEvent<IEntity> OnEntityAdded { get; } = new();
+		public UnityEvent<IEntity> OnEntityRemoved { get; } = new();
 
 		// ReSharper disable Unity.PerformanceAnalysis
 		public void Dispose() {

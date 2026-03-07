@@ -53,9 +53,12 @@ namespace Nox.Relay.Core.Connectors {
 
 		public static IConnector From(string protocol)
 			=> protocol.ToLower() switch {
-				TcpConnector.PROTOCOL_NAME => new TcpConnector(),
-				UdpConnector.ProtocolName => new UdpConnector(),
-				_                         => null
+				QuicConnector.ProtocolName    => new QuicConnector(),
+#pragma warning disable CS0618 // legacy connectors kept for compile compatibility
+				TcpConnector.PROTOCOL_NAME    => new TcpConnector(),
+				UdpConnector.ProtocolName     => new UdpConnector(),
+#pragma warning restore CS0618
+				_                             => null
 			};
 	}
 }

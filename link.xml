@@ -2,5 +2,6 @@
 <linker>
 	<assembly fullname="Nox.Mods.Relay" preserve="all" />
 	<assembly fullname="Nox.Relay.Core" preserve="all" />
+	<assembly fullname="Nox.Relay.Editor" preserve="all" />
 	<assembly fullname="Nox.Relay.Runtime" preserve="all" />
 </linker>

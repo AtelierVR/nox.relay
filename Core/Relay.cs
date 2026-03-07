@@ -66,7 +66,8 @@ namespace Nox.Relay.Core {
 			Connector.OnReceived.AddListener(OnReceived);
 			Connector.OnConnected.AddListener(OnConnected);
 			Connector.OnDisconnected.AddListener(OnDisconnected);
-			if (Connector.IsConnected) OnConnected();
+			if (Connector.IsConnected)
+				OnConnected();
 		}
 
 		public readonly IConnector Connector;
@@ -111,8 +112,8 @@ namespace Nox.Relay.Core {
 			OnReceiveBuffer.Invoke(buffer.Clone());
 
 			var length = buffer.ReadUShort();
-			var state = buffer.ReadUShort();
-			var type = buffer.ReadEnum<ResponseType>();
+			var state  = buffer.ReadUShort();
+			var type   = buffer.ReadEnum<ResponseType>();
 			if (length < HeaderSize || length > buffer.Length) {
 				Logger.LogWarning(
 					$"Received invalid packet length: {length} (expected >= {HeaderSize} and <= {buffer.Length})\n{buffer}");
@@ -129,6 +130,7 @@ namespace Nox.Relay.Core {
 				case ResponseType.AvatarChanged:
 				case ResponseType.Properties:
 				case ResponseType.PlayerUpdate:
+				case ResponseType.ServerConfig:
 				case ResponseType.Traveling:
 				case ResponseType.Teleport:
 				case ResponseType.Voice:
@@ -147,7 +149,6 @@ namespace Nox.Relay.Core {
 				case ResponseType.Segmentation:
 				case ResponseType.Reliable:
 				case ResponseType.Authentification:
-				case ResponseType.ServerConfig:
 				case ResponseType.Rooms:
 					break;
 				case ResponseType.None:
@@ -163,7 +164,8 @@ namespace Nox.Relay.Core {
 		private void HandleHandshake(ushort state, Buffer buffer) {
 			buffer.Start();
 			var @event = new Types.Handshakes.HandshakeResponse { State = state, Connection = this };
-			if (!@event.FromBuffer(buffer)) return;
+			if (!@event.FromBuffer(buffer))
+				return;
 			LastHandshake = @event;
 			if (LastHandshake.Protocol != ProtocolVersion)
 				Logger.LogWarning(
@@ -176,13 +178,15 @@ namespace Nox.Relay.Core {
 		private void HandleLatency(ushort state, Buffer buffer) {
 			buffer.Start();
 			var @event = new LatencyResponse { State = state, Connection = this };
-			if (!@event.FromBuffer(buffer)) return;
+			if (!@event.FromBuffer(buffer))
+				return;
 			LastLatency = @event;
+			OnLatency.Invoke(LastLatency);
 		}
 
 		private void HandleInstance(ushort state, ResponseType type, Buffer buffer) {
 			buffer.Start();
-			var iid = buffer.ReadByte();
+			var iid      = buffer.ReadByte();
 			var instance = Rooms.FirstOrDefault(s => s.InternalId == iid);
 
 			if (instance == null) {
@@ -196,13 +200,16 @@ namespace Nox.Relay.Core {
 		private void HandleDisconnect(ushort state, Buffer buffer) {
 			buffer.Start();
 			var @event = new Types.Disconnect.DisconnectEvent { State = state, Connection = this };
-			if (!@event.FromBuffer(buffer)) return;
+			if (!@event.FromBuffer(buffer))
+				return;
 			Logger.Log($"Disconnected by server: {@event.Reason}", tag: nameof(Relay));
 		}
 
 		public readonly HashSet<Room> Rooms = new();
 		public Types.Handshakes.HandshakeResponse LastHandshake;
 		public LatencyResponse LastLatency;
+
+		public UnityEvent<LatencyResponse> OnLatency { get; } = new();
 
 		/// <summary>
 		/// Gets the client identifier assigned by the server during the last handshake.
@@ -226,9 +233,9 @@ namespace Nox.Relay.Core {
 				if (LastLatency == null)
 					return DateTime.MinValue;
 				var server = LastLatency.IntermediateTime;
-				var local = LastLatency.InitialTime;
-				var now = DateTime.UtcNow;
-				var diff = now - local;
+				var local  = LastLatency.InitialTime;
+				var now    = DateTime.UtcNow;
+				var diff   = now - local;
 				return server + diff;
 			}
 		}
@@ -247,7 +254,8 @@ namespace Nox.Relay.Core {
 		/// Stops the keep-alive loop.
 		/// </summary>
 		private void StopKeepAlive() {
-			if (_keepAliveCts == null) return;
+			if (_keepAliveCts == null)
+				return;
 			_keepAliveCts.Cancel();
 			_keepAliveCts.Dispose();
 			_keepAliveCts = null;
@@ -280,13 +288,13 @@ namespace Nox.Relay.Core {
 			}
 
 			LastHandshake = null;
-			LastLatency = null;
+			LastLatency   = null;
 		}
 
 		public struct EmitResult {
 			public EmitResult(bool success, ushort state) {
 				Success = success;
-				State = state;
+				State   = state;
 			}
 
 			public readonly bool Success;
@@ -302,9 +310,10 @@ namespace Nox.Relay.Core {
 		/// <param name="state"></param>
 		/// <returns></returns>
 		public async UniTask<EmitResult> Emit(
-			Buffer data,
-			RequestType type = RequestType.None,
-			ushort state = Broadcast) {
+			Buffer      data,
+			RequestType type  = RequestType.None,
+			ushort      state = Broadcast
+		) {
 			if (!Connector.IsConnected)
 				return new EmitResult(
 					false,
@@ -357,28 +366,28 @@ namespace Nox.Relay.Core {
 		/// <typeparam name="T"></typeparam>
 		/// <returns></returns>
 		public async UniTask<T> Request<T>(
-			ContentRequest request,
-			RequestType @out,
-			ResponseType @in,
-			ushort state = Broadcast,
-			ushort timeout = DefaultTimeout,
-			Func<Buffer, RequestType, ushort, UniTask<EmitResult>> emitter = null,
-			Func<ValidateInput<T>, bool> validate = null
+			ContentRequest                                         request,
+			RequestType                                            @out,
+			ResponseType                                           @in,
+			ushort                                                 state    = Broadcast,
+			ushort                                                 timeout  = DefaultTimeout,
+			Func<Buffer, RequestType, ushort, UniTask<EmitResult>> emitter  = null,
+			Func<ValidateInput<T>, bool>                           validate = null
 		) where T : ContentResponse, new() {
 			if (!Connector.IsConnected)
 				return null;
 
 			if (timeout == 0)
-				timeout = LastHandshake?.SegmentationTimeout ?? 15;
+				timeout = LastHandshake?.ConnectionTimeout ?? 15;
 
-			emitter ??= Emit;
+			emitter  ??= Emit;
 			validate ??= OnValidatePacket;
 
 			var initTime = DateTime.UtcNow;
-			var tcs = new UniTaskCompletionSource<T>();
+			var tcs      = new UniTaskCompletionSource<T>();
 
 			// Store the actual state in a boxed container to avoid capture issues
-			var stateContainer = new ushort[1];
+			var stateContainer = new ushort[ 1 ];
 
 			UnityAction<ushort, ResponseType, Buffer> handler = OnPacket;
 
@@ -395,7 +404,7 @@ namespace Nox.Relay.Core {
 			stateContainer[0] = result.State;
 
 			// Timeout avec UniTask
-			var task = tcs.Task;
+			var task  = tcs.Task;
 			var delay = UniTask.Delay(TimeSpan.FromSeconds(timeout));
 			var (success, response) = await UniTask.WhenAny(task, delay);
 
@@ -412,21 +421,24 @@ namespace Nox.Relay.Core {
 			void OnPacket(ushort s, ResponseType t, Buffer payload) {
 				var expectedState = stateContainer[0];
 
-				if (t != @in) return;
-				if (expectedState != ushort.MaxValue && s != expectedState) return;
+				if (t != @in)
+					return;
+				if (expectedState != ushort.MaxValue && s != expectedState)
+					return;
 
 				var input = new ValidateInput<T> {
-					response = new T { State = expectedState, Connection = this },
+					response      = new T { State = expectedState, Connection = this },
 					expectedState = stateContainer[0],
-					expectedType = @in,
+					expectedType  = @in,
 					receivedState = s,
-					receivedType = t,
-					payload = payload,
+					receivedType  = t,
+					payload       = payload,
 				};
 
 				if (validate(input))
 					tcs.TrySetResult(input.response);
-				else Logger.LogError($"Failed to parse {expectedState}:{@in} to {typeof(T)}", tag: nameof(Relay));
+				else
+					Logger.LogError($"Failed to parse {expectedState}:{@in} to {typeof(T)}", tag: nameof(Relay));
 			}
 		}
 
@@ -440,8 +452,8 @@ namespace Nox.Relay.Core {
 			=> await Request<Types.Handshakes.HandshakeResponse>(
 				new Types.Handshakes.HandshakeRequest {
 					ProtocolVersion = ProtocolVersion,
-					Engine = EngineExtensions.CurrentEngine,
-					Platform = PlatformExtensions.CurrentPlatform
+					Engine          = EngineExtensions.CurrentEngine,
+					Platform        = PlatformExtensions.CurrentPlatform
 				},
 				RequestType.Handshake,
 				ResponseType.Handshake,
@@ -466,7 +478,8 @@ namespace Nox.Relay.Core {
 			if (res.Challenge != req.Challenge)
 				Logger.LogWarning($"Latency response challenge mismatch: {res.Challenge} != {req.Challenge}", tag: nameof(Relay));
 
-			else LastLatency = res;
+			else
+				LastLatency = res;
 
 			return res;
 		}
@@ -493,7 +506,8 @@ namespace Nox.Relay.Core {
 		/// <param name="request"></param>
 		/// <returns></returns>
 		public async UniTask<AuthenticationResponse> Authenticate(
-			AuthenticationRequest request)
+			AuthenticationRequest request
+		)
 			=> await Request<AuthenticationResponse>(
 					request,
 					RequestType.Authentification,
@@ -515,8 +529,8 @@ namespace Nox.Relay.Core {
 				ResponseType.Rooms,
 				NextState()
 			);
-			
-			if (sessions == null) 
+
+			if (sessions == null)
 				return null;
 
 			foreach (var room in sessions.Rooms) {
@@ -534,12 +548,14 @@ namespace Nox.Relay.Core {
 		/// <returns></returns>
 		public async UniTask<RoomsResponse> List() {
 			var all = await List(0);
-			if (all == null) return null;
+			if (all == null)
+				return null;
 
 			var l = all.Rooms.ToList();
 			for (byte i = 1; i < all.PageCount; i++) {
 				var next = await List(i);
-				if (next == null) break;
+				if (next == null)
+					break;
 				l.AddRange(next.Rooms);
 			}
 
@@ -553,20 +569,22 @@ namespace Nox.Relay.Core {
 		/// <param name="mid"></param>
 		/// <returns></returns>
 		public async UniTask<Room> List(uint mid) {
-			byte total, page = 0;
+			byte total,
+				page = 0;
 			Room room = null;
 
 			do {
 				var sessions = await List(page++);
-				if (sessions == null) return null;
+				if (sessions == null)
+					return null;
 				total = sessions.PageCount;
 				foreach (var inst in sessions.Rooms) {
-					if (inst.NodeId != mid) continue;
+					if (inst.NodeId != mid)
+						continue;
 					room = inst;
 					break;
 				}
-			}
-			while (room == null && page < total);
+			} while (room == null && page < total);
 
 			return room;
 		}

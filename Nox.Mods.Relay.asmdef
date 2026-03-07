@@ -16,7 +16,8 @@
     "Nox.Controllers",
     "Nox.CCK.Sessions",
     "Nox.Relay.Connectors",
-    "Nox.Relay.Types"
+    "Nox.Relay.Types",
+    "Nox.Avatars.Parameters"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

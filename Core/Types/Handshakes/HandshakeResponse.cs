@@ -1,5 +1,6 @@
+using System;
 using System.Net;
-using Nox.CCK.Utils;
+using Buffer = Nox.CCK.Utils.Buffer;
 using Nox.Relay.Core.Types.Contents;
 
 namespace Nox.Relay.Core.Types.Handshakes {
@@ -52,12 +53,13 @@ namespace Nox.Relay.Core.Types.Handshakes {
 
         /// <summary>
         /// Segmentation timeout in milliseconds.
-        /// Indicates the maximum time to wait for all segments of a fragmented packet before discarding it.
-        /// </summary>
-        public ushort SegmentationTimeout;
+		/// <remarks>Deprecated — the relay server no longer sends this field. The value is fixed at 15 s.</remarks>
+		/// </summary>
+		[Obsolete("The relay server does not send SegmentationTimeout. Use ConnectionTimeout instead.")]
+		public ushort SegmentationTimeout => 15;
 
-        /// <summary>
-        /// Validates the handshake response to ensure all required fields are correctly set.
+		/// <summary>
+		/// Validates the handshake response to ensure all required fields are correctly set.
         /// </summary>
         public bool IsValid
             => Protocol == Relay.ProtocolVersion;
@@ -81,10 +83,10 @@ namespace Nox.Relay.Core.Types.Handshakes {
                 : null;
 
             // Read additional server configuration
-            MaxPacketSize = buffer.ReadUShort();
+            MaxPacketSize     = buffer.ReadUShort();
             ConnectionTimeout = buffer.ReadUShort();
             KeepAliveInterval = buffer.ReadUShort();
-            SegmentationTimeout = buffer.ReadUShort();
+            // NOTE: SegmentationTimeout is NOT sent by the relay server — do not read here.
 
             return true;
         }

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Cysharp.Threading.Tasks;
 using Nox.Avatars;
+using Nox.Avatars.Controllers;
 using Nox.CCK.Mods.Cores;
 using Nox.CCK.Mods.Events;
 using Nox.Controllers;
@@ -10,6 +11,7 @@ using Nox.Relay.Core.Types.Latency;
 using Nox.Sessions;
 using Nox.Users;
 using Nox.Worlds;
+using UnityEngine;
 
 namespace Nox.Relay.Runtime {
 	public class Main : ISessionRegister {
@@ -23,13 +25,14 @@ namespace Nox.Relay.Runtime {
 			return true;
 		}
 
-		internal static IMainModCoreAPI CoreAPI;
+		static internal IMainModCoreAPI CoreAPI;
 		private EventSubscription[] _events = Array.Empty<EventSubscription>();
 
 		public void OnInitializeMain(IMainModCoreAPI api) {
 			CoreAPI = api;
 			_events = new[] {
-				api.EventAPI.Subscribe("controller_changed", OnControllerChanged)
+				api.EventAPI.Subscribe("controller_changed", OnControllerChanged),
+				api.EventAPI.Subscribe("controller_avatar_changed", OnAvatarOfControllerChanged)
 			};
 			SessionAPI.Register(this);
 
@@ -39,8 +42,14 @@ namespace Nox.Relay.Runtime {
 			#endif
 		}
 
+		#if UNITY_EDITOR
 		private static async UniTask TestRelay() {
-			var relay = Core.Relay.New<TcpConnector>();
+			if (Application.isPlaying) {
+				CoreAPI.LoggerAPI.LogWarning("Relay tests should be run in edit mode to avoid interference with gameplay.");
+				return;
+			}
+
+			var relay = Core.Relay.New<QuicConnector>();
 
 			if (!await relay.Connect("hactazia.fr", 30000)) {
 				CoreAPI.LoggerAPI.LogError("Failed to connect to relay server");
@@ -117,12 +126,26 @@ namespace Nox.Relay.Runtime {
 			await relay.Disconnect("Done testing");
 			CoreAPI.LoggerAPI.Log("Disconnected from relay server");
 		}
+		#endif
 
 		private static void OnControllerChanged(EventData context) {
-			if (!context.TryGet(0, out IController controller)) return;
-			if (!SessionAPI.TryGet(SessionAPI.Current, out var s)) return;
-			if (s is not Session session) return;
+			if (!context.TryGet(0, out IController controller))
+				return;
+			if (!SessionAPI.TryGet(SessionAPI.Current, out var s))
+				return;
+			if (s is not Session session)
+				return;
 			session.OnControllerChanged(controller);
+		}
+
+		private static void OnAvatarOfControllerChanged(EventData context) {
+			if (!context.TryGet(0, out IControllerAvatar controller))
+				return;
+			if (!SessionAPI.TryGet(SessionAPI.Current, out var s))
+				return;
+			if (s is not Session session)
+				return;
+			session.OnAvatarOfControllerChanged(controller);
 		}
 
 		public void OnDisposeMain() {
@@ -150,7 +173,7 @@ namespace Nox.Relay.Runtime {
 
 		internal static IUserAPI UserAPI
 			=> CoreAPI.ModAPI
-				.GetMod("user")
+				.GetMod("users")
 				.GetInstance<IUserAPI>();
 
 		internal static IAvatarAPI AvatarAPI

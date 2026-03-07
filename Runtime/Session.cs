@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using Cysharp.Threading.Tasks;
+using Nox.Avatars.Controllers;
 using Nox.CCK.Properties;
 using Nox.CCK.Sessions;
 using Nox.CCK.Utils;
@@ -14,6 +15,7 @@ using Nox.Relay.Core.Types.Avatars;
 using Nox.Relay.Core.Types.Enter;
 using Nox.Relay.Core.Types.Event;
 using Nox.Relay.Core.Types.Join;
+using Nox.Relay.Core.Types.Latency;
 using Nox.Relay.Core.Types.Leave;
 using Nox.Relay.Core.Types.Properties;
 using Nox.Relay.Core.Types.Quit;
@@ -31,14 +33,14 @@ using Player = Nox.Relay.Runtime.Players.Player;
 namespace Nox.Relay.Runtime {
 	public sealed class Session : BaseEditablePropertyObject, INetSession {
 		internal Session(string id) {
-			Id = id;
+			Id            = id;
 			InterEntities = new Entities(this);
-			InterState = new State(Status.Pending, "Session is initializing", 0f);
+			InterState    = new State(Status.Pending, "Session is initializing", 0f);
 		}
 
 		internal IState InterState;
 		internal Dimensions InterDimensions;
-		internal readonly Entities InterEntities;
+		readonly internal Entities InterEntities;
 		internal Core.Relay Adapter;
 		internal Room Room;
 
@@ -72,6 +74,7 @@ namespace Nox.Relay.Runtime {
 			private set {
 				InterState = value;
 				OnStateChanged.Invoke(value);
+				Main.CoreAPI.EventAPI.Emit("session_state_changed", this, value);
 			}
 		}
 
@@ -86,9 +89,11 @@ namespace Nox.Relay.Runtime {
 		internal void SetAdapter(Core.Relay adapter) {
 			Adapter?.Connector.OnDisconnected.RemoveListener(OnDisconnectedHandler);
 			Adapter?.Connector.OnConnected.RemoveListener(OnConnectedHandler);
+			Adapter?.OnLatency.RemoveListener(OnLatencyUpdated);
 			Adapter = adapter;
 			Adapter.Connector.OnDisconnected.AddListener(OnDisconnectedHandler);
 			Adapter.Connector.OnConnected.AddListener(OnConnectedHandler);
+			Adapter.OnLatency.AddListener(OnLatencyUpdated);
 			if (Adapter.Connector.IsConnected)
 				OnConnectedHandler();
 		}
@@ -133,11 +138,12 @@ namespace Nox.Relay.Runtime {
 			foreach (var player in entities)
 				player.Update();
 
-			var now = DateTime.UtcNow;
+			var now   = DateTime.UtcNow;
 			var delta = (now - _lastTick).TotalSeconds;
-			if (!(delta >= 1.0 / Room.Tps)) return;
+			if (!(delta >= 1.0 / Room.Tps))
+				return;
 			_lastTick = now;
-			
+
 			foreach (var player in entities)
 				player.Tick();
 		}
@@ -164,9 +170,6 @@ namespace Nox.Relay.Runtime {
 				module.OnSessionSelected();
 		}
 
-
-
-
 		public void OnSceneLoaded(int index, IWorldDescriptor descriptor, GameObject anchor) {
 			Main.CoreAPI.EventAPI.Emit("session_scene_added", this, index, descriptor, anchor);
 
@@ -177,7 +180,8 @@ namespace Nox.Relay.Runtime {
 				module.OnLoaded(this);
 
 			foreach (var player in InterEntities.GetEntities<IPlayer>()) {
-				if (player == null) continue;
+				if (player == null)
+					continue;
 				foreach (var module in modules)
 					module.OnPlayerJoined(player);
 			}
@@ -204,6 +208,9 @@ namespace Nox.Relay.Runtime {
 
 		public void OnControllerChanged(IController controller)
 			=> InterEntities.LocalPlayer?.UpdateController(controller);
+
+		public void OnAvatarOfControllerChanged(IControllerAvatar controller)
+			=> InterEntities.LocalPlayer?.UpdateAvatarOfController(controller);
 
 		public async UniTask OnDeselect(ISession @new) {
 			Logger.LogDebug("Deselecting session", tag: Tag);
@@ -233,6 +240,10 @@ namespace Nox.Relay.Runtime {
 		public double Ping
 			=> Adapter?.Ping ?? -1;
 
+		public UnityEvent<double> OnPingChanged { get; } = new();
+
+		private void OnLatencyUpdated(LatencyResponse arg0)
+			=> OnPingChanged.Invoke(arg0.GetLatency().TotalMilliseconds);
 
 		public UniTask<bool> EmitEvent(long @event, byte[] raw)
 			=> Room.Event(EventRequest.Broadcast(@event, raw));
@@ -290,9 +301,9 @@ namespace Nox.Relay.Runtime {
 			var player = new LocalPlayer(InterEntities, @event.Player);
 			InterEntities.LocalId = player.Id;
 
-			Room = @event.Room;
-			Room.Tps = @event.Tps;
-			Room.Threshold = @event.Threshold;
+			Room              = @event.Room;
+			Room.Tps          = @event.Tps;
+			Room.Threshold    = @event.Threshold;
 			Room.RenderEntity = @event.RenderEntity;
 
 			if (travel)
@@ -328,7 +339,7 @@ namespace Nox.Relay.Runtime {
 					// Get or create the part
 					if (!remotePlayer.TryGetPart(@event.PartRig, out var part)) {
 						Logger.LogDebug($"Creating new part {@event.PartRig} for remote player {@event.EntityId}", tag: Tag);
-						part = new RemotePart(remotePlayer, @event.PartRig);
+						part                               = new RemotePart(remotePlayer, @event.PartRig);
 						remotePlayer.Parts[@event.PartRig] = part;
 					}
 
@@ -344,20 +355,17 @@ namespace Nox.Relay.Runtime {
 						part.Velocity = transform.GetVelocity();
 					if (transform.Flags.HasFlag(TransformFlags.Angular))
 						part.Angular = transform.GetAngular();
-				}
-				else if (player is LocalPlayer) {
+				} else if (player is LocalPlayer) {
 					// Local player transforms should be handled by controller, ignore remote updates
 					// Only log if it's not from the local player itself
 					if (@event.SenderId != player.Id)
 						Logger.LogDebug($"Ignoring remote transform update for local player part {@event.PartRig}", tag: Tag);
 				}
-			}
-			else if (@event.Type == TransformType.ByPath) {
+			} else if (@event.Type == TransformType.ByPath) {
 				// Handle object transformation by path
 				Logger.LogWarning($"Transform by path not yet implemented: Path={@event.Path}", tag: Tag);
 				// TODO: Implement path-based transform when needed
-			}
-			else {
+			} else {
 				Logger.LogWarning($"Unknown transform type: {@event.Type}", tag: Tag);
 			}
 		}
@@ -389,12 +397,13 @@ namespace Nox.Relay.Runtime {
 				}
 
 				if (!property.Flags.HasFlag(fromLocal ? PropertyFlags.LocalEmit : PropertyFlags.RemoteEmit)) {
-					Logger.LogWarning($"Ignoring non-synced property: {sender.Id} -> {entity.Id} ({property.Name ?? property.Key.ToString()})", tag: Tag);
+					Logger.LogWarning($"Ignoring non-synced property: {sender.Id} -> {entity.Id} ({property.Name ?? property.Key.ToString()}) [{fromLocal}, {property.Flags}]", tag: Tag);
 					continue;
 				}
 
 				property.Deserialize(param.Value);
 				property.IsDirty = false;
+				Logger.LogDebug($"Updated property {property.Name ?? property.Key.ToString()} for entity {entity.Id} from sender {sender.Id} [{property.IsDirty}, {property.GetType().Name}", tag: Tag);
 			}
 		}
 
@@ -455,16 +464,15 @@ namespace Nox.Relay.Runtime {
 					.Replace("-", "")
 					.ToLowerInvariant();
 				url = @event.DownloadUrl;
-			}
-			else if (@event.UseNode) {
+			} else if (@event.UseNode) {
 				var identifier = @event.WorldIdentifier.ToString(Adapter.LastHandshake.MasterAddress);
 				progress?.Invoke(0.1f, "Searching for master asset for world travel");
 				Logger.LogDebug($"Searching {identifier}", tag: Tag);
 				var req = new AssetSearchRequest {
-					Engines = new[] { EngineExtensions.CurrentEngine.GetEngineName() },
+					Engines   = new[] { EngineExtensions.CurrentEngine.GetEngineName() },
 					Platforms = new[] { PlatformExtensions.CurrentPlatform.GetPlatformName() },
-					Versions = new[] { @event.WorldIdentifier.Version },
-					Limit = 1
+					Versions  = new[] { @event.WorldIdentifier.Version },
+					Limit     = 1
 				};
 
 				var asset = (await Main.WorldAPI.SearchAssets(
@@ -482,9 +490,8 @@ namespace Nox.Relay.Runtime {
 				}
 
 				hash = asset.Hash;
-				url = asset.Url;
-			}
-			else {
+				url  = asset.Url;
+			} else {
 				progress?.Invoke(0.1f, "The traveling does not contain valid URL or master asset information");
 				Logger.LogError($"{@event} does not contain valid URL or master asset information", tag: Tag);
 				if (response)
@@ -537,10 +544,22 @@ namespace Nox.Relay.Runtime {
 			=> OnAvatarChangedAsync(@event).Forget();
 
 		private async UniTask OnAvatarChangedAsync(AvatarChangedEvent @event) {
-			if (@event.Result != AvatarChangedResult.Changing) return;
+			if (@event.Result != AvatarChangedResult.Changing)
+				return;
 			var player = InterEntities.GetEntity<Player>(@event.PlayerId);
-			if (player == null) return;
+			if (player == null)
+				return;
 			await player.SetAvatar(@event.AvatarIdentifier);
+		}
+
+		public void OnPlayerVisibilityChangedHandler(IPlayer player, bool isVisible) {
+			Logger.LogDebug($"OnPlayerVisibilityChanged: {player} is now {(isVisible ? "visible" : "invisible")}", tag: Tag);
+
+			Main.CoreAPI.EventAPI.Emit("session_player_visibility_changed", this, player, isVisible);
+			OnPlayerVisibility.Invoke(player, isVisible);
+
+			foreach (var module in GetAllModules())
+				module.OnPlayerVisibilityChanged(player, isVisible);
 		}
 	}
 }

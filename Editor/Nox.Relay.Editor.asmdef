@@ -1,0 +1,16 @@
+{
+    "name": "Nox.Relay.Editor",
+    "rootNamespace": "",
+    "references": [
+        "UniTask",
+        "Nox.Relay"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

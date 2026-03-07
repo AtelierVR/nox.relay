@@ -54,9 +54,10 @@ namespace Nox.Relay.Core.Connectors {
 		/// <summary>
 		/// Send a buffer through the connector.
 		/// </summary>
-		/// <param name="buffer"></param>
+		/// <param name="buffer">The framed packet buffer to send.</param>
+		/// <param name="type">The channel to use. Defaults to <see cref="SendType.Auto"/>, which inspects the packet type byte and routes Transform/Voice packets as datagrams and all others as bi-directional streams.</param>
 		/// <returns></returns>
-		UniTask<bool> Send(Buffer buffer);
+		UniTask<bool> Send(Buffer buffer, SendType type = SendType.Auto);
 
 		/// <summary>
 		/// Event triggered when the connector is connected.

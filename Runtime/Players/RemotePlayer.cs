@@ -1,8 +1,8 @@
 using System;
+using System.Linq;
 using Cysharp.Threading.Tasks;
 using Nox.Avatars;
-using Nox.Avatars.Players;
-using Nox.CCK.Avatars;
+using Nox.Avatars.Parameters;
 using Nox.CCK.Players;
 using Nox.CCK.Sessions;
 using Nox.CCK.Utils;
@@ -20,7 +20,8 @@ namespace Nox.Relay.Runtime.Players {
 			InitializeDefaultParts();
 		}
 
-		public override bool IsLocal => false;
+		public override bool IsLocal
+			=> false;
 
 		private void InitializeDefaultParts() {
 			// Create base part at minimum
@@ -60,11 +61,25 @@ namespace Nox.Relay.Runtime.Players {
 		}
 
 		/// <summary>
+		/// Called after the physical representation is created.
+		/// If we have an avatar assigned, set it now.
+		/// </summary>
+		override protected void OnPhysicalCreated() {
+			base.OnPhysicalCreated();
+
+			// If we have an avatar assigned, set it now
+			if (Avatar != null) {
+				Logger.LogDebug($"Physical created for RemotePlayer {Id}, setting avatar {Avatar}", tag: nameof(RemotePlayer));
+				SetAvatar(Avatar).Forget();
+			}
+		}
+
+		/// <summary>
 		/// Update or create a part for this remote player
 		/// </summary>
 		internal void UpdatePart(ushort partId, IPart partData) {
 			if (!Parts.TryGetValue(partId, out var part)) {
-				part = new RemotePart(this, partId);
+				part          = new RemotePart(this, partId);
 				Parts[partId] = part;
 			}
 
@@ -84,11 +99,14 @@ namespace Nox.Relay.Runtime.Players {
 		public override async UniTask<bool> SetAvatar(IAvatarIdentifier identifier) {
 			Logger.LogDebug($"Changing avatar for {this} to {identifier?.ToString() ?? "null"}", tag: nameof(RemotePlayer));
 
+			Avatar = identifier;
+
 			if (!HasPhysical()) {
-				Avatar = identifier;
+				// No physical yet, but we still need to prepare properties for when avatar loads
+				Logger.LogDebug($"No physical yet for RemotePlayer {Id}, avatar will be set when physical is created", tag: nameof(RemotePlayer));
 				return true;
 			}
-			
+
 			if (Physical is not RemotePhysical physical)
 				return false;
 
@@ -96,8 +114,22 @@ namespace Nox.Relay.Runtime.Players {
 			if (result == null)
 				return false;
 
-			Avatar = identifier;
+			// Initialize avatar parameter properties to receive updates from network
+			InitializeAvatarParameters(result);
+
 			return true;
+		}
+
+		/// <summary>
+		/// Initializes avatar parameter properties for remote player to receive updates.
+		/// Uses the base class SynchronizeAvatarParameters() method.
+		/// </summary>
+		/// <param name="avatar">The runtime avatar instance</param>
+		private void InitializeAvatarParameters(IRuntimeAvatar avatar) {
+			var descriptor = avatar?.GetDescriptor();
+			var parameterModule = descriptor?.GetModules<IParameterModule>().FirstOrDefault();
+			var parameters = parameterModule?.GetParameters() ?? Array.Empty<IParameter>();
+			SynchronizeAvatarParameters(parameters, isLocal: false);
 		}
 	}
 }
