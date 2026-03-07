@@ -18,7 +18,11 @@
   "overrideReferences": true,
   "precompiledReferences": [
     "StirlingLabs.MsQuic.dll",
-    "StirlingLabs.MsQuic.Bindings.dll"
+    "StirlingLabs.MsQuic.Bindings.dll",
+    "StirlingLabs.Utilities.dll",
+    "StirlingLabs.Utilities.NativeLibrary.dll",
+    "StirlingLabs.BigSpans.dll",
+    "StirlingLabs.sockaddr.Net.dll"
   ],
   "autoReferenced": true,
   "defineConstraints": [],
