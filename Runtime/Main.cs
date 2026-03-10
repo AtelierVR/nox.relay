@@ -38,8 +38,8 @@ namespace Nox.Relay.Runtime {
 			SessionAPI.Register(this);
 
 			#if UNITY_EDITOR
-			CoreAPI.LoggerAPI.Log("Starting relay tests...");
-			TestRelay().Forget();
+			// CoreAPI.LoggerAPI.Log("Starting relay tests...");
+			// TestRelay().Forget();
 			#endif
 			
 		}
