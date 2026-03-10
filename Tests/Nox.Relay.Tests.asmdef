@@ -10,7 +10,9 @@
         "Nox.Relay.Core",
         "StirlingLabs.MsQuic.Bindings"
     ],
-    "includePlatforms": [],
+    "includePlatforms": [
+        "Editor"
+    ],
     "excludePlatforms": [],
     "allowUnsafeCode": true,
     "overrideReferences": false,
