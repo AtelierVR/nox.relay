@@ -131,7 +131,20 @@ namespace Nox.Relay.Runtime {
 
 
 		public async UniTask Dispose() {
-			await UniTask.Yield();
+			// Unsubscribe event listeners before tearing down the adapter so no
+			// callbacks fire on a partially-disposed object.
+			if (Adapter != null) {
+				Adapter.Connector.OnDisconnected.RemoveListener(OnDisconnectedHandler);
+				Adapter.Connector.OnConnected.RemoveListener(OnConnectedHandler);
+				Adapter.OnLatency.RemoveListener(OnLatencyUpdated);
+				// Always dispose the adapter (and therefore the QuicConnector /
+				// QuicRegistration). Skipping this left the registration alive and
+				// the GC finalizer later called MsQuicClose while MsQuic worker
+				// threads were still active → crash in msquic-openssl.dll.
+				await Adapter.Dispose();
+				Adapter = null;
+			}
+
 			InterEntities?.Dispose();
 			InterDimensions?.Dispose();
 		}
