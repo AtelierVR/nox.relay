@@ -67,7 +67,7 @@ namespace Nox.Relay.Core {
 			Connector.OnConnected.AddListener(OnConnected);
 			Connector.OnDisconnected.AddListener(OnDisconnected);
 			if (Connector.IsConnected)
-				OnConnected();
+				OnConnected(true);
 		}
 
 		public readonly IConnector Connector;
@@ -282,10 +282,17 @@ namespace Nox.Relay.Core {
 		}
 
 		public async UniTask Dispose() {
-			if (Connector.IsConnected) {
+			StopKeepAlive();
+
+			if (Connector.IsConnected)
 				await Disconnect();
-				await Connector.Close();
-			}
+
+			// Always dispose the connector, regardless of connection state.
+			// If IsConnected was already false (server-side close, transport error,
+			// etc.) the old guard skipped Connector.Dispose() entirely, leaving
+			// QuicRegistration alive. The GC would later finalize it and call
+			// MsQuicClose while MsQuic worker threads were still running → crash.
+			await Connector.Dispose();
 
 			LastHandshake = null;
 			LastLatency   = null;
@@ -312,7 +319,8 @@ namespace Nox.Relay.Core {
 		public async UniTask<EmitResult> Emit(
 			Buffer      data,
 			RequestType type  = RequestType.None,
-			ushort      state = Broadcast
+			ushort      state = Broadcast,
+			SendType    send  = SendType.Auto
 		) {
 			if (!Connector.IsConnected)
 				return new EmitResult(
@@ -333,7 +341,7 @@ namespace Nox.Relay.Core {
 			buffer.Write(data);
 
 			return new EmitResult(
-				await Connector.Send(buffer),
+				await Connector.Send(buffer, send),
 				state
 			);
 		}
@@ -360,18 +368,20 @@ namespace Nox.Relay.Core {
 		/// <param name="out"></param>
 		/// <param name="in"></param>
 		/// <param name="state"></param>
+		/// <param name="send"></param>
 		/// <param name="timeout"></param>
 		/// <param name="emitter"></param>
 		/// <param name="validate"></param>
 		/// <typeparam name="T"></typeparam>
 		/// <returns></returns>
 		public async UniTask<T> Request<T>(
-			ContentRequest                                         request,
-			RequestType                                            @out,
-			ResponseType                                           @in,
-			ushort                                                 state    = Broadcast,
-			ushort                                                 timeout  = DefaultTimeout,
-			Func<Buffer, RequestType, ushort, UniTask<EmitResult>> emitter  = null,
+			ContentRequest                             request,
+			RequestType                                @out,
+			ResponseType                               @in,
+			ushort                                     state   = Broadcast,
+			SendType                                   send    = SendType.Auto,
+			ushort                                     timeout = DefaultTimeout,
+			Func<Buffer, RequestType, ushort, SendType, UniTask<EmitResult>> emitter  = null,
 			Func<ValidateInput<T>, bool>                           validate = null
 		) where T : ContentResponse, new() {
 			if (!Connector.IsConnected)
@@ -393,7 +403,7 @@ namespace Nox.Relay.Core {
 
 			OnReceivePacket.AddListener(handler);
 
-			var result = await emitter(request.ToBuffer(), @out, state);
+			var result = await emitter(request.ToBuffer(), @out, state, send);
 			if (!result.Success) {
 				OnReceivePacket.RemoveListener(handler);
 				Logger.LogWarning($"Failed to emit {result.State}:{@out}", tag: nameof(Relay));
@@ -592,8 +602,11 @@ namespace Nox.Relay.Core {
 		public async UniTask<bool> Connect(string address, ushort port)
 			=> await Connector.Connect(address, port);
 
-		private void OnConnected()
-			=> StartKeepAlive();
+		private void OnConnected(bool succes) {
+			if (!succes)
+				return;
+			StartKeepAlive();
+		}
 
 		private void OnDisconnected(string message)
 			=> StopKeepAlive();

@@ -20,7 +20,8 @@
         "Nox.Avatars",
         "Nox.Avatars.Parameters",
         "Nox.CCK.Avatars",
-        "Nox.Avatars.Runtime"
+        "Nox.Avatars.Runtime",
+        "StirlingLabs.MsQuic.Bindings"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

@@ -1,4 +1,3 @@
-using System;
 using System.Net;
 using Cysharp.Threading.Tasks;
 using UnityEngine.Events;
@@ -47,6 +46,12 @@ namespace Nox.Relay.Core.Connectors {
 		UniTask Close();
 
 		/// <summary>
+		/// Dispose the connector and release all resources.
+		/// </summary>
+		/// <returns></returns>
+		UniTask Dispose();
+
+		/// <summary>
 		/// Event triggered when a buffer is received.
 		/// </summary>
 		UnityEvent<Buffer> OnReceived { get; }
@@ -61,8 +66,9 @@ namespace Nox.Relay.Core.Connectors {
 
 		/// <summary>
 		/// Event triggered when the connector is connected.
+		/// Is true if the connection was successful, false otherwise.
 		/// </summary>
-		UnityEvent OnConnected { get; }
+		UnityEvent<bool> OnConnected { get; }
 
 		/// <summary>
 		/// Event triggered when the connector is disconnected.

@@ -6,6 +6,7 @@ using Nox.Avatars.Controllers;
 using Nox.CCK.Mods.Cores;
 using Nox.CCK.Mods.Events;
 using Nox.Controllers;
+using Nox.Relay.Core;
 using Nox.Relay.Core.Connectors;
 using Nox.Relay.Core.Types.Latency;
 using Nox.Sessions;
@@ -40,6 +41,7 @@ namespace Nox.Relay.Runtime {
 			CoreAPI.LoggerAPI.Log("Starting relay tests...");
 			TestRelay().Forget();
 			#endif
+			
 		}
 
 		#if UNITY_EDITOR
@@ -62,6 +64,7 @@ namespace Nox.Relay.Runtime {
 			if (handshake == null) {
 				CoreAPI.LoggerAPI.LogError("Relay handshake failed");
 				await relay.Disconnect("Handshake failed");
+				await relay.Dispose();
 				return;
 			}
 
@@ -73,6 +76,7 @@ namespace Nox.Relay.Runtime {
 				if (latency == null) {
 					CoreAPI.LoggerAPI.LogError("Failed to measure relay latency");
 					await relay.Disconnect("Latency test failed");
+					await relay.Dispose();
 					return;
 				}
 
@@ -106,6 +110,7 @@ namespace Nox.Relay.Runtime {
 			if (rooms == null) {
 				CoreAPI.LoggerAPI.LogError("Failed to list relay rooms");
 				await relay.Disconnect("List rooms failed");
+				await relay.Dispose();
 				return;
 			}
 
@@ -124,6 +129,7 @@ namespace Nox.Relay.Runtime {
 			// 	}
 
 			await relay.Disconnect("Done testing");
+			await relay.Dispose();
 			CoreAPI.LoggerAPI.Log("Disconnected from relay server");
 		}
 		#endif

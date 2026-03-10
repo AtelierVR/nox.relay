@@ -79,7 +79,7 @@ namespace Nox.Relay.Runtime {
 		}
 
 		internal void UpdateState(Status stt, string msg, float pg)
-			=> State = new State(stt, msg, pg);
+			=> UniTask.Post(() => State = new State(stt, msg, pg));
 
 		private void SetDimension(IRuntimeWorld scene) {
 			InterDimensions?.Dispose();
@@ -95,14 +95,20 @@ namespace Nox.Relay.Runtime {
 			Adapter.Connector.OnConnected.AddListener(OnConnectedHandler);
 			Adapter.OnLatency.AddListener(OnLatencyUpdated);
 			if (Adapter.Connector.IsConnected)
-				OnConnectedHandler();
+				OnConnectedHandler(true);
 		}
 
 		private void OnDisconnectedHandler(string reason)
 			=> OnDisconnected.Invoke(reason);
 
-		private void OnConnectedHandler()
-			=> OnConnected.Invoke();
+		private void OnConnectedHandler(bool success) {
+			if (!success) {
+				Logger.LogError("Failed to connect to the server", tag: Tag);
+				return;
+			}
+
+			OnConnected.Invoke();
+		}
 
 		public IPlayer MasterPlayer {
 			get => InterEntities.GetEntity<Player>(InterEntities.MasterId);
@@ -126,8 +132,8 @@ namespace Nox.Relay.Runtime {
 
 		public async UniTask Dispose() {
 			await UniTask.Yield();
-			InterEntities.Dispose();
-			InterDimensions.Dispose();
+			InterEntities?.Dispose();
+			InterDimensions?.Dispose();
 		}
 
 		private DateTime _lastTick = DateTime.MinValue;

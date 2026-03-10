@@ -1,280 +1,269 @@
-using System;
-using System.Collections.Generic;
+﻿using System;
+using System.Collections.Concurrent;
 using System.Net;
-using System.Threading;
 using System.Threading.Tasks;
 using Cysharp.Threading.Tasks;
 using StirlingLabs.MsQuic;
 using StirlingLabs.MsQuic.Bindings;
 using UnityEngine.Events;
-using Logger = Nox.CCK.Utils.Logger;
 using Buffer = Nox.CCK.Utils.Buffer;
+using Logger = Nox.CCK.Utils.Logger;
 
-// StirlingLabs.MsQuic targets netstandard2.0 and wraps the native msquic library.
-// Unity setup: add StirlingLabs.MsQuic.dll + platform msquic native library as
-// Plugins, then list the managed DLLs in Nox.Relay.Core.asmdef → precompiledReferences.
+namespace Nox.Relay.Core.Connectors {
+	public class QuicConnector : IConnector {
+		public const string PROTOCOL_NAME = "quic";
+		private const string AlpnToken = "relay";
+		private const int ConnectTimeoutMs = 10_000;
 
-namespace Nox.Relay.Core.Connectors
-{
-	/// <summary>
-	/// QUIC connector for the Nox relay protocol, backed by <b>StirlingLabs.MsQuic</b>
-	/// (a managed netstandard2.0 wrapper over the <c>msquic</c> native library).
-	/// <para>
-	/// Implements three QUIC channels required by the relay server:
-	/// <list type="bullet">
-	///   <item><term>Bi-directional streams</term><description>One per request/response pair.</description></item>
-	///   <item><term>Inbound uni-directional streams</term><description>Server-initiated push (Join, Leave, …).</description></item>
-	///   <item><term>QUIC datagrams</term><description>Unreliable Transform (0x0B) and Voice (0x14).</description></item>
-	/// </list>
-	/// </para>
-	/// </summary>
-	public class QuicConnector : IConnector
-	{
-		// ─── StirlingLabs.MsQuic implementation (netstandard2.0) ─────────────────
-		/// <summary>Protocol name used in <see cref="ConnectorHelper.From"/>.</summary>
-		public const string ProtocolName = "quic";
-
-		/// <summary>ALPN protocol identifier sent during the TLS handshake.</summary>
-		public static string AlpnProtocol = "noxrelay";
-
-		// One registration is shared across all connector instances (msquic global state).
-		private static QuicRegistration _sharedReg;
-		private static readonly object _regLock = new object();
+		private readonly QuicRegistration _registration;
+		private readonly QuicClientConfiguration _config;
 
 		private QuicClientConnection _connection;
-		private CancellationTokenSource _cts;
-		private ushort _mtu = 1200;
+		// Streams opened for outgoing requests — tracked so we can ensure they are
+		// fully shut down before the registration is disposed (prevents the
+		// MsQuicClose crash where a native worker thread is still delivering a
+		// DataReceived callback while the library tears down).
+		private readonly ConcurrentBag<QuicStream> _openStreams = new();
+		private IPEndPoint _endPoint;
+		private volatile bool _isConnected;
+		private bool _disposed;
 
-		/// <inheritdoc/>
-		public string Protocol => ProtocolName;
+		// ── Constructor ─────────────────────────────────────────────────────
 
-		/// <inheritdoc/>
-		public bool IsConnected => _connection != null && !(_cts?.IsCancellationRequested ?? true);
+		public QuicConnector() {
+			_registration = new QuicRegistration("relay-client");
+			_config       = new QuicClientConfiguration(_registration, AlpnToken);
+			_config.ConfigureCredentials(); // anonymous — no client certificate
+		}
 
-		/// <inheritdoc/>
-		public EndPoint EndPoint => _connection?.LocalEndPoint;
+		// ── IQuicRelayClient ────────────────────────────────────────────────
 
-		/// <inheritdoc/>
-		public ushort Mtu { get => _mtu; set => _mtu = value; }
+		public string Protocol
+			=> PROTOCOL_NAME;
+		
+		public bool IsConnected
+			=> _isConnected;
 
-		/// <inheritdoc/>
-		public UnityEvent<Buffer> OnReceived { get; } = new UnityEvent<Buffer>();
+		public EndPoint EndPoint
+			=> _endPoint;
 
-		/// <inheritdoc/>
-		public UnityEvent OnConnected { get; } = new UnityEvent();
+		public ushort Mtu {
+			get => _connection?.MaxSendLength ?? 0;
+			set { }
+		}
 
-		/// <inheritdoc/>
-		public UnityEvent<string> OnDisconnected { get; } = new UnityEvent<string>();
+		public UnityEvent<Buffer> OnReceived { get; } = new();
+		public UnityEvent<bool> OnConnected { get; } = new();
+		public UnityEvent<string> OnDisconnected { get; } = new();
 
-		// ─────────────────────────────────────────────────────────────────────────
-		// IConnector methods
-		// ─────────────────────────────────────────────────────────────────────────
+		// ── Connect ─────────────────────────────────────────────────────────
 
-		/// <inheritdoc/>
-		public async UniTask<bool> Connect(string address, ushort port)
-		{
-			await Close();
-			_cts = new CancellationTokenSource();
+		public async UniTask<bool> Connect(string address, ushort port) {
+			if (_disposed)
+				throw new ObjectDisposedException(nameof(QuicConnector));
 
-			try
-			{
-				var reg = GetSharedRegistration();
-				using (var config = new QuicClientConfiguration(reg, AlpnProtocol))
-				{
-					// NO_CERTIFICATE_VALIDATION accepts the relay server's self-signed certificate.
-					config.ConfigureCredentials(QUIC_CREDENTIAL_FLAGS.NO_CERTIFICATE_VALIDATION);
+			// Tear down any previous connection (registration & config are reused)
+			await DropConnection().ConfigureAwait(false);
 
-					_connection = new QuicClientConnection(config)
-					{
-						ReceiveDatagramsAsync = true
-					};
+			_connection = new QuicClientConnection(_config);
+
+			// Set provisional endpoint from the call parameters so EndPoint is
+			// available as soon as Connect() completes, regardless of whether
+			// the MsQuic RemoteEndPoint is populated at Connected-event time.
+			if (IPAddress.TryParse(address, out var parsedIp))
+				_endPoint = new IPEndPoint(parsedIp, port);
+
+			// Accept any server certificate (relay servers use self-signed certs)
+			_connection.CertificateReceived += (peer, cert, chain, errFlags, errStatus) => 0; // QUIC_STATUS_SUCCESS
+
+			var tcs = new TaskCompletionSource<bool>();
+
+			_connection.Connected += conn => {
+				_isConnected = true;
+				// Prefer the real remote endpoint if available; keep provisional otherwise
+				if (conn.RemoteEndPoint != null)
+					_endPoint = conn.RemoteEndPoint;
+				tcs.TrySetResult(true);
+				OnConnected?.Invoke(true);
+			};
+
+			_connection.ConnectionShutdown += (_, errorCode, initiatedByTransport, initiatedByPeer) => {
+				_isConnected = false;
+				var reason = initiatedByPeer
+					? "Server closed the connection"
+					: initiatedByTransport
+						? $"Transport error (code {errorCode})"
+						: $"Application closed the connection (code {errorCode})";
+				tcs.TrySetResult(false);
+				OnDisconnected?.Invoke(reason);
+			};
+
+			_connection.IncomingStream += (_, stream) => AttachStreamHandlers(stream);
+
+			_connection.DatagramReceived += (_, span) => {
+				// Copy span to managed array since the span is only valid in this callback
+				var buff = new Buffer();
+				buff.Write(span.ToArray());
+				buff.Start();
+				OnReceived?.Invoke(buff);
+			};
+
+			try {
+				// Start is fire-and-forget; Connected / ConnectionShutdown drive the TCS
+				_connection.Start(address, port);
+
+				var timeout  = Task.Delay(ConnectTimeoutMs);
+				var finished = await Task.WhenAny(tcs.Task, timeout).ConfigureAwait(false);
+
+				if (finished == timeout) {
+					OnConnected?.Invoke(false);
+					return false;
 				}
 
-				_connection.IncomingStream += HandleIncomingStream;
-				_connection.DatagramReceived += HandleDatagramReceived;
-
-				await _connection.ConnectAsync(address, (ushort)port)
-					.ContinueWith(t => t, _cts.Token);
-
-				await UniTask.SwitchToMainThread();
-				OnConnected.Invoke();
-				return true;
-			}
-			catch (Exception ex)
-			{
-				Logger.LogError(new Exception("QuicConnector.Connect failed", ex), tag: nameof(QuicConnector));
-				await Close();
+				return await tcs.Task.ConfigureAwait(false);
+			} catch (Exception ex) {
+				OnConnected?.Invoke(false);
+				_ = ex; // suppress unused-variable warning
 				return false;
 			}
 		}
 
-		/// <inheritdoc/>
-		public UniTask Close()
-		{
-			if (_connection == null) return UniTask.CompletedTask;
+		// ── Stream helpers ───────────────────────────────────────────────────
 
-			_cts?.Cancel();
-			try { _connection.IncomingStream -= HandleIncomingStream; } catch { }
-			try { _connection.DatagramReceived -= HandleDatagramReceived; } catch { }
-			try { _connection.Close(); } catch { }
-			try { _connection.Dispose(); } catch { }
-
-			_connection = null;
-			_cts?.Dispose();
-			_cts = null;
-			return UniTask.CompletedTask;
+		/// <summary>
+		/// Opens a fresh bidi stream and attaches receive handlers so the relay's
+		/// response fires <see cref="OnReceived"/>.
+		/// Does NOT call Start() — the stream is started atomically on the first
+		/// SendAsync via <see cref="QUIC_SEND_FLAGS.START"/>, which avoids the
+		/// QUIC_STATUS_INVALID_STATE that occurs when Start() (async) and SendAsync
+		/// are issued back-to-back before the start acknowledgement arrives.
+		/// </summary>
+		private QuicStream OpenRequestStream() {
+			var stream = _connection.OpenStream();
+			_openStreams.Add(stream);
+			AttachStreamHandlers(stream); // subscribe to relay response before any send
+			return stream;
 		}
 
-		/// <inheritdoc/>
-		/// <remarks>
-		/// <see cref="SendType.Auto"/> routes via datagrams for Transform (0x0B) and Voice (0x14),
-		/// and via a new bi-directional stream for all other packets.
-		/// </remarks>
-		public async UniTask<bool> Send(Buffer buffer, SendType type = SendType.Auto)
-		{
-			if (!IsConnected) return false;
+		private void AttachStreamHandlers(QuicStream stream) {
+			stream.DataReceived += s => {
+				var available = (int)s.DataAvailable;
+				if (available <= 0)
+					return;
 
-			if (type == SendType.Auto)
-				type = SendType.BiStream;
+				var buf  = new byte[ available ];
+				var read = s.Receive(new Span<byte>(buf));
+				if (read <= 0)
+					return;
+				
+				var buff = new Buffer();
+				buff.Write(buf, 0, read);
+				buff.Start();
+				OnReceived?.Invoke(buff);
+			};
+			// When the relay closes its send side the stream reaches SHUTDOWN_COMPLETE.
+			// Close the stream here so the native handle is returned to MsQuic
+			// before the registration is torn down (prevents the MsQuicClose crash).
+			stream.ShutdownComplete += (s, connectionShutdown, appCloseInProgress) => {
+				if (!connectionShutdown) // still alive when conn is being shut down — conn.Dispose handles it
+					try { s.Dispose(); } catch { }
+				_openStreams.TryTake(out _); // keep the bag small
+			};
+		}
 
-			try
-			{
-				if (type == SendType.Datagram)
-				{
-					// Strip the 2-byte stream length prefix — datagrams use [UID:u16][Type:u8][payload].
-					var payload = new byte[buffer.Length - 2];
-					Array.Copy(buffer.Data, 2, payload, 0, payload.Length);
-					_connection.SendDatagram(new Memory<byte>(payload));
-					return true;
+		// ── Send ─────────────────────────────────────────────────────────────
+
+		public async UniTask<bool> Send(Buffer buffer, SendType type) {
+			if (_connection == null || !_isConnected)
+				return false;
+
+			try {
+				switch (type) {
+					case SendType.Datagram:
+						// SendDatagram expects Memory<byte>; copy via byte[] (implicit cast)
+						_connection.SendDatagram(buffer.ToArray());
+						return true;
+
+					case SendType.Auto:
+					case SendType.Stream:
+						// Open a fresh bidi stream per request — the relay reads exactly one
+						// framed message per bidi stream then closes its send side.
+						// START atomically starts the stream on the first send (avoids the
+						// INVALID_STATE that arises from a separate async Start() call).
+						// FIN closes our send half so the relay knows the request is complete.
+						var stream = OpenRequestStream();
+						await stream.SendAsync(buffer, QUIC_SEND_FLAGS.START | QUIC_SEND_FLAGS.FIN).ConfigureAwait(false);
+						return true;
+
+					default:
+						throw new ArgumentOutOfRangeException(nameof(type));
 				}
-
-				// Open a bi-directional stream for this request/response pair.
-				var stream = _connection.OpenStream();
-				var frameTcs = new TaskCompletionSource<byte[]>();
-				RegisterStreamFrameReader(stream, frameTcs, _cts.Token);
-
-				var data = new byte[buffer.Length];
-				Array.Copy(buffer.Data, data, buffer.Length);
-				await stream.SendAsync(new ReadOnlyMemory<byte>(data));
-				stream.Shutdown();
-
-				var frame = await frameTcs.Task;
-				if (frame != null)
-					FireOnReceived(frame);
-				return true;
-			}
-			catch (OperationCanceledException)
-			{
-				return false;
-			}
-			catch (Exception ex)
-			{
-				Logger.LogError(new Exception("QuicConnector.Send failed", ex), tag: nameof(QuicConnector));
+			} catch (Exception) {
 				return false;
 			}
 		}
 
-		// ─────────────────────────────────────────────────────────────────────────
-		// Event handlers
-		// ─────────────────────────────────────────────────────────────────────────
+		// ── Close / Dispose ──────────────────────────────────────────────────
 
-		/// <summary>Called when the server opens a server-initiated push stream.</summary>
-		private void HandleIncomingStream(QuicPeerConnection _, QuicStream stream)
-		{
-			var ct = _cts?.Token ?? CancellationToken.None;
-			var frameTcs = new TaskCompletionSource<byte[]>();
-			RegisterStreamFrameReader(stream, frameTcs, ct);
-			frameTcs.Task.ContinueWith(t =>
-			{
-				if (t.Status == TaskStatus.RanToCompletion && t.Result != null)
-					FireOnReceived(t.Result);
-			}, TaskContinuationOptions.ExecuteSynchronously);
-		}
-
-		/// <summary>Called for each received QUIC datagram (Transform / Voice).</summary>
-		private void HandleDatagramReceived(QuicPeerConnection _, ReadOnlySpan<byte> dgram)
-		{
-			if (dgram.IsEmpty) return;
-			// Prepend 2-byte length prefix: [Length:u16 BE][UID:u16][Type:u8][payload…]
-			var len = (ushort)(dgram.Length + 2);
-			var frame = new byte[len];
-			frame[0] = (byte)(len >> 8);
-			frame[1] = (byte)(len & 0xFF);
-			dgram.CopyTo(frame.AsSpan(2));
-			FireOnReceived(frame);
-		}
-
-		// ─────────────────────────────────────────────────────────────────────────
-		// Frame reader helpers
-		// ─────────────────────────────────────────────────────────────────────────
-
-		private static void RegisterStreamFrameReader(
-			QuicStream stream,
-			TaskCompletionSource<byte[]> frameTcs,
-			CancellationToken ct)
-		{
-			var reader = new StreamFrameBuffer(frameTcs);
-			ct.Register(() => frameTcs.TrySetCanceled());
-			stream.DataReceived += reader.OnData;
+		public async UniTask Close() {
+			_isConnected = false;
+			await DropConnection().ConfigureAwait(false);
 		}
 
 		/// <summary>
-		/// Buffers stream bytes and resolves a TCS when the first complete
-		/// length-prefixed frame is available. Frame: [Length:u16 BE][payload…]
+		/// Tears down only the current <see cref="QuicClientConnection"/>.
+		/// The <see cref="QuicRegistration"/> and <see cref="QuicClientConfiguration"/>
+		/// remain alive and are reused on the next <see cref="Connect"/> call.
 		/// </summary>
-		private sealed class StreamFrameBuffer
-		{
-			private readonly TaskCompletionSource<byte[]> _tcs;
-			private readonly List<byte> _buf = new List<byte>();
-			private int _expectedLength = -1;
+		/// <remarks>
+		/// Awaits <c>ConnectionShutdownComplete</c> before disposing the connection
+		/// handle. This is essential: MsQuic fires <c>DataReceived</c> callbacks
+		/// directly on its internal worker threads; calling
+		/// <see cref="QuicRegistration.Dispose"/> (→ <c>MsQuicClose</c>) before
+		/// those callbacks return crashes the process.
+		/// </remarks>
+		private async Task DropConnection() {
+			var conn = _connection;
+			_connection = null;
+			if (conn == null) return;
 
-			internal StreamFrameBuffer(TaskCompletionSource<byte[]> tcs) => _tcs = tcs;
+			// Latch the native SHUTDOWN_COMPLETE — at that point MsQuic guarantees
+			// no further callbacks will fire for this connection or its streams.
+			var shutdownDone = new TaskCompletionSource<bool>(
+				TaskCreationOptions.RunContinuationsAsynchronously);
+			conn.ConnectionShutdownComplete += (_, _, _, _) => shutdownDone.TrySetResult(true);
 
-			public void OnData(QuicStream stream)
-			{
-				var tmp = new byte[4096];
-				int n;
-				while ((n = stream.Receive(tmp)) > 0)
-					for (var i = 0; i < n; i++)
-						_buf.Add(tmp[i]);
-				TryResolve();
-			}
+			try { conn.Shutdown(); }
+			catch (Exception) { shutdownDone.TrySetResult(true); }
 
-			private void TryResolve()
-			{
-				if (_expectedLength < 0 && _buf.Count >= 2)
-				{
-					_expectedLength = (_buf[0] << 8) | _buf[1];
-					if (_expectedLength < 2) { _tcs.TrySetResult(null); return; }
-				}
-				if (_expectedLength >= 2 && _buf.Count >= _expectedLength)
-					_tcs.TrySetResult(_buf.GetRange(0, _expectedLength).ToArray());
-			}
+			// 3-second safety cap so Dispose() never hangs indefinitely.
+			await Task.WhenAny(shutdownDone.Task, Task.Delay(3_000)).ConfigureAwait(false);
+
+			// Drain any tracked streams whose ShutdownComplete did not fire
+			// (e.g. timed-out paths or streams opened but never started).
+			while (_openStreams.TryTake(out var s))
+				try { s.Dispose(); } catch { }
+
+			try { conn.Dispose(); } catch (Exception) { }
 		}
 
-		// ─────────────────────────────────────────────────────────────────────────
+		public async UniTask Dispose() {
+			if (_disposed)
+				return;
+			_disposed    = true;
+			_isConnected = false;
 
-		private void FireOnReceived(byte[] frame)
-		{
-			var buf = new Buffer();
-			buf.Write(frame);
-			UniTask.Post(() => OnReceived.Invoke(buf));
-		}
+			// Await full native teardown before disposing config/registration so
+			// MsQuicClose is never called while MsQuic worker threads are still
+			// delivering DataReceived callbacks (cause of the msquic-openssl crash).
+			await DropConnection();
 
-		private void HandleDisconnect(string reason)
-		{
-			Close().Forget();
-			UniTask.Post(() => OnDisconnected.Invoke(reason));
-		}
+			try { _config.Dispose(); } catch { }
+			try { _registration.Dispose(); } catch { }
 
-		private static QuicRegistration GetSharedRegistration()
-		{
-			if (_sharedReg != null) return _sharedReg;
-			lock (_regLock)
-			{
-				if (_sharedReg == null) _sharedReg = new QuicRegistration("nox-relay");
-				return _sharedReg;
-			}
+			GC.SuppressFinalize(this);
 		}
 	}
 }
+
+

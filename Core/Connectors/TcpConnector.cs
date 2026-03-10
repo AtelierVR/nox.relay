@@ -38,7 +38,7 @@ namespace Nox.Relay.Core.Connectors {
 		
 		public UnityEvent<Buffer> OnReceived { get; } = new();
 		
-		public UnityEvent OnConnected { get; } = new();
+		public UnityEvent<bool> OnConnected { get; } = new();
 		
 		public UnityEvent<string> OnDisconnected { get; } = new ();
 
@@ -87,7 +87,7 @@ namespace Nox.Relay.Core.Connectors {
 				UniTask.RunOnThreadPool(() => ReceiveLoopAsync(_receiveCts.Token), cancellationToken: _receiveCts.Token).Forget();
 
 				await UniTask.SwitchToMainThread();
-				OnConnected?.Invoke();
+				OnConnected?.Invoke(true);
 
 				return true;
 			}
@@ -302,5 +302,8 @@ namespace Nox.Relay.Core.Connectors {
 				_isDisposing = false;
 			}
 		}
+
+		public UniTask Dispose() 
+			=> Close();
 	}
 }

@@ -10,19 +10,16 @@
     "Nox.Worlds",
     "Nox.CCK.Worlds",
     "Nox.Avatars",
-    "Nox.CCK.Avatars"
+    "Nox.CCK.Avatars",
+    "StirlingLabs.MsQuic.Bindings"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],
   "allowUnsafeCode": true,
-  "overrideReferences": true,
+  "overrideReferences": false,
   "precompiledReferences": [
     "StirlingLabs.MsQuic.dll",
-    "StirlingLabs.MsQuic.Bindings.dll",
-    "StirlingLabs.Utilities.dll",
-    "StirlingLabs.Utilities.NativeLibrary.dll",
-    "StirlingLabs.BigSpans.dll",
-    "StirlingLabs.sockaddr.Net.dll"
+    "StirlingLabs.Utilities.dll"
   ],
   "autoReferenced": true,
   "defineConstraints": [],

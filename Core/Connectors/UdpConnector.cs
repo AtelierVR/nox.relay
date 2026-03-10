@@ -24,7 +24,7 @@ namespace Nox.Relay.Core.Connectors {
 
 		public UnityEvent<Buffer> OnReceived { get; } = new();
 
-		public UnityEvent         OnConnected    { get; } = new();
+		public UnityEvent<bool>         OnConnected    { get; } = new();
 		
 		public UnityEvent<string> OnDisconnected { get; } = new();
 
@@ -72,7 +72,7 @@ namespace Nox.Relay.Core.Connectors {
 
 			if (_socket.Connected) {
 				StartReceiveLoop();
-				OnConnected.Invoke();
+				OnConnected.Invoke(true);
 				return true;
 			}
 
@@ -201,5 +201,9 @@ namespace Nox.Relay.Core.Connectors {
 				args.Dispose();
 			}
 		}
+
+		public UniTask Dispose() 
+			=> Close();
 	}
+
 }

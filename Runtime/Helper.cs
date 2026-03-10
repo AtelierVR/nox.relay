@@ -32,6 +32,8 @@ namespace Nox.Relay.Runtime {
 		}
 
 		private static async UniTask Connect(this Session session, bool doE = false) {
+			await UniTask.SwitchToThreadPool();
+			
 			var world = session.GetWorld();
 			var instance = session.GetInstance();
 
@@ -74,35 +76,28 @@ namespace Nox.Relay.Runtime {
 				}
 			}
 
+			// The relay authenticates via challenge-response (see auth.rs).
+			// No bearer token is required or sent.
 			session.UpdateState(Status.Pending, "Connecting to relay server...", 0.6f);
-			var token = await Main.UserAPI.GetToken(instance.GetServerAddress());
-
-			if (token == null) {
-				session.UpdateState(Status.Error, "Failed to fetch token", -1f);
-				Logger.LogError($"Failed to fetch token for server {instance.GetServerAddress()}", session.Tag);
-				if (doE) await session.Dispose();
-				return;
-			}
 
 			IConnector con = null;
 			var connections = session.GetProperty<string[]>("connections".Hash())
 				?? Array.Empty<string>();
 
 			foreach (var addr in connections) {
-				if (con != null)
-					await con.Close();
-
 				session.UpdateState(Status.Pending, $"Connecting to {addr}...", 0.1f);
 				var (proto, endPoint) = await ConnectorHelper.ParseIPEndPoint(addr);
 
 				con = ConnectorHelper.From(proto);
 				if (con == null) {
 					Logger.LogWarning($"No connection for protocol {proto} found, trying to create a new one", session.Tag);
+					con = null;
 					continue;
 				}
 
 				if (!await con.Connect(endPoint.Address.ToString(), (ushort)endPoint.Port)) {
 					Logger.LogWarning($"Failed to connect to {addr}", session.Tag);
+					con = null;
 					continue;
 				}
 
@@ -125,6 +120,8 @@ namespace Nox.Relay.Runtime {
 			session.SetAdapter(adapter);
 
 			session.UpdateState(Status.Pending, "Handshaking...", 0.2f);
+			await UniTask.SwitchToMainThread();
+			
 			var handshake = await adapter.Handshake();
 			if (handshake is not { IsValid: true }) {
 				session.UpdateState(Status.Error, "Handshake failed", 1f);

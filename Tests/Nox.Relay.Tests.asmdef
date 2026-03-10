@@ -1,0 +1,30 @@
+{
+    "name": "Nox.Relay.Tests",
+    "references": [
+        "Nox.Relay.Runtime",
+        "Nox.Relay",
+        "UniTask",
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner",
+        "Nox.CCK",
+        "Nox.Relay.Core",
+        "StirlingLabs.MsQuic.Bindings"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": true,
+    "overrideReferences": false,
+    "precompiledReferences": [
+        "FluentAssertions.dll",
+        "nunit.framework.dll",
+        "BouncyCastle.Cryptography.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false,
+    "testPlatforms": [
+        "EditMode"
+    ]
+}
+

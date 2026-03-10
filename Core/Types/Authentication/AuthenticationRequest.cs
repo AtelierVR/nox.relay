@@ -16,11 +16,12 @@ namespace Nox.Relay.Core.Types.Authentication {
 		public AuthenticationAction Action;
 
 		/// <summary>
-		/// Client's public key used for requesting a challenge.
-		/// Is included when <see cref="Action"/> is <see cref="AuthenticationAction.RequestChallenge"/>.
-		/// The public key is generated when the client creates a new key pair and auth with their node server.
+		/// Client's public key in SubjectPublicKeyInfo DER format.
+		/// Only included when <see cref="Action"/> is <see cref="AuthenticationAction.ResolveChallenge"/>.
+		/// Used by the relay to verify the challenge signature and derive the key fingerprint
+		/// sent to the master server (<c>sha256_fingerprint(public_key)</c> in auth.rs).
 		/// </summary>
-		public byte[] PublicKey; // Client's public key (for RequestChallenge)
+		public byte[] PublicKey; // SubjectPublicKeyInfo DER — only for ResolveChallenge
 
 		/// <summary>
 		/// Signature of the challenge signed by the client's private key.

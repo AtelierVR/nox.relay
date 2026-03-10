@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using Cysharp.Threading.Tasks;
 using Nox.CCK.Utils;
+using Nox.Relay.Core.Connectors;
 using Nox.Relay.Core.Players;
 using Nox.Relay.Core.Types;
 using Nox.Relay.Core.Types.Avatars;
@@ -416,7 +417,8 @@ namespace Nox.Relay.Core.Rooms {
 			=> (await Emit(
 				request.ToBuffer(),
 				RequestType.Transform,
-				Connection.NextState()
+				Connection.NextState(),
+				SendType.Datagram // Transforms are latency-sensitive and can be sent as unreliable datagrams
 			)).Success;
 
 		/// <summary>
@@ -481,12 +483,13 @@ namespace Nox.Relay.Core.Rooms {
 		/// <param name="request"></param>
 		/// <param name="type"></param>
 		/// <param name="state"></param>
+		/// <param name="send"></param>
 		/// <returns></returns>
-		public async UniTask<Relay.EmitResult> Emit(Buffer request, RequestType type, ushort state = Relay.Broadcast) {
+		public async UniTask<Relay.EmitResult> Emit(Buffer request, RequestType type, ushort state = Relay.Broadcast, SendType send = SendType.Auto) {
 			var buffer = new Buffer();
 			buffer.Write(InternalId);
 			buffer.Write(request);
-			return await Connection.Emit(buffer, type);
+			return await Connection.Emit(buffer, type, state, send);
 		}
 
 		/// <summary>
@@ -504,6 +507,7 @@ namespace Nox.Relay.Core.Rooms {
 			RequestType @out,
 			ResponseType @in,
 			ushort state = Relay.Broadcast,
+			SendType send = SendType.Auto,
 			ushort timeout = Relay.DefaultTimeout)
 			where T : RoomResponse, new() {
 			request.Room = this;
@@ -512,6 +516,7 @@ namespace Nox.Relay.Core.Rooms {
 				@out,
 				@in,
 				state,
+				send,
 				timeout,
 				Emit,
 				Validate

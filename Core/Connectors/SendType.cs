@@ -11,7 +11,7 @@ namespace Nox.Relay.Core.Connectors {
 		/// <summary>
 		/// Send on a new bi-directional stream (reliable, ordered, request/response).
 		/// </summary>
-		BiStream = 1,
+		Stream = 1,
 
 		/// <summary>
 		/// Send as a datagram (unreliable, unordered, low-latency).
