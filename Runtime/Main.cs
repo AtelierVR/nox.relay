@@ -60,6 +60,8 @@ namespace Nox.Relay.Runtime {
 
 			CoreAPI.LoggerAPI.Log("Connected to relay server");
 
+			await UniTask.SwitchToMainThread();
+			
 			var handshake = await relay.Handshake();
 			if (handshake == null) {
 				CoreAPI.LoggerAPI.LogError("Relay handshake failed");
