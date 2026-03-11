@@ -231,8 +231,7 @@ namespace Nox.Relay.Core.Rooms {
 		}
 
 		private void HandleProperties(ushort state, Buffer buffer) {
-			var properties = new Types.Properties.PropertiesEvent
-				{ State = state, Connection = Connection, Room = this };
+			var properties = new PropertiesEvent { State = state, Connection = Connection, Room = this };
 			if (!properties.FromBuffer(buffer)) {
 				Logger.LogWarning("Failed to parse PropertiesEvent", tag: Tag);
 				return;
@@ -242,12 +241,12 @@ namespace Nox.Relay.Core.Rooms {
 		}
 
 		private void HandleTransform(ushort state, Buffer buffer) {
-			var transform = new Types.Transform.TransformEvent { State = state, Connection = Connection, Room = this };
+			var transform = new TransformEvent { State = state, Connection = Connection, Room = this };
 			if (!transform.FromBuffer(buffer)) {
 				Logger.LogWarning("Failed to parse TransformEvent", tag: Tag);
 				return;
 			}
-
+			
 			OnTransform.Invoke(transform);
 		}
 

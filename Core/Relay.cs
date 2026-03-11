@@ -95,9 +95,9 @@ namespace Nox.Relay.Core {
 			return _nextState++;
 		}
 
-		private void OnReceived(Buffer buffer)
+		private void OnReceived(Buffer buffer) 
 			=> OnReceivedAsync(buffer).Forget();
-
+		
 		private async UniTask OnReceivedAsync(Buffer buffer) {
 			await UniTask.SwitchToMainThread();
 
@@ -146,7 +146,9 @@ namespace Nox.Relay.Core {
 				case ResponseType.Handshake:
 					HandleHandshake(state, buffer.Clone(HeaderSize, length));
 					break;
-				case ResponseType.Segmentation:
+				case ResponseType.Message:
+					HandleMessage(state, buffer.Clone(HeaderSize, length));
+					break;
 				case ResponseType.Reliable:
 				case ResponseType.Authentification:
 				case ResponseType.Rooms:
@@ -159,6 +161,12 @@ namespace Nox.Relay.Core {
 			}
 
 			OnReceivePacket.Invoke(state, type, buffer.Clone(HeaderSize, length));
+		}
+
+		private void HandleMessage(ushort state, Buffer buffer) {
+			buffer.Start();
+			var message = buffer.ReadString();
+			Logger.Log($"Received message from server: {message}", tag: nameof(Relay));
 		}
 
 		private void HandleHandshake(ushort state, Buffer buffer) {
@@ -375,14 +383,14 @@ namespace Nox.Relay.Core {
 		/// <typeparam name="T"></typeparam>
 		/// <returns></returns>
 		public async UniTask<T> Request<T>(
-			ContentRequest                             request,
-			RequestType                                @out,
-			ResponseType                               @in,
-			ushort                                     state   = Broadcast,
-			SendType                                   send    = SendType.Auto,
-			ushort                                     timeout = DefaultTimeout,
+			ContentRequest                                                   request,
+			RequestType                                                      @out,
+			ResponseType                                                     @in,
+			ushort                                                           state    = Broadcast,
+			SendType                                                         send     = SendType.Auto,
+			ushort                                                           timeout  = DefaultTimeout,
 			Func<Buffer, RequestType, ushort, SendType, UniTask<EmitResult>> emitter  = null,
-			Func<ValidateInput<T>, bool>                           validate = null
+			Func<ValidateInput<T>, bool>                                     validate = null
 		) where T : ContentResponse, new() {
 			if (!Connector.IsConnected)
 				return null;

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Net;
+using System.Threading;
 using System.Threading.Tasks;
 using Cysharp.Threading.Tasks;
 using StirlingLabs.MsQuic;
@@ -20,9 +21,9 @@ namespace Nox.Relay.Core.Connectors {
 
 		private QuicClientConnection _connection;
 		// Streams opened for outgoing requests — tracked so we can ensure they are
-		// fully shut down before the registration is disposed (prevents the
+		// fully shut down before the registration is disposed. (Prevents the
 		// MsQuicClose crash where a native worker thread is still delivering a
-		// DataReceived callback while the library tears down).
+		// DataReceived callback while the library tears down.)
 		private readonly ConcurrentBag<QuicStream> _openStreams = new();
 		private IPEndPoint _endPoint;
 		private volatile bool _isConnected;
@@ -101,11 +102,16 @@ namespace Nox.Relay.Core.Connectors {
 			_connection.IncomingStream += (_, stream) => AttachStreamHandlers(stream);
 
 			_connection.DatagramReceived += (_, span) => {
-				// Copy span to managed array since the span is only valid in this callback
-				var buff = new Buffer();
-				buff.Write(span.ToArray());
-				buff.Start();
-				OnReceived?.Invoke(buff);
+				// Copy immediately — the native span is only valid for the duration of this callback.
+				var data = span.ToArray();
+				// Dispatch processing to the Unity main thread so OnReceived subscribers
+				// can safely interact with Unity objects.
+				UniTask.Post(() => {
+					var buff = new Buffer();
+					buff.Write(data);
+					buff.Start();
+					OnReceived?.Invoke(buff);
+				});
 			};
 
 			try {
@@ -166,7 +172,9 @@ namespace Nox.Relay.Core.Connectors {
 			// before the registration is torn down (prevents the MsQuicClose crash).
 			stream.ShutdownComplete += (s, connectionShutdown, appCloseInProgress) => {
 				if (!connectionShutdown) // still alive when conn is being shut down — conn.Dispose handles it
-					try { s.Dispose(); } catch { }
+					try { s.Dispose(); } catch {
+						// ignored
+					}
 				_openStreams.TryTake(out _); // keep the bag small
 			};
 		}
