@@ -40,12 +40,7 @@ namespace Nox.Relay.Runtime.Players {
 				return null;
 			}
 
-			var instance = Object.Instantiate(asset);
-			if (!instance) {
-				Logger.LogError("Failed to instantiate remote physical prefab");
-				return null;
-			}
-
+			var instance = asset.Instantiate();
 			instance.name = $"{typeof(RemotePhysical)}_{Id}";
 
 			var physical = instance.GetComponent<RemotePhysical>();
