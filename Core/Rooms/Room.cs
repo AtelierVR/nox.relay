@@ -543,5 +543,14 @@ namespace Nox.Relay.Core.Rooms {
 					Connection.NextState()
 				))
 				?? TravelingEvent.Unknown(this, "Unknown traveling request");
+		
+		public async UniTask<AvatarChangedEvent> ChangeAvatar(AvatarChangedRequest request)
+			=> (await Request<AvatarChangedEvent>(
+					request,
+					RequestType.AvatarChanged,
+					ResponseType.AvatarChanged,
+					Connection.NextState()
+				))
+				?? AvatarChangedEvent.Unknown(this, "Unknown avatar change request");
 	}
 }

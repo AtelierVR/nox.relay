@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using Nox.Avatars;
 using Nox.CCK.Avatars;
 using Nox.CCK.Utils;
+using Nox.Relay.Core.Rooms;
 using Nox.Relay.Core.Types.Content.Rooms;
 
 namespace Nox.Relay.Core.Types.Avatars {
@@ -51,10 +52,10 @@ namespace Nox.Relay.Core.Types.Avatars {
 					break;
 				case AvatarChangedResult.Changing: {
 					PlayerId = buffer.ReadUShort();
-					var id = buffer.ReadUInt();
-					var server = buffer.ReadString();
+					var id      = buffer.ReadUInt();
+					var server  = buffer.ReadString();
 					var version = buffer.ReadUShort();
-					var meta = new Dictionary<string, string[]> { { "v", new[] { version.ToString() } } };
+					var meta    = new Dictionary<string, string[]> { { "v", new[] { version.ToString() } } };
 					AvatarIdentifier = new AvatarIdentifier(id, meta, server);
 					break;
 				}
@@ -69,10 +70,18 @@ namespace Nox.Relay.Core.Types.Avatars {
 			return true;
 		}
 
+		public static AvatarChangedEvent Unknown(Room room, string reason)
+			=> new() {
+				Room   = room,
+				Result = AvatarChangedResult.Unknown,
+				Reason = reason
+			};
+
 		public override string ToString()
 			=> $"{GetType().Name}[InternalId={Room.InternalId}, Result={Result}"
 				+ (IsError ? $", Reason={Reason}" : "")
 				+ (Result == AvatarChangedResult.Changing ? $", PlayerId={PlayerId}, AvatarIdentifier={AvatarIdentifier?.ToString()}" : "")
 				+ "]";
+
 	}
 }
