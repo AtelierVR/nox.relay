@@ -79,6 +79,12 @@ namespace Nox.Relay.Core.Rooms {
 		public float RenderEntity = float.MaxValue;
 
 		/// <summary>
+		/// Interval in seconds at which the client must re-send unchanged LocalEmit properties.
+		/// 0 = feature disabled.
+		/// </summary>
+		public byte PropertyResendInterval = 5;
+
+		/// <summary>
 		/// The relay connection associated with this room.
 		/// This connection is used to send and receive data related to this room.
 		/// </summary>

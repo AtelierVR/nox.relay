@@ -322,6 +322,7 @@ namespace Nox.Relay.Runtime {
 			Room.Tps          = @event.Tps;
 			Room.Threshold    = @event.Threshold;
 			Room.RenderEntity = @event.RenderEntity;
+			Room.PropertyResendInterval = @event.PropertyResendInterval;
 
 			if (travel)
 				Room.Traveling(TravelingRequest.Travel()).Forget();

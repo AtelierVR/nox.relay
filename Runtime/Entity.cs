@@ -138,16 +138,21 @@ namespace Nox.Relay.Runtime {
 			if (room == null)
 				goto end;
 
-			// Collect properties that need updates (marked as dirty with LocalEmit flag)
+			// Collect properties that need updates (marked as dirty OR overdue for keep-alive)
+			var resendSeconds = Context.Context.Room?.PropertyResendInterval ?? 5;
+			var resendEnabled = resendSeconds > 0;
+			var resendInterval = TimeSpan.FromSeconds(resendSeconds);
+			var now             = DateTime.UtcNow;
 			var dirtyProperties = new List<IProperty>();
 
 			foreach (var property in Properties.Values) {
-				// Skip properties that are not dirty
-				if (!property.IsDirty)
+				// Skip properties that are not meant to be sent from local
+				if (!property.Flags.HasFlag(PropertyFlags.LocalEmit))
 					continue;
 
-				// Skip properties that don't have LocalEmit flag (not meant to be sent from local)
-				if (!property.Flags.HasFlag(PropertyFlags.LocalEmit))
+				// Send if dirty (value changed) OR if the resend timeout has elapsed (and feature is enabled)
+				var overdue = resendEnabled && (now - property.UpdatedAt) >= resendInterval;
+				if (!property.IsDirty && !overdue)
 					continue;
 
 				dirtyProperties.Add(property);

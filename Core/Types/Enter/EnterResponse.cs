@@ -51,6 +51,12 @@ namespace Nox.Relay.Core.Types.Enter {
         public float RenderEntity;
 
         /// <summary>
+        /// Interval in seconds at which the client must re-send unchanged LocalEmit properties so
+        /// late joiners receive up-to-date values. 0 = feature disabled.
+        /// </summary>
+        public byte PropertyResendInterval;
+
+        /// <summary>
         /// Indicates whether the blacklist has an expiration time.
         /// </summary>
         public bool HasExpiration
@@ -105,9 +111,10 @@ namespace Nox.Relay.Core.Types.Enter {
                         Display = buffer.ReadString(),
                         JoinedAt = buffer.ReadDateTime(),
                     };
-                    Tps = buffer.ReadByte();
-                    Threshold = buffer.ReadFloat();
-                    RenderEntity = buffer.ReadFloat();
+                    Tps           = buffer.ReadByte();
+                    Threshold     = buffer.ReadFloat();
+                    RenderEntity  = buffer.ReadFloat();
+                    PropertyResendInterval = buffer.ReadByte();
                     return true;
                 default:
                     return false;
