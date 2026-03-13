@@ -170,8 +170,7 @@ namespace Nox.Relay.Runtime {
 		/// <param name="dirtyProperties">List of dirty properties to send</param>
 		private async UniTask SendPropertiesBatch(Core.Rooms.Room room, List<IProperty> dirtyProperties) {
 			var tasks = new List<UniTask<bool>>();
-			Logger.LogDebug($"Sending {dirtyProperties.Count} properties for entity {Id} in {Math.Ceiling((double)dirtyProperties.Count / PropertiesRequest.MaxParameters)} batch(es).", tag: nameof(Entity));
-
+			
 			// Split into chunks to respect MaxParameters limit
 			for (var i = 0; i < dirtyProperties.Count; i += PropertiesRequest.MaxParameters) {
 				var chunk = dirtyProperties

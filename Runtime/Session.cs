@@ -413,14 +413,13 @@ namespace Nox.Relay.Runtime {
 					continue;
 				}
 
-				if (!property.Flags.HasFlag(fromLocal ? PropertyFlags.LocalEmit : PropertyFlags.RemoteEmit)) {
+				if (!property.Flags.HasFlag(fromLocal ? PropertyFlags.RemoteEmit : PropertyFlags.LocalEmit)) {
 					Logger.LogWarning($"Ignoring non-synced property: {sender.Id} -> {entity.Id} ({property.Name ?? property.Key.ToString()}) [{fromLocal}, {property.Flags}]", tag: Tag);
 					continue;
 				}
 
 				property.Deserialize(param.Value);
 				property.IsDirty = false;
-				Logger.LogDebug($"Updated property {property.Name ?? property.Key.ToString()} for entity {entity.Id} from sender {sender.Id} [{property.IsDirty}, {property.GetType().Name}", tag: Tag);
 			}
 		}
 
