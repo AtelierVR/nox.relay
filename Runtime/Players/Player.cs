@@ -162,9 +162,9 @@ namespace Nox.Relay.Runtime.Players {
 					var flags         = param.GetFlags();
 					var propertyFlags = PropertyFlags.None;
 
-					if (flags.HasFlag(ParameterFlags.RemoteEditableByLocal))
+					if (flags.HasFlag(ParameterFlags.OwnerSyncsToViewers))
 						propertyFlags |= isLocal ? PropertyFlags.LocalEmit : PropertyFlags.RemoteEmit;
-					if (flags.HasFlag(ParameterFlags.LocalEditableByRemote))
+					if (flags.HasFlag(ParameterFlags.ViewerSyncsToOwner))
 						propertyFlags |= isLocal ? PropertyFlags.RemoteEmit : PropertyFlags.LocalEmit;
 
 					var key = param.GetKey();
