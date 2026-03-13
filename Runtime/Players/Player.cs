@@ -155,32 +155,47 @@ namespace Nox.Relay.Runtime.Players {
 		/// <param name="parameters">Array of avatar parameters to synchronize</param>
 		/// <param name="isLocal"></param>
 		protected void SynchronizeAvatarParameters(IParameter[] parameters, bool isLocal) {
-			if (parameters == null || parameters.Length == 0)
-				return;
+			var paramKeys = new HashSet<int>();
 
-			foreach (var param in parameters) {
-				var flags         = param.GetFlags();
-				var propertyFlags = PropertyFlags.None;
+			if (parameters != null && parameters.Length > 0) {
+				foreach (var param in parameters) {
+					var flags         = param.GetFlags();
+					var propertyFlags = PropertyFlags.None;
 
-				if (flags.HasFlag(ParameterFlags.RemoteEditableByLocal))
-					propertyFlags |= isLocal ? PropertyFlags.LocalEmit : PropertyFlags.RemoteEmit;
-				if (flags.HasFlag(ParameterFlags.LocalEditableByRemote))
-					propertyFlags |= isLocal ? PropertyFlags.RemoteEmit : PropertyFlags.LocalEmit;
+					if (flags.HasFlag(ParameterFlags.RemoteEditableByLocal))
+						propertyFlags |= isLocal ? PropertyFlags.LocalEmit : PropertyFlags.RemoteEmit;
+					if (flags.HasFlag(ParameterFlags.LocalEditableByRemote))
+						propertyFlags |= isLocal ? PropertyFlags.RemoteEmit : PropertyFlags.LocalEmit;
 
-				var key = param.GetKey();
+					var key = param.GetKey();
+					paramKeys.Add(key);
 
-				// Check if property already exists
-				if (Properties.TryGetValue(key, out var existingProp)) {
-					// Update existing property if it's an AvatarParameterProperty
-					if (existingProp is AvatarParameterProperty avatarProp)
-						avatarProp.UpdateCache();
-				} else {
-					// Create new AvatarParameterProperty
-					var newProp = new AvatarParameterProperty(this, param, propertyFlags);
-					SetProperty(newProp);
-					Logger.LogDebug($"Created property for parameter {param.GetName()} (key={key}, flags={flags}) with propertyFlags={propertyFlags}", tag: GetType().Name);
+					// Check if property already exists
+					if (Properties.TryGetValue(key, out var existingProp)) {
+						// Update existing property if it's an AvatarParameterProperty
+						if (existingProp is AvatarParameterProperty avatarProp)
+							avatarProp.UpdateCache();
+						else if (existingProp is UnassignedProperty) {
+							// Replace unassigned property with AvatarParameterProperty
+							var newProp = new AvatarParameterProperty(this, param, propertyFlags);
+							SetProperty(newProp);
+							Logger.LogDebug($"Replaced unassigned property for parameter {param.GetName()} (key={key}, flags={flags}) with propertyFlags={propertyFlags}", tag: GetType().Name);
+						}
+					} else {
+						// Create new AvatarParameterProperty
+						var newProp = new AvatarParameterProperty(this, param, propertyFlags);
+						SetProperty(newProp);
+						Logger.LogDebug($"Created property for parameter {param.GetName()} (key={key}, flags={flags}) with propertyFlags={propertyFlags}", tag: GetType().Name);
+					}
 				}
 			}
+
+			// Remove AvatarParameterProperty entries no longer present in the avatar's parameter list
+			foreach (var key in Properties.Keys.ToList())
+				if (Properties[key] is AvatarParameterProperty && !paramKeys.Contains(key)) {
+					Properties.Remove(key);
+					Logger.LogDebug($"Removed avatar parameter property (key={key}) no longer present in avatar.", tag: GetType().Name);
+				}
 		}
 
 		#endregion

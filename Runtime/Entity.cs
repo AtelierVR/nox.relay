@@ -193,9 +193,8 @@ namespace Nox.Relay.Runtime {
 					property.IsDirty = false;
 
 					// Update cache for AvatarParameterProperty to prevent re-sending
-					if (property is AvatarParameterProperty avatarProp) {
+					if (property is AvatarParameterProperty avatarProp)
 						avatarProp.UpdateCache();
-					}
 				}
 			} else {
 				Logger.LogWarning($"Failed to send some properties for entity {Id}, will retry on next tick.", tag: nameof(Entity));
@@ -206,6 +205,5 @@ namespace Nox.Relay.Runtime {
 
 		public override string ToString()
 			=> $"{GetType().Name}[Id={Id}]";
-
 	}
 }
