@@ -41,7 +41,7 @@ namespace Nox.Relay.Core.Connectors {
 
 		public string Protocol
 			=> PROTOCOL_NAME;
-		
+
 		public bool IsConnected
 			=> _isConnected;
 
@@ -60,6 +60,9 @@ namespace Nox.Relay.Core.Connectors {
 		// ── Connect ─────────────────────────────────────────────────────────
 
 		public async UniTask<bool> Connect(string address, ushort port) {
+			if (!PlayerLoopHelper.IsMainThread)
+				throw new InvalidOperationException($"Send must be called from the Unity main thread (your current {Thread.CurrentThread.ManagedThreadId} thread is not allowed to call Send).");
+
 			if (_disposed)
 				throw new ObjectDisposedException(nameof(QuicConnector));
 
@@ -131,6 +134,8 @@ namespace Nox.Relay.Core.Connectors {
 				OnConnected?.Invoke(false);
 				_ = ex; // suppress unused-variable warning
 				return false;
+			} finally {
+				await UniTask.SwitchToMainThread();
 			}
 		}
 
@@ -161,11 +166,13 @@ namespace Nox.Relay.Core.Connectors {
 				var read = s.Receive(new Span<byte>(buf));
 				if (read <= 0)
 					return;
-				
-				var buff = new Buffer();
-				buff.Write(buf, 0, read);
-				buff.Start();
-				OnReceived?.Invoke(buff);
+
+				UniTask.Post(() => {
+					var buff = new Buffer();
+					buff.Write(buf, 0, read);
+					buff.Start();
+					OnReceived?.Invoke(buff);
+				});
 			};
 			// When the relay closes its send side the stream reaches SHUTDOWN_COMPLETE.
 			// Close the stream here so the native handle is returned to MsQuic
@@ -182,6 +189,9 @@ namespace Nox.Relay.Core.Connectors {
 		// ── Send ─────────────────────────────────────────────────────────────
 
 		public async UniTask<bool> Send(Buffer buffer, SendType type) {
+			if (!PlayerLoopHelper.IsMainThread)
+				throw new InvalidOperationException($"Send must be called from the Unity main thread (your current {Thread.CurrentThread.ManagedThreadId} thread is not allowed to call Send).");
+
 			if (_connection == null || !_isConnected)
 				return false;
 
@@ -208,14 +218,21 @@ namespace Nox.Relay.Core.Connectors {
 				}
 			} catch (Exception) {
 				return false;
+			} finally {
+				await UniTask.SwitchToMainThread();
 			}
 		}
 
 		// ── Close / Dispose ──────────────────────────────────────────────────
 
 		public async UniTask Close() {
+			if (!PlayerLoopHelper.IsMainThread)
+				throw new InvalidOperationException($"Send must be called from the Unity main thread (your current {Thread.CurrentThread.ManagedThreadId} thread is not allowed to call Send).");
+
 			_isConnected = false;
 			await DropConnection().ConfigureAwait(false);
+
+			await UniTask.SwitchToMainThread();
 		}
 
 		/// <summary>
@@ -233,7 +250,8 @@ namespace Nox.Relay.Core.Connectors {
 		private async Task DropConnection() {
 			var conn = _connection;
 			_connection = null;
-			if (conn == null) return;
+			if (conn == null)
+				return;
 
 			// Latch the native SHUTDOWN_COMPLETE — at that point MsQuic guarantees
 			// no further callbacks will fire for this connection or its streams.
@@ -241,8 +259,7 @@ namespace Nox.Relay.Core.Connectors {
 				TaskCreationOptions.RunContinuationsAsynchronously);
 			conn.ConnectionShutdownComplete += (_, _, _, _) => shutdownDone.TrySetResult(true);
 
-			try { conn.Shutdown(); }
-			catch (Exception) { shutdownDone.TrySetResult(true); }
+			try { conn.Shutdown(); } catch (Exception) { shutdownDone.TrySetResult(true); }
 
 			// 3-second safety cap so Dispose() never hangs indefinitely.
 			await Task.WhenAny(shutdownDone.Task, Task.Delay(3_000)).ConfigureAwait(false);
@@ -256,8 +273,12 @@ namespace Nox.Relay.Core.Connectors {
 		}
 
 		public async UniTask Dispose() {
+			if (!PlayerLoopHelper.IsMainThread)
+				throw new InvalidOperationException($"Send must be called from the Unity main thread (your current {Thread.CurrentThread.ManagedThreadId} thread is not allowed to call Send).");
+
 			if (_disposed)
 				return;
+			
 			_disposed    = true;
 			_isConnected = false;
 
@@ -266,12 +287,16 @@ namespace Nox.Relay.Core.Connectors {
 			// delivering DataReceived callbacks (cause of the msquic-openssl crash).
 			await DropConnection();
 
-			try { _config.Dispose(); } catch { }
-			try { _registration.Dispose(); } catch { }
+			try { _config.Dispose(); } catch {
+				// ignored
+			}
+
+			try { _registration.Dispose(); } catch {
+				// ignored
+			}
 
 			GC.SuppressFinalize(this);
+			await UniTask.SwitchToMainThread();
 		}
 	}
 }
-
-

@@ -32,8 +32,6 @@ namespace Nox.Relay.Runtime {
 		}
 
 		private static async UniTask Connect(this Session session, bool doE = false) {
-			await UniTask.SwitchToThreadPool();
-			
 			var world = session.GetWorld();
 			var instance = session.GetInstance();
 

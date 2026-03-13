@@ -29,24 +29,26 @@ namespace Nox.Relay.Runtime {
 		public object Value {
 			get => _parameter?.Get() ?? _cachedValue;
 			set {
-				if (_parameter != null) {
-					_parameter.Set(value);
-					_cachedValue = value;
-					UpdatedAt = DateTime.UtcNow;
-					_isDirty = true;
-				}
+				if (_parameter == null)
+					return;
+
+				_parameter.Set(value);
+				_cachedValue = value;
+				UpdatedAt    = DateTime.UtcNow;
+				_isDirty     = true;
 			}
 		}
 
 		public bool IsDirty {
 			get {
 				// Check if the parameter value has changed since last sync
-				if (_parameter != null) {
-					var currentValue = _parameter.Get();
-					if (!AreValuesEqual(currentValue, _cachedValue)) {
-						_isDirty = true;
-					}
-				}
+				if (_parameter == null)
+					return _isDirty;
+
+				var currentValue = _parameter.Get();
+				if (!AreValuesEqual(currentValue, _cachedValue))
+					_isDirty = true;
+
 				return _isDirty;
 			}
 			set => _isDirty = value;
@@ -56,12 +58,9 @@ namespace Nox.Relay.Runtime {
 			=> Value.ToBytes();
 
 		public void Deserialize(byte[] data) {
-			var value = data; // Will be converted by the parameter
-			if (_parameter != null) {
-				_parameter.Set(value);
-			}
-			_cachedValue = value;
-			UpdatedAt = DateTime.UtcNow;
+			_parameter?.Set(data);
+			_cachedValue = data;
+			UpdatedAt    = DateTime.UtcNow;
 		}
 
 		/// <summary>
@@ -69,9 +68,8 @@ namespace Nox.Relay.Runtime {
 		/// Call this after successfully sending the property to prevent re-sending.
 		/// </summary>
 		public void UpdateCache() {
-			if (_parameter != null) {
+			if (_parameter != null)
 				_cachedValue = _parameter.Get();
-			}
 			UpdatedAt = DateTime.UtcNow;
 		}
 
@@ -87,10 +85,10 @@ namespace Nox.Relay.Runtime {
 				if (bytes1.Length != bytes2.Length)
 					return false;
 
-				for (int i = 0; i < bytes1.Length; i++) {
+				for (var i = 0; i < bytes1.Length; i++)
 					if (bytes1[i] != bytes2[i])
 						return false;
-				}
+
 				return true;
 			}
 
