@@ -34,12 +34,11 @@
 ExportedObj/
 .consulo/
 *.csproj
-!api.nox.*.csproj
-!example_mods/*/*.csproj
 *.unityproj
 *.sln
 *.suo
 *.tmp
+*.user
 *.userprefs
 *.pidb
 *.booproj
@@ -74,6 +73,8 @@ crashlytics-build.properties
 /[Aa]ssets/[Ss]treamingAssets/aa.meta
 /[Aa]ssets/[Ss]treamingAssets/aa/*
 
+PackageExports/
+
 # Remove Temps from Nox
 /[Aa]ssets/*[Bb]uild*/
 /[Aa]ssets/link.xml
@@ -99,3 +100,4 @@ mono_crash.*
 .env
 .env*
 build_log.txt
+LICENSE.meta
