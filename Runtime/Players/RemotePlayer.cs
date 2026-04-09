@@ -63,7 +63,7 @@ namespace Nox.Relay.Runtime.Players {
 			base.OnPhysicalCreated();
 
 			// If we have an avatar assigned, set it now
-			if (Avatar != null) {
+			if (Avatar.IsValid()) {
 				Logger.LogDebug($"Physical created for RemotePlayer {Id}, setting avatar {Avatar}", tag: nameof(RemotePlayer));
 				SetAvatar(Avatar).Forget();
 			}
@@ -91,8 +91,8 @@ namespace Nox.Relay.Runtime.Players {
 				part.Angular = partData.Angular;
 		}
 
-		public override async UniTask<bool> SetAvatar(IAvatarIdentifier identifier) {
-			Logger.LogDebug($"Changing avatar for {this} to {identifier?.ToString() ?? "null"}", tag: nameof(RemotePlayer));
+		public override async UniTask<bool> SetAvatar(Identifier identifier) {
+			Logger.LogDebug($"Changing avatar for {this} to {identifier.ToString()}", tag: nameof(RemotePlayer));
 
 			Avatar = identifier;
 
@@ -121,7 +121,7 @@ namespace Nox.Relay.Runtime.Players {
 		/// </summary>
 		/// <param name="avatar">The runtime avatar instance</param>
 		private void InitializeAvatarParameters(IRuntimeAvatar avatar) {
-			var descriptor = avatar?.GetDescriptor();
+			var descriptor = avatar?.Descriptor;
 			var parameterModule = descriptor?.GetModules<IParameterModule>().FirstOrDefault();
 			var parameters = parameterModule?.GetParameters() ?? Array.Empty<IParameter>();
 			SynchronizeAvatarParameters(parameters, isLocal: false);

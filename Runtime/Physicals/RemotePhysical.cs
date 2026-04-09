@@ -6,6 +6,7 @@ using Cysharp.Threading.Tasks;
 using Nox.Avatars;
 using Nox.Avatars.Parameters;
 using Nox.Avatars.Runtime.Network;
+using Nox.CCK.Avatars;
 using Nox.CCK.Players;
 using Nox.CCK.Utils;
 using Nox.Relay.Runtime.Players;
@@ -176,25 +177,25 @@ namespace Nox.Relay.Runtime.Physicals {
 				await SetAvatar(Reference.Avatar);
 		}
 
-		public async UniTask<IRuntimeAvatar> SetAvatar(IAvatarIdentifier identifier) {
+		public async UniTask<IRuntimeAvatar> SetAvatar(Identifier identifier) {
 			if (Reference == null) {
 				Logger.LogWarning("Reference is null, cannot set avatar.");
 				return null;
 			}
 
-			Logger.LogDebug($"Loading avatar for identifier {identifier?.ToString() ?? "null"}");
+			Logger.LogDebug($"Loading avatar for identifier {identifier.ToString()}");
 
 			if (Main.AvatarAPI == null) {
 				Logger.LogWarning("AvatarAPI not available yet, cannot load avatar.");
 				return null;
 			}
 
-			if (identifier == null || !identifier.IsValid()) {
-				Logger.LogWarning($"Invalid avatar identifier: {identifier?.ToString() ?? "null"}");
+			if (!identifier.IsValid()) {
+				Logger.LogWarning($"Invalid avatar identifier: {identifier.ToString()}");
 				return null;
 			}
 
-			if (identifier.Equals(RuntimeAvatar?.GetIdentifier())) {
+			if (identifier.Equals(RuntimeAvatar?.Identifier)) {
 				Logger.LogDebug("Avatar identifier matches current avatar, no need to load.");
 				return RuntimeAvatar;
 			}
@@ -211,7 +212,7 @@ namespace Nox.Relay.Runtime.Physicals {
 
 			var asset = (await Main.AvatarAPI.SearchAssets(identifier, req)
 					.AttachExternalCancellation(AvatarLoadingCts.Token))
-				.GetAssets()
+				.Items
 				.FirstOrDefault();
 
 			if (AvatarLoadingCts.IsCancellationRequested)
@@ -220,15 +221,15 @@ namespace Nox.Relay.Runtime.Physicals {
 			if (asset == null) {
 				Logger.LogWarning($"Avatar asset not found for identifier {identifier.ToString()}");
 				var err = await Main.AvatarAPI.LoadError(AvatarParameters);
-				err.SetIdentifier(identifier);
+				err.Identifier = identifier;
 				await SetAvatar(err);
 				return null;
 			}
 
-			if (!Main.AvatarAPI.HasInCache(asset.GetHash())) {
+			if (!Main.AvatarAPI.HasInCache(asset.Hash)) {
 				var download = Main.AvatarAPI.DownloadToCache(
-					asset.GetUrl(),
-					hash: asset.GetHash(),
+					asset.Url,
+					hash: asset.Hash,
 					token: AvatarLoadingCts.Token
 				);
 				await download.Start();
@@ -237,7 +238,7 @@ namespace Nox.Relay.Runtime.Physicals {
 			}
 
 			var avatar = await Main.AvatarAPI.LoadFromCache(
-				asset.GetHash(),
+				asset.Hash,
 				AvatarParameters,
 				token: AvatarLoadingCts.Token
 			);
@@ -248,13 +249,13 @@ namespace Nox.Relay.Runtime.Physicals {
 			if (avatar == null) {
 				Logger.LogError($"Failed to load avatar from cache for identifier {identifier.ToString()}");
 				var err = await Main.AvatarAPI.LoadError(AvatarParameters);
-				err.SetIdentifier(identifier);
+				err.Identifier = identifier;
 				await SetAvatar(err);
 				return null;
 			}
 
 			Logger.LogDebug($"Avatar loaded: {identifier.ToString()}");
-			avatar.SetIdentifier(identifier);
+			avatar.Identifier = identifier;
 			await SetAvatar(avatar);
 			return avatar;
 		}
@@ -272,24 +273,24 @@ namespace Nox.Relay.Runtime.Physicals {
 				return false;
 			}
 
-			var root = RuntimeAvatar.GetDescriptor().GetAnchor();
+			var root = RuntimeAvatar.Descriptor.GetAnchor();
 			if (!root) {
 				Logger.LogError("Avatar descriptor root is null, cannot set avatar.");
 				RuntimeAvatar = old;
 				return false;
 			}
 
-			root.name += $" {runtimeAvatar.GetIdentifier()?.ToString() ?? "null"} {nameof(RemotePhysical)}";
+			root.name += $" {runtimeAvatar.Identifier.ToString()} {nameof(RemotePhysical)}";
 
 			if (old != null)
 				await old.Dispose();
 
-			Logger.LogDebug($"Attaching avatar to {runtimeAvatar.GetDescriptor()}", runtimeAvatar.GetDescriptor().GetAnchor());
+			Logger.LogDebug($"Attaching avatar to {runtimeAvatar.Descriptor}", runtimeAvatar.Descriptor.GetAnchor());
 			root.transform.SetParent(transform, false);
 			root.transform.localPosition = Vector3.zero;
 			root.transform.localRotation = Quaternion.identity;
 
-			var parameterModule = RuntimeAvatar?.GetDescriptor()
+			var parameterModule = RuntimeAvatar?.Descriptor
 				?.GetModules<IParameterModule>()
 				.FirstOrDefault();
 
@@ -299,7 +300,7 @@ namespace Nox.Relay.Runtime.Physicals {
 			}
 
 			// Attendre que l'Animator soit prêt avant de configurer les paramètres
-			var animator = RuntimeAvatar?.GetDescriptor()?.GetAnimator();
+			var animator = RuntimeAvatar?.Descriptor?.GetAnimator();
 			if (animator && !animator.runtimeAnimatorController) {
 				Logger.LogDebug("Waiting for Animator to be ready...");
 				await UniTask.WaitUntil(() => animator.runtimeAnimatorController);

@@ -1,4 +1,5 @@
 using System;
+using Nox.CCK.Utils;
 using Nox.Relay.Core.Rooms;
 using Nox.Users;
 
@@ -26,7 +27,7 @@ namespace Nox.Relay.Core.Players {
 		/// The user identifier of the player.
 		/// Is can be Invalid if the player is a guest.
 		/// </summary>
-		public IUserIdentifier Identifier;
+		public Identifier Identifier;
 
 		/// <summary>
 		/// The display name of the player.

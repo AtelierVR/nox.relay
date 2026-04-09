@@ -34,7 +34,7 @@ namespace Nox.Relay.Core.Types.Authentication {
 		/// User identity of the client attempting to authenticate.
 		/// Is included when <see cref="Action"/> is <see cref="AuthenticationAction.ResolveChallenge"/>.
 		/// </summary>
-		public IUserIdentifier Identifier;
+		public Identifier Identifier;
 		
 		/// <summary>
 		/// Creates a new <see cref="AuthenticationRequest"/> for requesting a challenge.
@@ -50,7 +50,7 @@ namespace Nox.Relay.Core.Types.Authentication {
 		/// <param name="signature"></param>
 		/// <param name="identifier"></param>
 		/// <returns></returns>
-		public static AuthenticationRequest Resolve(byte[] publicKey, byte[] signature, IUserIdentifier identifier)
+		public static AuthenticationRequest Resolve(byte[] publicKey, byte[] signature, Identifier identifier)
 			=> new() {
 				Action     = AuthenticationAction.ResolveChallenge,
 				PublicKey  = publicKey,
@@ -67,8 +67,8 @@ namespace Nox.Relay.Core.Types.Authentication {
 			buffer.Write(PublicKey);
 			buffer.Write((ushort)Signature.Length);
 			buffer.Write(Signature);
-			buffer.Write(Identifier.GetId());
-			buffer.Write(Identifier.GetServer());
+			buffer.Write(Identifier.NumericId);
+			buffer.Write(Identifier.Server);
 			return buffer;
 		}
 	}

@@ -32,24 +32,24 @@ namespace Nox.Relay.Runtime {
 		}
 
 		private static async UniTask Connect(this Session session, bool doE = false) {
-			var world = session.GetWorld();
+			var world    = session.GetWorld();
 			var instance = session.GetInstance();
 
-			if (world is { IsValid: true }) {
+			if (world.IsValid()) {
 				session.UpdateState(Status.Pending, "Fetching world data...", 0.05f);
 
 				var req = new AssetSearchRequest {
-					Engines = new[] { EngineExtensions.CurrentEngine.GetEngineName() },
+					Engines   = new[] { EngineExtensions.CurrentEngine.GetEngineName() },
 					Platforms = new[] { PlatformExtensions.CurrentPlatform.GetPlatformName() },
-					Versions = new[] { world.Version },
-					Limit = 1
+					Versions  = new[] { world.GetVersion() },
+					Limit     = 1
 				};
 
 				var asset = (await Main.WorldAPI.SearchAssets(world, req))
-					.Assets.FirstOrDefault();
+					.Items.FirstOrDefault();
 
 				if (asset == null) {
-					Logger.LogError($"Failed to find asset for world {world} with version {world.Version}", session.Tag);
+					Logger.LogError($"Failed to find asset for world {world} with version {world.GetVersion()}", session.Tag);
 					session.UpdateState(Status.Error, $"World '{world}' not found", 1f);
 					return;
 				}
@@ -68,7 +68,7 @@ namespace Nox.Relay.Runtime {
 				}
 
 				if (!Main.WorldAPI.HasInCache(asset.Hash)) {
-					Logger.LogError($"Failed to download asset for world {world} with version {world.Version}", session.Tag);
+					Logger.LogError($"Failed to download asset for world {world} with version {world.GetVersion()}", session.Tag);
 					session.UpdateState(Status.Error, $"Failed to download world '{world}'", 1f);
 					return;
 				}
@@ -105,7 +105,8 @@ namespace Nox.Relay.Runtime {
 			if (con == null) {
 				session.UpdateState(Status.Error, "Failed to connect to any relay", -1f);
 				Logger.LogError("Failed to connect to any relay", session.Tag);
-				if (doE) await session.Dispose();
+				if (doE)
+					await session.Dispose();
 				return;
 			}
 
@@ -119,23 +120,25 @@ namespace Nox.Relay.Runtime {
 
 			session.UpdateState(Status.Pending, "Handshaking...", 0.2f);
 			await UniTask.SwitchToMainThread();
-			
+
 			var handshake = await adapter.Handshake();
 			if (handshake is not { IsValid: true }) {
 				session.UpdateState(Status.Error, "Handshake failed", 1f);
 				Logger.LogError("Handshake with relay server failed", session.Tag);
-				if (doE) await session.Dispose();
+				if (doE)
+					await session.Dispose();
 				return;
 			}
 
 
 			session.UpdateState(Status.Pending, "Authenticating...", 0.225f);
 			var request = AuthenticationRequest.Request();
-			var auth = await adapter.Authenticate(request);
+			var auth    = await adapter.Authenticate(request);
 			if (auth.IsError) {
 				session.UpdateState(Status.Error, $"Authentication failed: {auth.Reason}", -1f);
 				Logger.LogError($"Authentication failed: {auth.Result} - {auth.Reason}", session.Tag);
-				if (doE) await session.Dispose();
+				if (doE)
+					await session.Dispose();
 				return;
 			}
 
@@ -145,19 +148,20 @@ namespace Nox.Relay.Runtime {
 			var keys = Crypto.GetKeys();
 			var sign = Crypto.Sign(challenge, keys);
 
-			var user = Main.UserAPI.GetCurrent();
+			var user = Main.UserAPI.Current;
 
 			request = AuthenticationRequest.Resolve(
 				Crypto.ExportPublicKeyToDer(keys),
 				sign,
-				user.ToIdentifier()
+				user.Identifier
 			);
 
 			auth = await adapter.Authenticate(request);
 			if (auth.IsError) {
 				session.UpdateState(Status.Error, $"Authentication failed: {auth.Reason}", -1f);
 				Logger.LogError($"Authentication failed: {auth.Result} - {auth.Reason}", session.Tag);
-				if (doE) await session.Dispose();
+				if (doE)
+					await session.Dispose();
 				return;
 			}
 
@@ -166,7 +170,8 @@ namespace Nox.Relay.Runtime {
 			if (room == null) {
 				session.UpdateState(Status.Error, $"Failed to get room {instance}", -1f);
 				Logger.LogError($"Failed to get room {instance}", session.Tag);
-				if (doE) await session.Dispose();
+				if (doE)
+					await session.Dispose();
 				return;
 			}
 
@@ -178,18 +183,19 @@ namespace Nox.Relay.Runtime {
 			room.OnEvent.AddListener(session.OnEventHandler);
 			room.OnAvatarChanged.AddListener(session.OnAvatarChanged);
 			// adapter.Instance.OnPlayerUpdated.AddListener(adapter.OnPlayerUpdated);
-			
+
 			session.UpdateState(Status.Pending, "Entering room...", 0.3f);
 			var enter = await room.Enter(new EnterRequest());
 			if (enter.IsError) {
 				session.UpdateState(Status.Error, $"Failed to connect to room: {enter.Result} - {enter.Reason}", -1f);
 				Logger.LogError($"Failed to connect to room {instance}: {enter.Result} - {enter.Reason}", session.Tag);
-				if (doE) await session.Dispose();
+				if (doE)
+					await session.Dispose();
 				return;
 			}
 
-			room.Tps = enter.Tps;
-			room.Threshold = enter.Threshold;
+			room.Tps          = enter.Tps;
+			room.Threshold    = enter.Threshold;
 			room.RenderEntity = enter.RenderEntity;
 
 			session.UpdateState(Status.Pending, "Traveling to room...", 0.325f);
@@ -198,7 +204,8 @@ namespace Nox.Relay.Runtime {
 			if (!travelInfos.IsSuccess) {
 				session.UpdateState(Status.Error, $"Failed to travel to room: {travelInfos.Reason}", -1f);
 				Logger.LogError($"Failed to travel to room {instance}: {travelInfos.Results} - {travelInfos.Reason}", session.Tag);
-				if (doE) await session.Dispose();
+				if (doE)
+					await session.Dispose();
 				return;
 			}
 
@@ -221,7 +228,8 @@ namespace Nox.Relay.Runtime {
 			if (!travelReady.IsReady) {
 				session.UpdateState(Status.Error, $"Failed to travel to room {travelInfos.Reason}", -1f);
 				Logger.LogError($"Failed to travel to room {instance}: {travelReady.Results} - {travelReady.Reason}", session.Tag);
-				if (doE) await session.Dispose();
+				if (doE)
+					await session.Dispose();
 				return;
 			}
 

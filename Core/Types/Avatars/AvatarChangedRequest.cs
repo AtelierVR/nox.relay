@@ -1,4 +1,6 @@
 using Nox.Avatars;
+using Nox.CCK.Avatars;
+using Nox.CCK.Utils;
 using Nox.Relay.Core.Types.Contents.Rooms;
 using Buffer = Nox.CCK.Utils.Buffer;
 
@@ -20,17 +22,17 @@ namespace Nox.Relay.Core.Types.Avatars {
 		/// <summary>
 		/// The identifier of the new avatar to apply.
 		/// </summary>
-		public IAvatarIdentifier AvatarIdentifier;
+		public Identifier Identifier;
 
 		/// <summary>
 		/// Creates a request to change the local player's own avatar.
 		/// </summary>
 		/// <param name="avatar">The new avatar identifier.</param>
 		/// <returns></returns>
-		public static AvatarChangedRequest Self(IAvatarIdentifier avatar)
+		public static AvatarChangedRequest Self(Identifier avatar)
 			=> new() {
-				PlayerId         = ushort.MaxValue,
-				AvatarIdentifier = avatar
+				PlayerId   = ushort.MaxValue,
+				Identifier = avatar
 			};
 
 		/// <summary>
@@ -39,10 +41,10 @@ namespace Nox.Relay.Core.Types.Avatars {
 		/// <param name="playerId">The target player's ID.</param>
 		/// <param name="avatar">The new avatar identifier.</param>
 		/// <returns></returns>
-		public static AvatarChangedRequest For(ushort playerId, IAvatarIdentifier avatar)
+		public static AvatarChangedRequest For(ushort playerId, Identifier avatar)
 			=> new() {
-				PlayerId         = playerId,
-				AvatarIdentifier = avatar
+				PlayerId   = playerId,
+				Identifier = avatar
 			};
 
 		public override Buffer ToBuffer() {
@@ -52,9 +54,9 @@ namespace Nox.Relay.Core.Types.Avatars {
 			buffer.Write(PlayerId);
 
 			// avatar_id, server, version
-			buffer.Write(AvatarIdentifier?.GetId() ?? 0u);
-			buffer.Write(AvatarIdentifier?.GetServer() ?? string.Empty);
-			buffer.Write(AvatarIdentifier?.GetVersion() ?? (ushort)0);
+			buffer.Write(Identifier.NumericId);
+			buffer.Write(Identifier.Server);
+			buffer.Write(Identifier.GetVersion());
 
 			return buffer;
 		}

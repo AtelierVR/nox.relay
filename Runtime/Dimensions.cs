@@ -1,5 +1,6 @@
 using System.Linq;
 using Cysharp.Threading.Tasks;
+using Nox.CCK.Utils;
 using Nox.Sessions;
 using Nox.Worlds;
 using UnityEngine;
@@ -64,7 +65,7 @@ namespace Nox.Relay.Runtime {
 			return true;
 		}
 
-		public IWorldIdentifier Identifier
+		public Identifier Identifier
 			=> _world.Identifier;
 
 		public bool IsLoaded(int index)

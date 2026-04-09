@@ -1,8 +1,7 @@
 using System;
-using Nox.CCK.Users;
+using Nox.CCK.Utils;
 using Buffer = Nox.CCK.Utils.Buffer;
 using Nox.Relay.Core.Types.Contents;
-using Nox.Users;
 
 namespace Nox.Relay.Core.Types.Authentication {
 	/// <summary>
@@ -23,7 +22,7 @@ namespace Nox.Relay.Core.Types.Authentication {
 		/// <summary>
 		/// The user identifier assigned upon successful authentication.
 		/// </summary>
-		public IUserIdentifier Identifier;
+		public Identifier Identifier;
 
 		/// <summary>
 		/// The display name assigned upon successful authentication.
@@ -46,7 +45,7 @@ namespace Nox.Relay.Core.Types.Authentication {
 		/// Indicates whether the authentication response represents an error.
 		/// </summary>
 		public bool IsError
-			=> Result     != AuthenticationResult.Success
+			=> Result != AuthenticationResult.Success
 				&& Result != AuthenticationResult.Challenge;
 
 		/// <summary>
@@ -76,8 +75,9 @@ namespace Nox.Relay.Core.Types.Authentication {
 						: "Unknown error";
 					return true;
 				case AuthenticationResult.Success:
-					Identifier = new UserIdentifier(buffer.ReadUInt(), buffer.ReadString());
-					if (!Identifier.IsValid()) return false;
+					Identifier = new Identifier("u", buffer.ReadUInt(), null, buffer.ReadString());
+					if (!Identifier.IsValid())
+						return false;
 					Display = buffer.ReadString();
 					return true;
 				case AuthenticationResult.Blacklisted:

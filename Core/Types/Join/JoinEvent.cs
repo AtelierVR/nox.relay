@@ -1,4 +1,4 @@
-using Nox.CCK.Users;
+using Nox.CCK.Utils;
 using Nox.Relay.Core.Players;
 using Nox.Relay.Core.Types.Content.Rooms;
 using Buffer = Nox.CCK.Utils.Buffer;
@@ -32,7 +32,7 @@ namespace Nox.Relay.Core.Types.Join {
 				Room       = Room,
 				Flags      = buffer.ReadEnum<PlayerFlags>(),
 				Id         = buffer.ReadUShort(),
-				Identifier = new UserIdentifier(buffer.ReadUInt(), buffer.ReadString()),
+				Identifier = new Identifier("u", buffer.ReadUInt(), null, buffer.ReadString()),
 				Display    = buffer.ReadString(),
 				JoinedAt   = buffer.ReadDateTime()
 			};
@@ -42,7 +42,7 @@ namespace Nox.Relay.Core.Types.Join {
 
 			return true;
 		}
-		
+
 		public override string ToString()
 			=> $"{GetType().Name}[Iid={Room.InternalId}, Player={Player?.ToString() ?? "null"}, Engine={Engine}, Platform={Platform}]";
 	}

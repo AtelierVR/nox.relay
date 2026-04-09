@@ -67,13 +67,13 @@ namespace Nox.Relay.Runtime.Players {
 
 		private async UniTask UpdateAvatarOfControllerAsync(IControllerAvatar controller) {
 			var avatar   = controller.GetAvatar();
-			var response = await Context.Context.Room.ChangeAvatar(AvatarChangedRequest.Self(avatar.GetIdentifier()));
+			var response = await Context.Context.Room.ChangeAvatar(AvatarChangedRequest.Self(avatar.Identifier));
 			if (response.IsError) {
 				Logger.LogWarning($"Failed to change avatar: {response.Reason}");
 				return;
 			}
 
-			var descriptor = avatar?.GetDescriptor();
+			var descriptor = avatar?.Descriptor;
 			var parameterModule = descriptor
 				?.GetModules<IParameterModule>()
 				.FirstOrDefault();

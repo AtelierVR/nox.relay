@@ -55,8 +55,8 @@ namespace Nox.Relay.Runtime {
 		public UnityEvent<IEntity> OnEntityUnregistered { get; } = new();
 		public UnityEvent<IState> OnStateChanged { get; } = new();
 
-		public bool Match(IWorldIdentifier identifier)
-			=> InterDimensions.Identifier != null && InterDimensions.Identifier.Equals(identifier);
+		public bool Match(Identifier identifier)
+			=> InterDimensions.Identifier.IsValid() && InterDimensions.Identifier.Equals(identifier);
 
 
 		public UnityEvent<long, byte[], IPlayer> OnEventReceived { get; } = new();
@@ -132,7 +132,7 @@ namespace Nox.Relay.Runtime {
 
 		public async UniTask Dispose() {
 			Logger.LogDebug("Disposing session", tag: Tag);
-			
+
 			if (Adapter != null) {
 				Adapter.Connector.OnDisconnected.RemoveListener(OnDisconnectedHandler);
 				Adapter.Connector.OnConnected.RemoveListener(OnConnectedHandler);
@@ -318,10 +318,10 @@ namespace Nox.Relay.Runtime {
 			var player = new LocalPlayer(InterEntities, @event.Player);
 			InterEntities.LocalId = player.Id;
 
-			Room              = @event.Room;
-			Room.Tps          = @event.Tps;
-			Room.Threshold    = @event.Threshold;
-			Room.RenderEntity = @event.RenderEntity;
+			Room                        = @event.Room;
+			Room.Tps                    = @event.Tps;
+			Room.Threshold              = @event.Threshold;
+			Room.RenderEntity           = @event.RenderEntity;
 			Room.PropertyResendInterval = @event.PropertyResendInterval;
 
 			if (travel)
@@ -482,20 +482,20 @@ namespace Nox.Relay.Runtime {
 					.ToLowerInvariant();
 				url = @event.DownloadUrl;
 			} else if (@event.UseNode) {
-				var identifier = @event.WorldIdentifier.ToString(Adapter.LastHandshake.MasterAddress);
+				var identifier = @event.Identifier.ToString(Adapter.LastHandshake.MasterAddress);
 				progress?.Invoke(0.1f, "Searching for master asset for world travel");
 				Logger.LogDebug($"Searching {identifier}", tag: Tag);
 				var req = new AssetSearchRequest {
 					Engines   = new[] { EngineExtensions.CurrentEngine.GetEngineName() },
 					Platforms = new[] { PlatformExtensions.CurrentPlatform.GetPlatformName() },
-					Versions  = new[] { @event.WorldIdentifier.Version },
+					Versions  = new[] { @event.Identifier.GetVersion() },
 					Limit     = 1
 				};
 
 				var asset = (await Main.WorldAPI.SearchAssets(
-						WorldIdentifier.From(identifier),
+						Identifier.Parse(identifier),
 						req
-					))?.Assets
+					))?.Items
 					.FirstOrDefault();
 
 				if (asset == null) {
@@ -533,13 +533,16 @@ namespace Nox.Relay.Runtime {
 			);
 			if (scene == null) {
 				progress?.Invoke(0.9f, "Failed to load scene for world");
-				Logger.LogError($"Failed to load scene for world {@event.WorldIdentifier.ToString()}", tag: Tag);
+				Logger.LogError($"Failed to load scene for world {@event.Identifier.ToString()}", tag: Tag);
 				if (response)
 					await OnTravelingFailed(@event, "Failed to load scene");
 				return false;
 			}
 
-			scene.Identifier = @event.UseNode ? @event.WorldIdentifier : null;
+			scene.Identifier = @event.UseNode
+				? @event.Identifier
+				: Identifier.Invalid;
+
 			SetDimension(scene);
 			progress?.Invoke(1f, "World loaded successfully");
 			if (response)
@@ -566,7 +569,7 @@ namespace Nox.Relay.Runtime {
 			var player = InterEntities.GetEntity<Player>(@event.PlayerId);
 			if (player == null)
 				return;
-			await player.SetAvatar(@event.AvatarIdentifier);
+			await player.SetAvatar(@event.Identifier);
 		}
 
 		public void OnPlayerVisibilityChangedHandler(IPlayer player, bool isVisible) {

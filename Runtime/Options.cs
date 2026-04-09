@@ -11,7 +11,8 @@ namespace Nox.Relay.Runtime {
 	public class Options {
 		public static Options From(Dictionary<string, object> dict) {
 			var options = new Options();
-			if (dict == null) return options;
+			if (dict == null)
+				return options;
 
 			if (dict.TryGetValue("title", out var titleObj) && titleObj is string titleStr)
 				options.Title = titleStr;
@@ -26,7 +27,7 @@ namespace Nox.Relay.Runtime {
 
 			if (dict.TryGetValue("world", out var worldObj))
 				switch (worldObj) {
-					case WorldIdentifier worldId:
+					case Identifier worldId:
 						options.WorldType       = 1;
 						options.WorldIdentifier = worldId;
 						break;
@@ -65,16 +66,16 @@ namespace Nox.Relay.Runtime {
 
 		public int WorldType = 0;
 
-		public WorldIdentifier    WorldIdentifier = WorldIdentifier.Invalid;
-		public ResourceIdentifier WorldResource   = ResourceIdentifier.Invalid;
-		public string             WorldHash       = null;
+		public Identifier WorldIdentifier = Identifier.Invalid;
+		public ResourceIdentifier WorldResource = ResourceIdentifier.Invalid;
+		public string WorldHash = null;
 
-		public string              Title              = "Relay Session";
+		public string Title = "Relay Session";
 		public IInstanceIdentifier InstanceIdentifier = null;
-		public Texture2D           Thumbnail          = null;
-		public bool                DisposeOnChange    = true;
-		public string              ShortName          = null;
-		public bool                ChangeCurrent      = true;
-		public string[]            Connections        = Array.Empty<string>();
+		public Texture2D Thumbnail = null;
+		public bool DisposeOnChange = true;
+		public string ShortName = null;
+		public bool ChangeCurrent = true;
+		public string[] Connections = Array.Empty<string>();
 	}
 }

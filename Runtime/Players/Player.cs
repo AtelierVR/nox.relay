@@ -52,7 +52,7 @@ namespace Nox.Relay.Runtime.Players {
 			}
 		}
 
-		public IUserIdentifier Identifier { get; }
+		public Identifier Identifier { get; }
 
 		public bool IsMaster
 			=> Context.MasterId == Id;
@@ -128,20 +128,20 @@ namespace Nox.Relay.Runtime.Players {
 
 		public override string ToString() {
 			try {
-				return $"{GetType().Name}[Id={Id}, Display={Display}, Identifier={Identifier?.ToString() ?? "null"}, IsMaster={IsMaster}, IsLocal={IsLocal}]";
+				return $"{GetType().Name}[Id={Id}, Display={Display}, Identifier={Identifier.ToString()}, IsMaster={IsMaster}, IsLocal={IsLocal}]";
 			} catch {
 				// During construction, some properties may not be initialized yet
 				return $"{GetType().Name}[Id={Id}, <initializing>]";
 			}
 		}
 
-		protected internal IAvatarIdentifier Avatar = AvatarIdentifier.Invalid;
+		protected internal Identifier Avatar = Nox.CCK.Utils.Identifier.Invalid;
 
-		public virtual IAvatarIdentifier GetAvatar()
+		public virtual Identifier GetAvatar()
 			=> Avatar;
 
-		public virtual UniTask<bool> SetAvatar(IAvatarIdentifier identifier) {
-			Logger.LogDebug($"Changing avatar for {this} to {identifier?.ToString() ?? "null"}", tag: GetType().Name);
+		public virtual UniTask<bool> SetAvatar(Identifier identifier) {
+			Logger.LogDebug($"Changing avatar for {this} to {identifier.ToString()}", tag: GetType().Name);
 			Avatar = identifier;
 			return UniTask.FromResult(true);
 		}
