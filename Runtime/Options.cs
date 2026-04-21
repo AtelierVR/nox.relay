@@ -41,7 +41,7 @@ namespace Nox.Relay.Runtime {
 						break;
 				}
 
-			if (dict.TryGetValue("instance", out var inId) && inId is IInstanceIdentifier iId)
+			if (dict.TryGetValue("instance", out var inId) && inId is Identifier iId)
 				options.InstanceIdentifier = iId;
 
 			var data = dict.TryGetValue("data", out var d) && d is JObject o
@@ -71,7 +71,7 @@ namespace Nox.Relay.Runtime {
 		public string WorldHash = null;
 
 		public string Title = "Relay Session";
-		public IInstanceIdentifier InstanceIdentifier = null;
+		public Identifier InstanceIdentifier = Identifier.Invalid;
 		public Texture2D Thumbnail = null;
 		public bool DisposeOnChange = true;
 		public string ShortName = null;

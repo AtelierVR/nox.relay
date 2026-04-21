@@ -166,7 +166,7 @@ namespace Nox.Relay.Runtime {
 			}
 
 			session.UpdateState(Status.Pending, "Fetching room...", 0.25f);
-			var room = await adapter.List(instance.GetId());
+			var room = await adapter.List(instance.NumericId);
 			if (room == null) {
 				session.UpdateState(Status.Error, $"Failed to get room {instance}", -1f);
 				Logger.LogError($"Failed to get room {instance}", session.Tag);
