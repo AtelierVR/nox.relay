@@ -12,6 +12,7 @@ using Nox.Relay.Core.Types.Latency;
 using Nox.Sessions;
 using Nox.Users;
 using Nox.Worlds;
+using StirlingLabs.MsQuic.Bindings;
 using UnityEngine;
 
 namespace Nox.Relay.Runtime {
@@ -31,6 +32,11 @@ namespace Nox.Relay.Runtime {
 
 		public void OnInitializeMain(IMainModCoreAPI api) {
 			CoreAPI = api;
+			// Pre-load MsQuic native libraries using mod-aware plugin folders
+			StirlingLabs.MsQuic.Bindings.MsQuic.Init(
+				api.LibAPI.GetNativePluginFolders(),
+				api.LibAPI.GetExtension()
+			);
 			_events = new[] {
 				api.EventAPI.Subscribe("controller_changed", OnControllerChanged),
 				api.EventAPI.Subscribe("controller_avatar_changed", OnAvatarOfControllerChanged)

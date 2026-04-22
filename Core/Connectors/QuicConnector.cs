@@ -34,7 +34,11 @@ namespace Nox.Relay.Core.Connectors {
 		public QuicConnector() {
 			_registration = new QuicRegistration("relay-client");
 			_config       = new QuicClientConfiguration(_registration, AlpnToken);
-			_config.ConfigureCredentials(); // anonymous — no client certificate
+			// NO_CERTIFICATE_VALIDATION: relay servers use self-signed certs; skip native
+			// certificate validation entirely so the managed DefaultManagedCallback never
+			// tries to call SignedCms.Decode(ReadOnlySpan<byte>), which is absent from
+			// Unity's embedded Mono runtime in standalone builds.
+			_config.ConfigureCredentials(QUIC_CREDENTIAL_FLAGS.NO_CERTIFICATE_VALIDATION);
 		}
 
 		// ── IQuicRelayClient ────────────────────────────────────────────────

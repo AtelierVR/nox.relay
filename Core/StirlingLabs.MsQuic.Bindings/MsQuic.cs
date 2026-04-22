@@ -30,40 +30,66 @@ namespace StirlingLabs.MsQuic.Bindings {
 			=> RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
 				? (".dylib", DllImportSearchPath.AssemblyDirectory)
 				: RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
-					? (".dll", DllImportSearchPath.LegacyBehavior)
+					? (".dll", DllImportSearchPath.AssemblyDirectory)
 					: (".so", DllImportSearchPath.AssemblyDirectory);
 
-		public static string[] Folders
-			=> new[] {
-				new FileInfo(new Uri(typeof(MsQuic).Assembly.Location).LocalPath).Directory!.FullName,
-				Path.Combine(Application.dataPath, "Plugins"),
-				Path.Combine(Application.dataPath, "..", "Packages", "nox.relay", "Plugins")
-			};
+		public static string[] Folders {
+			get {
+				// Determine the platform-specific arch subfolder used by Unity's build pipeline
+				string arch = null;
+				if (RuntimeInformation.OSArchitecture == System.Runtime.InteropServices.Architecture.X64)
+					arch = "x86_64";
+				else if (RuntimeInformation.OSArchitecture == System.Runtime.InteropServices.Architecture.Arm64)
+					arch = "ARM64";
 
-		[SuppressMessage("Design", "CA1065", Justification = "Security critical failure")]
-		static MsQuic() {
-			// Pre-load sa.dll (StirlingLabs.sockaddr native) so P/Invoke resolution succeeds
-			LoadNativeLib(SaLib);
-			// Pre-load msquic-openssl.dll
-			LoadNativeLib(MsQuicLib);
+				var assemblyDir = new FileInfo(new Uri(typeof(MsQuic).Assembly.Location).LocalPath).Directory!.FullName;
+				var pluginsBase = Path.Combine(Application.dataPath, "Plugins");
+
+				return new[] {
+					// 1. Platform arch subfolder inside Plugins/ (standard Unity build layout)
+					arch != null ? Path.Combine(pluginsBase, arch) : null,
+					// 2. Root Plugins/ folder fallback
+					pluginsBase,
+					// 3. Assembly directory (Managed/ in builds, useful in editor)
+					assemblyDir,
+					// 4. Editor package Plugins/ folder
+					Path.Combine(Application.dataPath, "..", "Packages", "nox.relay", "Plugins"),
+				}.Where(f => f != null).ToArray();
+			}
 		}
 
-		private static void LoadNativeLib(string libName) {
-			var filename = libName + Extension.Item1;
-			var path = Folders
+		[SuppressMessage("Design", "CA1065", Justification = "Security critical failure")]
+		static MsQuic() { }
+
+		/// <summary>
+		/// Pre-loads sa and msquic-openssl native libraries.
+		/// Must be called before any MsQuic P/Invoke is used.
+		/// </summary>
+		public static void Init(string[] folders, string extension) {
+			LoadNativeLib(SaLib, folders, extension);
+			LoadNativeLib(MsQuicLib, folders, extension);
+		}
+
+		/// <summary>Convenience overload using the built-in Folders / Extension fallback.</summary>
+		public static void Init() {
+			var (ext, _) = Extension;
+			Init(Folders, ext);
+		}
+
+		private static void LoadNativeLib(string libName, string[] folders, string extension) {
+			var filename = libName + extension;
+			var path = folders
 				.Select(folder => Path.Combine(folder, filename))
 				.FirstOrDefault(File.Exists);
 
 			if (path == null)
-				throw new DllNotFoundException($"Could not find {filename} in any of the following locations: {string.Join(", ", Folders)}");
+				throw new DllNotFoundException($"Could not find {filename} in any of the following locations: {string.Join(", ", folders)}");
 			
 			path = Path.GetFullPath(path);
 
 			Debug.Log($"Loading {filename} from {path}");
 			NativeLibrary.Load(path, typeof(MsQuic).Assembly, Extension.Item2);
 		}
-
-		public static void Init() { }
 
 		public static void AssertSuccess(int status)
 			=> Assert(StatusSucceeded(status), status);
