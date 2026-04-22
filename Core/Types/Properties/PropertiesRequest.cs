@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Nox.Entities;
 using Nox.Relay.Core.Types.Contents.Rooms;
 using Buffer = Nox.CCK.Utils.Buffer;
@@ -39,10 +38,23 @@ namespace Nox.Relay.Core.Types.Properties {
 		public static PropertiesRequest Create(ushort playerId, IProperty[] parameters) {
 			if (parameters.Length > MaxParameters)
 				throw new ArgumentException($"Cannot have more than {MaxParameters} parameters in an property request.", nameof(parameters));
-			return new PropertiesRequest {
-				EntityId   = playerId,
-				Parameters = parameters.ToDictionary(p => p.Key, p => p.Serialize())
-			};
+			var dict = new Dictionary<int, byte[]>(parameters.Length);
+			foreach (var p in parameters)
+				dict[p.Key] = p.Serialize();
+			return new PropertiesRequest { EntityId = playerId, Parameters = dict };
+		}
+
+		/// <summary>
+		/// Creates a <see cref="PropertiesRequest"/> from a slice of a list, avoiding LINQ allocations.
+		/// </summary>
+		public static PropertiesRequest Create(ushort playerId, List<IProperty> parameters, int offset, int count) {
+			var dict = new Dictionary<int, byte[]>(count);
+			var end  = offset + count;
+			for (var i = offset; i < end; i++) {
+				var p = parameters[i];
+				dict[p.Key] = p.Serialize();
+			}
+			return new PropertiesRequest { EntityId = playerId, Parameters = dict };
 		}
 
 		/// <summary>
@@ -66,10 +78,10 @@ namespace Nox.Relay.Core.Types.Properties {
 		public static PropertiesRequest Clear(ushort playerId, IProperty[] parameters) {
 			if (parameters.Length > MaxParameters)
 				throw new ArgumentException($"Cannot have more than {MaxParameters} parameters in an property clear request.", nameof(parameters));
-			return new PropertiesRequest {
-				EntityId   = playerId,
-				Parameters = parameters.ToDictionary(p => p.Key, _ => Array.Empty<byte>())
-			};
+			var dict = new Dictionary<int, byte[]>(parameters.Length);
+			foreach (var p in parameters)
+				dict[p.Key] = Array.Empty<byte>();
+			return new PropertiesRequest { EntityId = playerId, Parameters = dict };
 		}
 
 		public override Buffer ToBuffer() {

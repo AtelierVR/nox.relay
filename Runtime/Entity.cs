@@ -123,7 +123,9 @@ namespace Nox.Relay.Runtime {
 		#region Properties Synchronization
 
 		// Prevents concurrent execution of SendPropertiesIfNeeded()
-		private bool _startProperties;
+		private bool              _startProperties;
+		private readonly List<IProperty>       _dirtyBuffer = new();
+		private readonly List<UniTask<bool>>   _taskBuffer  = new();
 
 		/// <summary>
 		/// Sends property updates for properties that are dirty and have LocalEmit flag.
@@ -138,29 +140,29 @@ namespace Nox.Relay.Runtime {
 			if (room == null)
 				goto end;
 
-			// Collect properties that need updates (marked as dirty OR overdue for keep-alive)
-			var resendSeconds = Context.Context.Room?.PropertyResendInterval ?? 5;
-			var resendEnabled = resendSeconds > 0;
+			var resendSeconds  = room.PropertyResendInterval;
+			var resendEnabled  = resendSeconds > 0;
 			var resendInterval = TimeSpan.FromSeconds(resendSeconds);
-			var now             = DateTime.UtcNow;
-			var dirtyProperties = new List<IProperty>();
+			var now            = DateTime.UtcNow;
 
+			_dirtyBuffer.Clear();
 			foreach (var property in Properties.Values) {
-				// Skip properties that are not meant to be sent from local
 				if (!property.Flags.HasFlag(PropertyFlags.LocalEmit))
 					continue;
 
-				// Send if dirty (value changed) OR if the resend timeout has elapsed (and feature is enabled)
+				// Capture current value once; sets IsDirty if changed
+				if (property is AvatarParameterProperty app)
+					app.Refresh();
+
 				var overdue = resendEnabled && (now - property.UpdatedAt) >= resendInterval;
 				if (!property.IsDirty && !overdue)
 					continue;
 
-				dirtyProperties.Add(property);
+				_dirtyBuffer.Add(property);
 			}
 
-			// Send all dirty properties in a batch
-			if (dirtyProperties.Count > 0) 
-				await SendPropertiesBatch(room, dirtyProperties);
+			if (_dirtyBuffer.Count > 0)
+				await SendPropertiesBatch(room, _dirtyBuffer);
 
 		end:
 			_startProperties = false;
@@ -174,29 +176,19 @@ namespace Nox.Relay.Runtime {
 		/// <param name="room">The room to send properties to</param>
 		/// <param name="dirtyProperties">List of dirty properties to send</param>
 		private async UniTask SendPropertiesBatch(Core.Rooms.Room room, List<IProperty> dirtyProperties) {
-			var tasks = new List<UniTask<bool>>();
-			
-			// Split into chunks to respect MaxParameters limit
-			for (var i = 0; i < dirtyProperties.Count; i += PropertiesRequest.MaxParameters) {
-				var chunk = dirtyProperties
-					.Skip(i)
-					.Take(PropertiesRequest.MaxParameters)
-					.ToArray();
+			_taskBuffer.Clear();
 
-				// Use ushort.MaxValue to indicate self entity
-				var request = PropertiesRequest.Create(ushort.MaxValue, chunk);
-				tasks.Add(room.Properties(request));
+			for (var i = 0; i < dirtyProperties.Count; i += PropertiesRequest.MaxParameters) {
+				var count   = Math.Min(PropertiesRequest.MaxParameters, dirtyProperties.Count - i);
+				var request = PropertiesRequest.Create(ushort.MaxValue, dirtyProperties, i, count);
+				_taskBuffer.Add(room.Properties(request));
 			}
 
-			// Wait for all network operations to complete
-			var results = await UniTask.WhenAll(tasks);
+			var results = await UniTask.WhenAll(_taskBuffer);
 
-			// Clear dirty flag only if all requests succeeded
 			if (results.All(r => r)) {
 				foreach (var property in dirtyProperties) {
 					property.IsDirty = false;
-
-					// Update cache for AvatarParameterProperty to prevent re-sending
 					if (property is AvatarParameterProperty avatarProp)
 						avatarProp.UpdateCache();
 				}

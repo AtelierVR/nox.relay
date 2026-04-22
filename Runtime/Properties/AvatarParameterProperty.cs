@@ -10,15 +10,17 @@ namespace Nox.Relay.Runtime {
 	public class AvatarParameterProperty : IProperty {
 		private readonly IParameter _parameter;
 		private object _cachedValue;
-		private bool _isDirty;
+		private object _refreshedValue;
+		private bool   _isDirty;
 
 		public AvatarParameterProperty(Entity context, IParameter parameter, PropertyFlags flags) {
-			_parameter   = parameter ?? throw new ArgumentNullException(nameof(parameter));
-			Key          = parameter.GetKey();
-			Name         = parameter.GetName();
-			Flags        = flags;
-			_cachedValue = parameter.Get();
-			UpdatedAt    = DateTime.UtcNow;
+			_parameter     = parameter ?? throw new ArgumentNullException(nameof(parameter));
+			Key            = parameter.GetKey();
+			Name           = parameter.GetName();
+			Flags          = flags;
+			_cachedValue   = parameter.Get();
+			_refreshedValue = _cachedValue;
+			UpdatedAt      = DateTime.UtcNow;
 		}
 
 		public int Key { get; }
@@ -27,40 +29,43 @@ namespace Nox.Relay.Runtime {
 		public PropertyFlags Flags { get; }
 
 		public object Value {
-			get => _parameter?.Get() ?? _cachedValue;
+			get => _refreshedValue;
 			set {
 				if (_parameter == null)
 					return;
 
 				_parameter.Set(value);
-				_cachedValue = value;
-				UpdatedAt    = DateTime.UtcNow;
-				_isDirty     = true;
+				_cachedValue    = value;
+				_refreshedValue = value;
+				UpdatedAt       = DateTime.UtcNow;
+				_isDirty        = true;
 			}
 		}
 
+		/// <summary>
+		/// Captures the current parameter value once per tick.
+		/// Must be called before checking IsDirty or Serialize().
+		/// </summary>
+		public void Refresh() {
+			if (_parameter == null) return;
+			_refreshedValue = _parameter.Get();
+			if (!AreValuesEqual(_refreshedValue, _cachedValue))
+				_isDirty = true;
+		}
+
 		public bool IsDirty {
-			get {
-				// Check if the parameter value has changed since last sync
-				if (_parameter == null)
-					return _isDirty;
-
-				var currentValue = _parameter.Get();
-				if (!AreValuesEqual(currentValue, _cachedValue))
-					_isDirty = true;
-
-				return _isDirty;
-			}
+			get => _isDirty;
 			set => _isDirty = value;
 		}
 
 		public byte[] Serialize()
-			=> Value.ToBytes();
+			=> _refreshedValue.ToBytes();
 
 		public void Deserialize(byte[] data) {
 			_parameter?.Set(data);
-			_cachedValue = data;
-			UpdatedAt    = DateTime.UtcNow;
+			_cachedValue    = data;
+			_refreshedValue = data;
+			UpdatedAt       = DateTime.UtcNow;
 		}
 
 		/// <summary>
@@ -68,9 +73,8 @@ namespace Nox.Relay.Runtime {
 		/// Call this after successfully sending the property to prevent re-sending.
 		/// </summary>
 		public void UpdateCache() {
-			if (_parameter != null)
-				_cachedValue = _parameter.Get();
-			UpdatedAt = DateTime.UtcNow;
+			_cachedValue    = _refreshedValue;
+			UpdatedAt       = DateTime.UtcNow;
 		}
 
 		private static bool AreValuesEqual(object value1, object value2) {
