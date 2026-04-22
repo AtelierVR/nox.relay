@@ -166,7 +166,7 @@ namespace Nox.Relay.Runtime {
 
 		internal static IWorldAPI WorldAPI
 			=> CoreAPI.ModAPI
-				.GetMod("world")
+				.GetMod("worlds")
 				.GetInstance<IWorldAPI>();
 
 		internal static ISessionAPI SessionAPI

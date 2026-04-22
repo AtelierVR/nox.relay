@@ -39,6 +39,10 @@
     {
       "id": "session",
       "type": "depends"
+    },
+    {
+      "id": "worlds",
+      "type": "depends"
     }
   ],
   "constraints": [
