@@ -69,8 +69,9 @@ namespace StirlingLabs.MsQuic.Bindings.Polyfill
             return ref span.GetPinnableReference();
         }
 
-        public static unsafe Span<T> CreateSpan<T>(ref T reference, int length) {
-            return new(Unsafe.AsPointer(ref reference), length);
+        public static unsafe Span<T> CreateSpan<T>(ref T reference, int length) where T : unmanaged {
+            fixed (T* ptr = &reference)
+                return new Span<T>(ptr, length);
         }
     }
 #endif
