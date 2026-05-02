@@ -5,5 +5,10 @@
 	<assembly fullname="Nox.Relay.Editor" preserve="all" />
 	<assembly fullname="Nox.Relay.Runtime" preserve="all" />
 	<assembly fullname="Nox.Relay.Tests" preserve="all" />
-	<assembly fullname="StirlingLabs.MsQuic.Bindings" preserve="all" />
+	<assembly fullname="StirlingLabs.BigSpans" preserve="all" />
+	<assembly fullname="StirlingLabs.MsQuic" preserve="all" />
+	<assembly fullname="StirlingLabs.sockaddr.Net" preserve="all" />
+	<assembly fullname="StirlingLabs.Utilities" preserve="all" />
+	<assembly fullname="StirlingLabs.Utilities.Magic" preserve="all" />
+	<assembly fullname="StirlingLabs.Utilities.NativeLibrary" preserve="all" />
 </linker>
