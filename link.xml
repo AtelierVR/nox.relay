@@ -7,8 +7,24 @@
 	<assembly fullname="Nox.Relay.Tests" preserve="all" />
 	<assembly fullname="StirlingLabs.BigSpans" preserve="all" />
 	<assembly fullname="StirlingLabs.MsQuic" preserve="all" />
+	<assembly fullname="StirlingLabs.MsQuic.Bindings" preserve="all" />
 	<assembly fullname="StirlingLabs.sockaddr.Net" preserve="all" />
 	<assembly fullname="StirlingLabs.Utilities" preserve="all" />
 	<assembly fullname="StirlingLabs.Utilities.Magic" preserve="all" />
 	<assembly fullname="StirlingLabs.Utilities.NativeLibrary" preserve="all" />
+	<assembly fullname="System.Buffers" preserve="all" />
+	<assembly fullname="System.Collections.Immutable" preserve="all" />
+	<assembly fullname="System.Configuration.ConfigurationManager" preserve="all" />
+	<assembly fullname="System.Formats.Asn1" preserve="all" />
+	<assembly fullname="System.Memory" preserve="all" />
+	<assembly fullname="System.Numerics.Vectors" preserve="all" />
+	<assembly fullname="System.Runtime.Caching" preserve="all" />
+	<assembly fullname="System.Runtime.CompilerServices.Unsafe" preserve="all" />
+	<assembly fullname="System.Security.AccessControl" preserve="all" />
+	<assembly fullname="System.Security.Cryptography.Cng" preserve="all" />
+	<assembly fullname="System.Security.Cryptography.Pkcs" preserve="all" />
+	<assembly fullname="System.Security.Cryptography.ProtectedData" preserve="all" />
+	<assembly fullname="System.Security.Permissions" preserve="all" />
+	<assembly fullname="System.Security.Principal.Windows" preserve="all" />
+	<assembly fullname="ZString" preserve="all" />
 </linker>
