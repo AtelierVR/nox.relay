@@ -273,7 +273,7 @@ namespace Nox.Relay.Runtime.Physicals {
 				return false;
 			}
 
-			var root = RuntimeAvatar.Descriptor.GetAnchor();
+			var root = RuntimeAvatar.Descriptor.Anchor;
 			if (!root) {
 				Logger.LogError("Avatar descriptor root is null, cannot set avatar.");
 				RuntimeAvatar = old;
@@ -285,7 +285,7 @@ namespace Nox.Relay.Runtime.Physicals {
 			if (old != null)
 				await old.Dispose();
 
-			Logger.LogDebug($"Attaching avatar to {runtimeAvatar.Descriptor}", runtimeAvatar.Descriptor.GetAnchor());
+			Logger.LogDebug($"Attaching avatar to {runtimeAvatar.Descriptor}", runtimeAvatar.Descriptor.Anchor);
 			root.transform.SetParent(transform, false);
 			root.transform.localPosition = Vector3.zero;
 			root.transform.localRotation = Quaternion.identity;
@@ -300,7 +300,7 @@ namespace Nox.Relay.Runtime.Physicals {
 			}
 
 			// Attendre que l'Animator soit prêt avant de configurer les paramètres
-			var animator = RuntimeAvatar?.Descriptor?.GetAnimator();
+			var animator = RuntimeAvatar?.Descriptor?.Animator;
 			if (animator && !animator.runtimeAnimatorController) {
 				Logger.LogDebug("Waiting for Animator to be ready...");
 				await UniTask.WaitUntil(() => animator.runtimeAnimatorController);
