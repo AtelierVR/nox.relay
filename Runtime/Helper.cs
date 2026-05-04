@@ -38,10 +38,17 @@ namespace Nox.Relay.Runtime {
 			if (world.IsValid()) {
 				session.UpdateState(Status.Pending, "Fetching world data...", 0.05f);
 
+				var version = world.GetVersion();
+				if (version == WorldIdentifierExtensions.DefaultVersion) {
+					var worldData = await Main.WorldAPI.Fetch(world);
+					if (worldData != null && worldData.Release != WorldIdentifierExtensions.DefaultVersion)
+						version = worldData.Release;
+				}
+
 				var req = new AssetSearchRequest {
 					Engines   = new[] { EngineExtensions.CurrentEngine.GetEngineName() },
 					Platforms = new[] { PlatformExtensions.CurrentPlatform.GetPlatformName() },
-					Versions  = new[] { world.GetVersion() },
+					Versions  = new[] { version },
 					Limit     = 1
 				};
 

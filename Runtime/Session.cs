@@ -485,10 +485,16 @@ namespace Nox.Relay.Runtime {
 				var identifier = @event.Identifier.ToString(Adapter.LastHandshake.MasterAddress);
 				progress?.Invoke(0.1f, "Searching for master asset for world travel");
 				Logger.LogDebug($"Searching {identifier}", tag: Tag);
+				var travelVersion = @event.Identifier.GetVersion();
+				if (travelVersion == WorldIdentifierExtensions.DefaultVersion) {
+					var worldData = await Main.WorldAPI.Fetch(Identifier.Parse(identifier));
+					if (worldData != null && worldData.Release != WorldIdentifierExtensions.DefaultVersion)
+						travelVersion = worldData.Release;
+				}
 				var req = new AssetSearchRequest {
 					Engines   = new[] { EngineExtensions.CurrentEngine.GetEngineName() },
 					Platforms = new[] { PlatformExtensions.CurrentPlatform.GetPlatformName() },
-					Versions  = new[] { @event.Identifier.GetVersion() },
+					Versions  = new[] { travelVersion },
 					Limit     = 1
 				};
 
