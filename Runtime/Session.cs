@@ -148,6 +148,8 @@ namespace Nox.Relay.Runtime {
 		}
 
 		private DateTime _lastTick = DateTime.MinValue;
+		private long _tickCounter;
+		private int _lastKnownTps;
 
 		public void Update() {
 			var entities = InterEntities.GetEntities<Entity>();
@@ -155,14 +157,29 @@ namespace Nox.Relay.Runtime {
 			foreach (var player in entities)
 				player.Update();
 
+			var tps = Room?.Tps ?? 0;
+			if (tps != _lastKnownTps) {
+				_lastKnownTps = tps;
+				OnTickRateChanged.Invoke(tps);
+				foreach (var module in GetAllModules())
+					module.OnTickRateChanged(tps);
+			}
+
+			if (tps <= 0)
+				return;
+
 			var now   = DateTime.UtcNow;
 			var delta = (now - _lastTick).TotalSeconds;
-			if (!(delta >= 1.0 / Room.Tps))
+			if (!(delta >= 1.0 / tps))
 				return;
 			_lastTick = now;
 
 			foreach (var player in entities)
 				player.Tick();
+
+			var tick = ++_tickCounter;
+			foreach (var module in GetAllModules())
+				module.OnTick(tick);
 		}
 
 		public async UniTask OnSelect(ISession old) {
@@ -257,6 +274,14 @@ namespace Nox.Relay.Runtime {
 		public double Ping
 			=> Adapter?.Ping ?? -1;
 
+		public int EventPayloadSize
+			=> EventRequest.MaxPayloadSize;
+
+		public int TickRate
+			=> Room?.Tps ?? 0;
+
+		public UnityEvent<int> OnTickRateChanged { get; } = new();
+
 		public UnityEvent<double> OnPingChanged { get; } = new();
 
 		private void OnLatencyUpdated(LatencyResponse arg0)
@@ -320,6 +345,7 @@ namespace Nox.Relay.Runtime {
 
 			Room                        = @event.Room;
 			Room.Tps                    = @event.Tps;
+			_lastKnownTps               = @event.Tps;
 			Room.Threshold              = @event.Threshold;
 			Room.RenderEntity           = @event.RenderEntity;
 			Room.PropertyResendInterval = @event.PropertyResendInterval;
