@@ -32,11 +32,11 @@ namespace Nox.Relay.Runtime {
 
 		public void OnInitializeMain(IMainModCoreAPI api) {
 			CoreAPI = api;
-			// Pre-load MsQuic native libraries using mod-aware plugin folders
-			StirlingLabs.MsQuic.Bindings.MsQuic.Init(
-				api.LibAPI.GetNativePluginFolders(),
-				api.LibAPI.GetExtension()
-			);
+			// Preload MsQuic native libraries using mod-aware plugin folders
+			var fol = api.LibAPI.GetNativePluginFolders();
+			var ext = api.LibAPI.GetExtension();
+			api.LoggerAPI.LogDebug($"Initializing MsQuic with plugin folders: {string.Join(", ", fol)} and extension: {ext}");
+			MsQuic.Init(fol, ext);
 			_events = new[] {
 				api.EventAPI.Subscribe("controller_changed", OnControllerChanged),
 				api.EventAPI.Subscribe("controller_avatar_changed", OnAvatarOfControllerChanged)
@@ -47,7 +47,7 @@ namespace Nox.Relay.Runtime {
 			// CoreAPI.LoggerAPI.Log("Starting relay tests...");
 			// TestRelay().Forget();
 			#endif
-			
+
 		}
 
 		#if UNITY_EDITOR
@@ -67,7 +67,7 @@ namespace Nox.Relay.Runtime {
 			CoreAPI.LoggerAPI.Log("Connected to relay server");
 
 			await UniTask.SwitchToMainThread();
-			
+
 			var handshake = await relay.Handshake();
 			if (handshake == null) {
 				CoreAPI.LoggerAPI.LogError("Relay handshake failed");

@@ -16,7 +16,7 @@
         "Nox.Sessions",
         "Nox.Relay.Core",
         "Nox.Instances",
-        "api.nox.ui",
+        "Nox.Mods.UI",
         "Nox.Avatars",
         "Nox.Avatars.Parameters",
         "Nox.CCK.Avatars",

@@ -12,7 +12,7 @@ namespace Nox.Relay.Core.Connectors {
 	/// </summary>
 	[Obsolete("The relay server speaks QUIC only. Use QuicConnector instead.")]
 	public class UdpConnector : IConnector {
-		public const string ProtocolName = "udp";
+		public const string PROTOCOL_NAME = "udp";
 
 		private Socket               _socket;
 		private ushort               _bufferSize = 1024;
@@ -40,7 +40,7 @@ namespace Nox.Relay.Core.Connectors {
 		}
 
 		public string Protocol
-			=> ProtocolName;
+			=> PROTOCOL_NAME;
 
 		public bool IsConnected
 			=> _socket is { Connected: true };

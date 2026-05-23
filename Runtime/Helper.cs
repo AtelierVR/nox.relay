@@ -91,7 +91,7 @@ namespace Nox.Relay.Runtime {
 
 			foreach (var addr in connections) {
 				session.UpdateState(Status.Pending, $"Connecting to {addr}...", 0.1f);
-				var (proto, endPoint) = await ConnectorHelper.ParseIPEndPoint(addr);
+				var (proto, host, endPoint) = await ConnectorHelper.ParseIPEndPoint(addr);
 
 				con = ConnectorHelper.From(proto);
 				if (con == null) {
@@ -100,7 +100,7 @@ namespace Nox.Relay.Runtime {
 					continue;
 				}
 
-				if (!await con.Connect(endPoint.Address.ToString(), (ushort)endPoint.Port)) {
+				if (!await con.Connect(host, (ushort)endPoint.Port)) {
 					Logger.LogWarning($"Failed to connect to {addr}", session.Tag);
 					con = null;
 					continue;

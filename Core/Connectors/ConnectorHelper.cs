@@ -32,22 +32,22 @@ namespace Nox.Relay.Core.Connectors {
 			return true;
 		}
 
-		public static async UniTask<(string, IPEndPoint)> ParseIPEndPoint(string address) {
+		public static async UniTask<(string, string, IPEndPoint)> ParseIPEndPoint(string address) {
 			var uri     = new Uri(address);
 			var uriType = Uri.CheckHostName(uri.Host);
 
 			switch (uriType) {
 				case UriHostNameType.IPv4 or UriHostNameType.IPv6:
-					return (uri.Scheme, new IPEndPoint(IPAddress.Parse(uri.Host), uri.Port));
+					return (uri.Scheme, uri.Host, new IPEndPoint(IPAddress.Parse(uri.Host), uri.Port));
 				case UriHostNameType.Dns: {
 					var ip = await Dns.GetHostAddressesAsync(uri.Host);
 					if (ip.Length > 0)
-						return (uri.Scheme, new IPEndPoint(ip[0], uri.Port));
+						return (uri.Scheme, uri.Host, new IPEndPoint(ip[0], uri.Port));
 					break;
 				}
 			}
 
-			return (null, null);
+			return (null, null, null);
 		}
 
 
@@ -56,7 +56,7 @@ namespace Nox.Relay.Core.Connectors {
 				QuicConnector.PROTOCOL_NAME => new QuicConnector(),
 				#pragma warning disable CS0618 // legacy connectors kept for compile compatibility
 				TcpConnector.PROTOCOL_NAME => new TcpConnector(),
-				UdpConnector.ProtocolName  => new UdpConnector(),
+				UdpConnector.PROTOCOL_NAME  => new UdpConnector(),
 				#pragma warning restore CS0618
 				_ => null
 			};

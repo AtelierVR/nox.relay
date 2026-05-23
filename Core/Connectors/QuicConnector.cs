@@ -1,6 +1,9 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Net;
+using System.Runtime.ExceptionServices;
+using System.Security.Cryptography.Pkcs;
+using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
 using Cysharp.Threading.Tasks;
@@ -20,6 +23,9 @@ namespace Nox.Relay.Core.Connectors {
 		private readonly QuicClientConfiguration _config;
 
 		private QuicClientConnection _connection;
+		// Stores the TCS for the current Connect() call; shared with named callbacks
+		// so no lambda captures are needed (IL2CPP AOT safety).
+		private TaskCompletionSource<bool> _connectTcs;
 		// Streams opened for outgoing requests — tracked so we can ensure they are
 		// fully shut down before the registration is disposed. (Prevents the
 		// MsQuicClose crash where a native worker thread is still delivering a
@@ -75,72 +81,93 @@ namespace Nox.Relay.Core.Connectors {
 
 			_connection = new QuicClientConnection(_config);
 
-			// Set provisional endpoint from the call parameters so EndPoint is
-			// available as soon as Connect() completes, regardless of whether
-			// the MsQuic RemoteEndPoint is populated at Connected-event time.
 			if (IPAddress.TryParse(address, out var parsedIp))
 				_endPoint = new IPEndPoint(parsedIp, port);
 
-			// Accept any server certificate (relay servers use self-signed certs)
-			_connection.CertificateReceived += (peer, cert, chain, errFlags, errStatus) => 0; // QUIC_STATUS_SUCCESS
+			_connectTcs = new TaskCompletionSource<bool>();
 
-			var tcs = new TaskCompletionSource<bool>();
-
-			_connection.Connected += conn => {
-				_isConnected = true;
-				// Prefer the real remote endpoint if available; keep provisional otherwise
-				if (conn.RemoteEndPoint != null)
-					_endPoint = conn.RemoteEndPoint;
-				tcs.TrySetResult(true);
-				OnConnected?.Invoke(true);
-			};
-
-			_connection.ConnectionShutdown += (_, errorCode, initiatedByTransport, initiatedByPeer) => {
-				_isConnected = false;
-				var reason = initiatedByPeer
-					? "Server closed the connection"
-					: initiatedByTransport
-						? $"Transport error (code {errorCode})"
-						: $"Application closed the connection (code {errorCode})";
-				tcs.TrySetResult(false);
-				OnDisconnected?.Invoke(reason);
-			};
-
-			_connection.IncomingStream += (_, stream) => AttachStreamHandlers(stream);
-
-			_connection.DatagramReceived += (_, span) => {
-				// Copy immediately — the native span is only valid for the duration of this callback.
-				var data = span.ToArray();
-				// Dispatch processing to the Unity main thread so OnReceived subscribers
-				// can safely interact with Unity objects.
-				UniTask.Post(() => {
-					var buff = new Buffer();
-					buff.Write(data);
-					buff.Start();
-					OnReceived?.Invoke(buff);
-				});
-			};
+			_connection.Connected                  += HandleConnected;
+			_connection.ConnectionShutdown         += HandleConnectionShutdown;
+			_connection.IncomingStream             += HandleIncomingStream;
+			_connection.DatagramReceived           += HandleDatagramReceived;
+			_connection.UnobservedException        += HandleUnobservedException;
+			_connection.ConnectionShutdownComplete += HandleConnectionShutdownComplete;
+			_connection.CertificateReceived        += HandleCertificateReceived;
 
 			try {
+				Logger.LogDebug($"Starting connection to {address}:{port} with ALPN '{_connection.NegotiatedAlpn}'...", tag: nameof(QuicConnector));
 				// Start is fire-and-forget; Connected / ConnectionShutdown drive the TCS
 				_connection.Start(address, port);
 
+
 				var timeout  = Task.Delay(ConnectTimeoutMs);
-				var finished = await Task.WhenAny(tcs.Task, timeout).ConfigureAwait(false);
+				var finished = await Task.WhenAny(_connectTcs.Task, timeout).ConfigureAwait(false);
 
-				if (finished == timeout) {
-					OnConnected?.Invoke(false);
-					return false;
-				}
+				if (finished == timeout)
+					throw new TimeoutException($"Connection attempt to {address}:{port} timed out after {ConnectTimeoutMs}ms.");
 
-				return await tcs.Task.ConfigureAwait(false);
+				return await _connectTcs.Task.ConfigureAwait(false);
 			} catch (Exception ex) {
-				OnConnected?.Invoke(false);
-				_ = ex; // suppress unused-variable warning
+				Logger.LogError(new Exception($"Exception during Connect to {address}:{port}", ex), tag: nameof(QuicConnector));
+				await Close();
 				return false;
 			} finally {
 				await UniTask.SwitchToMainThread();
 			}
+		}
+		private int HandleCertificateReceived(QuicPeerConnection peer, X509Certificate2 certificate, SignedCms chain, uint deferredErrorFlags, int deferredStatus) {
+			Logger.LogDebug($"Certificate received from {peer.RemoteEndPoint}: Subject='{certificate.Subject}', Issuer='{certificate.Issuer}', DeferredErrorFlags={deferredErrorFlags}, DeferredStatus={deferredStatus}", tag: nameof(QuicConnector));
+			return 0; // Accept the certificate (no validation)
+		}
+		
+		private void HandleConnectionShutdownComplete(QuicPeerConnection sender, bool arg1, bool arg2, bool arg3) {
+			Logger.LogDebug($"ConnectionShutdownComplete for {sender.RemoteEndPoint} (byPeer={arg1}, byTransport={arg2}, appCloseInProgress={arg3})", tag: nameof(QuicConnector));
+		}
+
+		private void HandleUnobservedException(QuicPeerConnection sender, ExceptionDispatchInfo arg) {
+			Logger.LogError(new Exception($"Unobserved exception in connection to {sender.RemoteEndPoint}", arg.SourceException), tag: nameof(QuicConnector));
+			// No recovery possible — trigger shutdown logic to clean up and fire events.
+			try { sender.Shutdown(); } catch {
+				// ignored
+			}
+		}
+
+		// ── QuicClientConnection callbacks ──────────────────────────────────
+
+		private void HandleConnected(QuicClientConnection conn) {
+			Logger.LogDebug($"Connected to {conn.RemoteEndPoint} with ALPN '{conn.NegotiatedAlpn}'", tag: nameof(QuicConnector));
+			_isConnected = true;
+			_endPoint    = conn.RemoteEndPoint;
+			_connectTcs?.TrySetResult(true);
+			OnConnected?.Invoke(true);
+		}
+
+		private void HandleConnectionShutdown(QuicPeerConnection _, ulong errorCode, bool initiatedByTransport, bool initiatedByPeer) {
+			_isConnected = false;
+			var reason = initiatedByPeer
+				? "Server closed the connection"
+				: initiatedByTransport
+					? $"Transport error (code {errorCode})"
+					: $"Application closed the connection (code {errorCode})";
+			Logger.LogWarning($"ConnectionShutdown: {reason} (byPeer={initiatedByPeer}, byTransport={initiatedByTransport}, code={errorCode})", tag: nameof(QuicConnector));
+			_connectTcs?.TrySetResult(false);
+			OnDisconnected?.Invoke(reason);
+		}
+
+		private void HandleIncomingStream(QuicPeerConnection _, QuicStream stream)
+			=> AttachStreamHandlers(stream);
+
+		private void HandleDatagramReceived(QuicPeerConnection _, ReadOnlySpan<byte> span) {
+			// Copy immediately — the native span is only valid for the duration of this callback.
+			var data = span.ToArray();
+			// Dispatch processing to the Unity main thread so OnReceived subscribers
+			// can safely interact with Unity objects.
+			UniTask.Post(() => {
+				var buff = new Buffer();
+				buff.Write(data);
+				buff.Start();
+				OnReceived?.Invoke(buff);
+			});
 		}
 
 		// ── Stream helpers ───────────────────────────────────────────────────
@@ -271,9 +298,13 @@ namespace Nox.Relay.Core.Connectors {
 			// Drain any tracked streams whose ShutdownComplete did not fire
 			// (e.g. timed-out paths or streams opened but never started).
 			while (_openStreams.TryTake(out var s))
-				try { s.Dispose(); } catch { }
+				try { s.Dispose(); } catch {
+					// ignored
+				}
 
-			try { conn.Dispose(); } catch (Exception) { }
+			try { conn.Dispose(); } catch (Exception) {
+				// ignored
+			}
 		}
 
 		public async UniTask Dispose() {
@@ -282,7 +313,7 @@ namespace Nox.Relay.Core.Connectors {
 
 			if (_disposed)
 				return;
-			
+
 			_disposed    = true;
 			_isConnected = false;
 

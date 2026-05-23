@@ -54,7 +54,7 @@ namespace StirlingLabs.MsQuic.Bindings {
 					assemblyDir,
 					// 4. Editor package Plugins/ folder
 					Path.Combine(Application.dataPath, "..", "Packages", "nox.relay", "Plugins"),
-				}.Where(f => f != null).ToArray();
+				}.Where(f => f != null).ToArray() as string[];
 			}
 		}
 
