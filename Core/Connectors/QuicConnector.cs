@@ -1,9 +1,6 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Net;
-using System.Runtime.ExceptionServices;
-using System.Security.Cryptography.Pkcs;
-using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
 using Cysharp.Threading.Tasks;
@@ -81,63 +78,59 @@ namespace Nox.Relay.Core.Connectors {
 
 			_connection = new QuicClientConnection(_config);
 
+			// Set provisional endpoint from the call parameters so EndPoint is
+			// available as soon as Connect() completes, regardless of whether
+			// the MsQuic RemoteEndPoint is populated at Connected-event time.
 			if (IPAddress.TryParse(address, out var parsedIp))
 				_endPoint = new IPEndPoint(parsedIp, port);
 
+			// NO_CERTIFICATE_VALIDATION is already set in the config — no cert callback needed.
+			// (Adding a CertificateReceived lambda here would create a closure IL2CPP cannot
+			// reliably AOT-compile during the TLS handshake, which was the root cause of the
+			// standalone build timeout.)
+
 			_connectTcs = new TaskCompletionSource<bool>();
 
-			_connection.Connected                  += HandleConnected;
-			_connection.ConnectionShutdown         += HandleConnectionShutdown;
-			_connection.IncomingStream             += HandleIncomingStream;
-			_connection.DatagramReceived           += HandleDatagramReceived;
-			_connection.UnobservedException        += HandleUnobservedException;
-			_connection.ConnectionShutdownComplete += HandleConnectionShutdownComplete;
-			_connection.CertificateReceived        += HandleCertificateReceived;
+			// Named instance methods instead of lambdas: IL2CPP generates correct AOT
+			// trampolines for method-group delegates, whereas lambda closures that capture
+			// variables can silently fail inside native MsQuic callbacks in IL2CPP builds.
+			_connection.Connected            += HandleConnected;
+			_connection.ConnectionShutdown   += HandleConnectionShutdown;
+			_connection.IncomingStream       += HandleIncomingStream;
+			_connection.DatagramReceived     += HandleDatagramReceived;
 
 			try {
-				Logger.LogDebug($"Starting connection to {address}:{port} with ALPN '{_connection.NegotiatedAlpn}'...", tag: nameof(QuicConnector));
 				// Start is fire-and-forget; Connected / ConnectionShutdown drive the TCS
 				_connection.Start(address, port);
-
 
 				var timeout  = Task.Delay(ConnectTimeoutMs);
 				var finished = await Task.WhenAny(_connectTcs.Task, timeout).ConfigureAwait(false);
 
-				if (finished == timeout)
-					throw new TimeoutException($"Connection attempt to {address}:{port} timed out after {ConnectTimeoutMs}ms.");
+				if (finished == timeout) {
+					OnConnected?.Invoke(false);
+					return false;
+				}
 
 				return await _connectTcs.Task.ConfigureAwait(false);
 			} catch (Exception ex) {
-				Logger.LogError(new Exception($"Exception during Connect to {address}:{port}", ex), tag: nameof(QuicConnector));
-				await Close();
+				Logger.LogError($"[QuicConnector] Exception during Connect to {address}:{port} — {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}");
+				OnConnected?.Invoke(false);
 				return false;
 			} finally {
 				await UniTask.SwitchToMainThread();
 			}
 		}
-		private int HandleCertificateReceived(QuicPeerConnection peer, X509Certificate2 certificate, SignedCms chain, uint deferredErrorFlags, int deferredStatus) {
-			Logger.LogDebug($"Certificate received from {peer.RemoteEndPoint}: Subject='{certificate.Subject}', Issuer='{certificate.Issuer}', DeferredErrorFlags={deferredErrorFlags}, DeferredStatus={deferredStatus}", tag: nameof(QuicConnector));
-			return 0; // Accept the certificate (no validation)
-		}
-		
-		private void HandleConnectionShutdownComplete(QuicPeerConnection sender, bool arg1, bool arg2, bool arg3) {
-			Logger.LogDebug($"ConnectionShutdownComplete for {sender.RemoteEndPoint} (byPeer={arg1}, byTransport={arg2}, appCloseInProgress={arg3})", tag: nameof(QuicConnector));
-		}
-
-		private void HandleUnobservedException(QuicPeerConnection sender, ExceptionDispatchInfo arg) {
-			Logger.LogError(new Exception($"Unobserved exception in connection to {sender.RemoteEndPoint}", arg.SourceException), tag: nameof(QuicConnector));
-			// No recovery possible — trigger shutdown logic to clean up and fire events.
-			try { sender.Shutdown(); } catch {
-				// ignored
-			}
-		}
 
 		// ── QuicClientConnection callbacks ──────────────────────────────────
+		// Named instance methods instead of lambdas: IL2CPP generates correct AOT
+		// trampolines for method-group delegates. Lambda closures that capture local
+		// variables are compiled as compiler-generated closure classes whose AOT
+		// trampolines IL2CPP cannot always guarantee during native MsQuic callbacks.
 
 		private void HandleConnected(QuicClientConnection conn) {
-			Logger.LogDebug($"Connected to {conn.RemoteEndPoint} with ALPN '{conn.NegotiatedAlpn}'", tag: nameof(QuicConnector));
 			_isConnected = true;
-			_endPoint    = conn.RemoteEndPoint;
+			if (conn.RemoteEndPoint != null)
+				_endPoint = conn.RemoteEndPoint;
 			_connectTcs?.TrySetResult(true);
 			OnConnected?.Invoke(true);
 		}
@@ -149,7 +142,7 @@ namespace Nox.Relay.Core.Connectors {
 				: initiatedByTransport
 					? $"Transport error (code {errorCode})"
 					: $"Application closed the connection (code {errorCode})";
-			Logger.LogWarning($"ConnectionShutdown: {reason} (byPeer={initiatedByPeer}, byTransport={initiatedByTransport}, code={errorCode})", tag: nameof(QuicConnector));
+			Logger.LogWarning($"[QuicConnector] ConnectionShutdown: {reason} (byPeer={initiatedByPeer}, byTransport={initiatedByTransport}, code={errorCode})");
 			_connectTcs?.TrySetResult(false);
 			OnDisconnected?.Invoke(reason);
 		}
@@ -298,13 +291,9 @@ namespace Nox.Relay.Core.Connectors {
 			// Drain any tracked streams whose ShutdownComplete did not fire
 			// (e.g. timed-out paths or streams opened but never started).
 			while (_openStreams.TryTake(out var s))
-				try { s.Dispose(); } catch {
-					// ignored
-				}
+				try { s.Dispose(); } catch { }
 
-			try { conn.Dispose(); } catch (Exception) {
-				// ignored
-			}
+			try { conn.Dispose(); } catch (Exception) { }
 		}
 
 		public async UniTask Dispose() {
@@ -313,7 +302,7 @@ namespace Nox.Relay.Core.Connectors {
 
 			if (_disposed)
 				return;
-
+			
 			_disposed    = true;
 			_isConnected = false;
 
