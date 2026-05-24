@@ -5,6 +5,7 @@ using System.Threading;
 using Cysharp.Threading.Tasks;
 using Nox.Avatars;
 using Nox.Avatars.Parameters;
+using Nox.Avatars.Rigging;
 using Nox.Avatars.Runtime.Network;
 using Nox.CCK.Avatars;
 using Nox.CCK.Players;
@@ -31,16 +32,23 @@ namespace Nox.Relay.Runtime.Physicals {
 	private Rigidbody _rigidbody;
 	private IRuntimeAvatar RuntimeAvatar;
 	private CancellationTokenSource AvatarLoadingCts;
-	
-	// Variables pour l'interpolation fluide
-	private Vector3 _startPosition;
-	private Vector3 _targetPosition;
-	private Quaternion _startRotation;
-	private Quaternion _targetRotation;
-	private Vector3 _startScale;
-	private Vector3 _targetScale;
-	private float _interpolationTime;
+
+	// État d'interpolation par part (keyed by partId)
+	private struct PartInterpolationState {
+		public Vector3    StartPosition;
+		public Vector3    TargetPosition;
+		public Quaternion StartRotation;
+		public Quaternion TargetRotation;
+		public Vector3    StartScale;
+		public Vector3    TargetScale;
+		public float      PosTime;
+		public float      RotTime;
+		public float      ScaleTime;
+	}
+
+	private readonly Dictionary<ushort, PartInterpolationState> _partStates = new();
 	private float _tickInterval;
+	private IRiggingModule _riggingModule;
 
 	private new Rigidbody rigidbody
 		=> _rigidbody ??= gameObject.GetOrAddComponent<Rigidbody>();
@@ -50,100 +58,115 @@ namespace Nox.Relay.Runtime.Physicals {
 			Setup().Forget();
 		}
 
+	private static float Smoothstep(float t) => t * t * (3f - 2f * t);
+
 	private void Update() {
-		var part = Reference.Parts.GetValueOrDefault(PlayerRig.Base.ToIndex());
-		if (part == null) return;
+		if (Reference == null) return;
 
-		var dt = Time.deltaTime;
-		var tps = Reference.Reference.Room.Tps;
+		var dt        = Time.deltaTime;
+		var tps       = Reference.Reference.Room.Tps;
 		var threshold = Reference.Reference.Room.Threshold;
-
-		// Calculer l'intervalle entre deux ticks du serveur
 		_tickInterval = tps > 0 ? 1f / tps : 0.05f;
 
-		// Vérifier si nous avons reçu de nouvelles données du serveur
-		var newTargetPosition = part.Position;
-		var newTargetRotation = part.Rotation;
-		var newTargetScale = part.Scale;
+		foreach (var (partId, part) in Reference.Parts) {
+			var rig = partId.ToPlayerRig();
 
-		// Si la cible a changé significativement, réinitialiser l'interpolation
-		if (Vector3.Distance(newTargetPosition, _targetPosition) > threshold) {
-			_startPosition = transform.position;
-			_targetPosition = newTargetPosition;
-			_interpolationTime = 0f;
-		}
+			var newTargetPos = part.Position;
+			var newTargetRot = part.Rotation;
+			var newTargetSca = part.Scale;
 
-		if (Quaternion.Angle(newTargetRotation, _targetRotation) > threshold) {
-			_startRotation = transform.rotation;
-			_targetRotation = newTargetRotation;
-			_interpolationTime = 0f;
-		}
+			if (!_partStates.TryGetValue(partId, out var state)) {
+				// Première fois : snap immédiat sans interpolation
+				state = new PartInterpolationState {
+					StartPosition  = newTargetPos,
+					TargetPosition = newTargetPos,
+					StartRotation  = newTargetRot,
+					TargetRotation = newTargetRot,
+					StartScale     = newTargetSca,
+					TargetScale    = newTargetSca,
+					PosTime        = _tickInterval,
+					RotTime        = _tickInterval,
+					ScaleTime      = _tickInterval,
+				};
+			} else {
+				if (Vector3.Distance(newTargetPos, state.TargetPosition) > threshold) {
+					state.StartPosition  = rig == PlayerRig.Base ? transform.position : state.TargetPosition;
+					state.TargetPosition = newTargetPos;
+					state.PosTime        = 0f;
+				}
+				if (Quaternion.Angle(newTargetRot, state.TargetRotation) > threshold) {
+					state.StartRotation  = rig == PlayerRig.Base ? transform.rotation : state.TargetRotation;
+					state.TargetRotation = newTargetRot;
+					state.RotTime        = 0f;
+				}
+				if (rig == PlayerRig.Base && Vector3.Distance(newTargetSca, state.TargetScale) > threshold) {
+					state.StartScale  = transform.localScale;
+					state.TargetScale = newTargetSca;
+					state.ScaleTime   = 0f;
+				}
+			}
 
-		if (Vector3.Distance(newTargetScale, _targetScale) > threshold) {
-			_startScale = transform.localScale;
-			_targetScale = newTargetScale;
-		}
+			state.PosTime   += dt;
+			state.RotTime   += dt;
+			state.ScaleTime += dt;
 
-		// Incrémenter le temps d'interpolation
-		_interpolationTime += dt;
+			var tPos   = Smoothstep(Mathf.Clamp01(state.PosTime   / _tickInterval));
+			var tRot   = Smoothstep(Mathf.Clamp01(state.RotTime   / _tickInterval));
+			var tScale = Smoothstep(Mathf.Clamp01(state.ScaleTime / _tickInterval));
 
-		// Calculer le facteur d'interpolation (de 0 à 1 sur la durée d'un tick)
-		var t = Mathf.Clamp01(_interpolationTime / _tickInterval);
+			if (rig == PlayerRig.Base) {
+				// Position
+				if (Vector3.Distance(state.StartPosition, state.TargetPosition) > threshold * 0.1f) {
+					transform.position = Vector3.Lerp(state.StartPosition, state.TargetPosition, tPos);
+					if (dt > 0)
+						rigidbody.linearVelocity = (state.TargetPosition - transform.position) / _tickInterval;
+				} else {
+					transform.position       = state.TargetPosition;
+					rigidbody.linearVelocity = part.Velocity;
+				}
 
-		// Utiliser une courbe de lissage (smoothstep) pour éviter les à-coups
-		t = t * t * (3f - 2f * t);
+				// Rotation
+				if (Quaternion.Angle(state.StartRotation, state.TargetRotation) > threshold * 0.1f) {
+					transform.rotation = Quaternion.Slerp(state.StartRotation, state.TargetRotation, tRot);
+					var deltaRot = state.TargetRotation * Quaternion.Inverse(transform.rotation);
+					deltaRot.ToAngleAxis(out var angle, out var axis);
+					if (angle > 180f) angle -= 360f;
+					if (_tickInterval > 0)
+						rigidbody.angularVelocity = axis * (angle * Mathf.Deg2Rad / _tickInterval);
+				} else {
+					transform.rotation        = state.TargetRotation;
+					rigidbody.angularVelocity = part.Angular;
+				}
 
-		// Interpoler la position
-		if (Vector3.Distance(_startPosition, _targetPosition) > threshold * 0.1f) {
-			transform.position = Vector3.Lerp(_startPosition, _targetPosition, t);
-			
-			// Mettre à jour la vélocité pour la physique
-			if (dt > 0)
-				rigidbody.linearVelocity = (_targetPosition - transform.position) / _tickInterval;
-		} else {
-			transform.position = _targetPosition;
-			rigidbody.linearVelocity = part.Velocity;
-		}
+				// Scale
+				transform.localScale = Vector3.Distance(state.StartScale, state.TargetScale) > threshold * 0.1f
+					? Vector3.Lerp(state.StartScale, state.TargetScale, tScale)
+					: state.TargetScale;
+			} else if (_riggingModule != null && _riggingModule.TryGetPart(partId, out var rigPart)) {
+				var rigTransform = rigPart.GetTransform();
+				if (rigTransform != null) {
+					var interpolatedPos = Vector3.Distance(state.StartPosition, state.TargetPosition) > threshold * 0.1f
+						? Vector3.Lerp(state.StartPosition, state.TargetPosition, tPos)
+						: state.TargetPosition;
+					var interpolatedRot = Quaternion.Angle(state.StartRotation, state.TargetRotation) > threshold * 0.1f
+						? Quaternion.Slerp(state.StartRotation, state.TargetRotation, tRot)
+						: state.TargetRotation;
+					rigTransform.SetPositionAndRotation(interpolatedPos, interpolatedRot);
+				}			}
 
-		// Interpoler la rotation
-		if (Quaternion.Angle(_startRotation, _targetRotation) > threshold * 0.1f) {
-			transform.rotation = Quaternion.Slerp(_startRotation, _targetRotation, t);
-			
-			// Mettre à jour la vélocité angulaire
-			var deltaRotation = _targetRotation * Quaternion.Inverse(transform.rotation);
-			deltaRotation.ToAngleAxis(out var angle, out var axis);
-			if (angle > 180f) angle -= 360f;
-			if (_tickInterval > 0)
-				rigidbody.angularVelocity = axis * (angle * Mathf.Deg2Rad / _tickInterval);
-		} else {
-			transform.rotation = _targetRotation;
-			rigidbody.angularVelocity = part.Angular;
-		}
-
-		// Interpoler l'échelle
-		if (Vector3.Distance(_startScale, _targetScale) > threshold * 0.1f) {
-			transform.localScale = Vector3.Lerp(_startScale, _targetScale, t);
-		} else {
-			transform.localScale = _targetScale;
+			_partStates[partId] = state;
 		}
 	}
 
 	private async UniTask Setup() {
+		_partStates.Clear();
+
 		if (Reference?.Parts.TryGetValue(PlayerRig.Base.ToIndex(), out var part) == true) {
-			transform.position = part.Position;
-			transform.rotation = part.Rotation;
-			transform.localScale = part.Scale;
-			rigidbody.linearVelocity = part.Velocity;
+			transform.position        = part.Position;
+			transform.rotation        = part.Rotation;
+			transform.localScale      = part.Scale;
+			rigidbody.linearVelocity  = part.Velocity;
 			rigidbody.angularVelocity = part.Angular;
-			
-			// Initialiser les variables d'interpolation
-			_startPosition = part.Position;
-			_targetPosition = part.Position;
-			_startRotation = part.Rotation;
-			_targetRotation = part.Rotation;
-			_startScale = part.Scale;
-			_targetScale = part.Scale;
-			_interpolationTime = 0f;
 			_tickInterval = Reference.Reference.Room.Tps > 0 ? 1f / Reference.Reference.Room.Tps : 0.05f;
 		}
 
@@ -266,6 +289,8 @@ namespace Nox.Relay.Runtime.Physicals {
 
 			var old = RuntimeAvatar;
 			RuntimeAvatar = runtimeAvatar;
+			_partStates.Clear();
+			_riggingModule = null;
 
 			if (RuntimeAvatar == null) {
 				Logger.LogWarning("Setting avatar to null, removing current avatar.");
@@ -305,6 +330,9 @@ namespace Nox.Relay.Runtime.Physicals {
 				Logger.LogDebug("Waiting for Animator to be ready...");
 				await UniTask.WaitUntil(() => animator.runtimeAnimatorController);
 			}
+
+			_riggingModule = RuntimeAvatar?.Descriptor?.Anchor
+				?.GetComponentInChildren<IRiggingModule>(true);
 
 			var parameters = parameterModule.GetParameters();
 			foreach (var param in parameters) {
