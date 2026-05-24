@@ -46,15 +46,15 @@ namespace Nox.Relay.Runtime {
 			=> false;
 
 		public virtual void Update() {
-			switch (IsVisible) {
-				// instantiate physical if needed
-				case true when !HasPhysical():
+			if (IsVisible) {
+				if (!HasPhysical())
 					MakePhysical();
-					break;
-				// destroy physical if not needed
-				case false when HasPhysical():
+				else if (Physical.IsDestroying)
+					// Physical exists but is hidden (delayed destroy pending): cancel and re-enable
+					Physical.CancelDestroy();
+			} else {
+				if (HasPhysical() && !Physical.IsDestroying)
 					DestroyPhysical();
-					break;
 			}
 		}
 
@@ -83,9 +83,16 @@ namespace Nox.Relay.Runtime {
 				return true;
 			Physical = InstantiatePhysical();
 			var success = Physical;
-			if (success)
+			if (success) {
+					Physical.ActuallyDestroyed.AddListener(HandlePhysicalActuallyDestroyed);
 				OnPhysicalCreated();
+			}
 			return success;
+		}
+
+		private void HandlePhysicalActuallyDestroyed() {
+			Physical = null;
+			OnPhysicalDestroyed();
 		}
 
 		/// <summary>
@@ -111,8 +118,13 @@ namespace Nox.Relay.Runtime {
 			if (!Physical)
 				return;
 			Physical.Destroy(immediate);
-			Physical = null;
-			OnPhysicalDestroyed();
+			if (immediate) {
+				// Actual destruction: clear state now (HandlePhysicalActuallyDestroyed won't fire)
+				Physical = null;
+				OnPhysicalDestroyed();
+			}
+			// Non-immediate: Physical stays referenced while hidden.
+			// HandlePhysicalActuallyDestroyed() will clear it after the delay.
 		}
 
 		public void Dispose() {

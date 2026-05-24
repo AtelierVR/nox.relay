@@ -323,6 +323,7 @@ namespace Nox.Relay.Runtime.Players {
 
 		override protected void OnPhysicalDestroyed() {
 			Context.Context.OnPlayerVisibilityChangedHandler(this, false);
+			SynchronizeAvatarParameters(null, IsLocal);
 		}
 
 		#endregion

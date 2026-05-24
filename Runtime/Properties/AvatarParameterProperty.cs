@@ -62,10 +62,19 @@ namespace Nox.Relay.Runtime {
 			=> _refreshedValue.ToBytes();
 
 		public void Deserialize(byte[] data) {
-			_parameter?.Set(data);
+			try {
+				_parameter.Set(data);
+			} catch	{
+				// ignore
+			}
+
 			object converted;
-			try   { converted = _parameter?.Get() ?? data; }
-			catch { converted = data; }
+			try   { 
+				converted = _parameter.Get(); 
+			} catch { 
+				converted = data;
+			}
+
 			_cachedValue    = converted;
 			_refreshedValue = converted;
 			UpdatedAt       = DateTime.UtcNow;

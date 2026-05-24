@@ -1,5 +1,8 @@
 using System;
+using System.Threading;
+using Cysharp.Threading.Tasks;
 using Nox.CCK.Development;
+using Nox.CCK.Events;
 using Nox.CCK.Sessions;
 using Nox.CCK.Utils;
 using Nox.Relay.Runtime.Players;
@@ -11,26 +14,67 @@ namespace Nox.Relay.Runtime.Physicals {
 	public abstract class Physical : Nox.Entities.Physical, IGizmos {
 		protected Player Reference { get; set; }
 
-		public DateTime DelayDestroyed { get; private set; } = DateTime.MinValue;
+		// DateTime.MaxValue = "no delayed destruction scheduled"
+		public DateTime DelayDestroyed { get; private set; } = DateTime.MaxValue;
+
+		public bool IsDestroying => DelayDestroyed != DateTime.MaxValue;
+
+		private CancellationTokenSource _destroyCts;
 
 		public void Destroy(bool immediate = false) {
-			if (immediate || !gameObject || DelayDestroyed <= DateTime.UtcNow) {
+			if (immediate || !gameObject) {
+				_destroyCts?.Cancel();
 				gameObject?.Destroy();
 				return;
 			}
 
-			if (!gameObject.activeSelf)
+			// Already scheduling countdown — nothing to do
+			if (IsDestroying)
 				return;
 
+			// Hide now and schedule actual destruction (cancellable if re-used later)
+			_destroyCts?.Cancel();
+			_destroyCts = new CancellationTokenSource();
 			DelayDestroyed = DateTime.UtcNow.AddSeconds(Settings.ClearPhysicalAfterSeconds);
-			gameObject.SetActive(false);
+			if (gameObject.activeSelf)
+				gameObject.SetActive(false);
+			DestroyAfterDelay(_destroyCts.Token).Forget();
 		}
 
-		private void OnDestroy()
-			=> Destroy(true);
+		private async UniTaskVoid DestroyAfterDelay(CancellationToken ct) {
+			await UniTask.Delay(
+				TimeSpan.FromSeconds(Settings.ClearPhysicalAfterSeconds),
+				cancellationToken: ct
+			);
+			if (!ct.IsCancellationRequested)
+				gameObject?.Destroy();
+		}
 
-		virtual protected void OnEnable()
-			=> DelayDestroyed = DateTime.MinValue;
+		/// <summary>Cancels the pending delayed destruction and re-activates the GameObject.</summary>
+		public void CancelDestroy() {
+			_destroyCts?.Cancel();
+			_destroyCts  = null;
+			DelayDestroyed = DateTime.MaxValue;
+			gameObject.SetActive(true);
+		}
+
+		/// <summary>Fired when the GameObject is actually destroyed (not just hidden).</summary>
+		public readonly NoxEvent ActuallyDestroyed = new();
+
+		private void OnDestroy() {
+			_destroyCts?.Cancel();
+			ActuallyDestroyed.Invoke();
+		}
+
+		virtual protected void OnEnable() {
+			_destroyCts?.Cancel();
+			DelayDestroyed = DateTime.MaxValue;
+		}
+
+		virtual protected void OnDisable() {
+			if (IsDestroying) return;
+			Destroy();
+		}
 
 		public void OnDrawGizmos() {
 			if (Reference != null) {
