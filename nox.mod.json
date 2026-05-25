@@ -6,7 +6,7 @@
   ],
   "name": "Relay Networking",
   "version": "1.0.0",
-  "description": "Provides relay networking functionality.",
+  "description": "Relay-based networking for peer-to-peer session connectivity.",
   "license": "GPL-3.0",
   "icon": null,
   "contact": {

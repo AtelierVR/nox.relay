@@ -1,5 +1,6 @@
 {
   "name": "nox.relay",
-  "displayName": "Nox - Relay",
-  "version": "1.0.0"
+  "displayName": "Nox - Relay Networking",
+  "version": "1.0.0",
+  "description": "Relay-based networking for peer-to-peer session connectivity."
 }
