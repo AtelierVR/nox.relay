@@ -3,12 +3,12 @@ using Nox.CCK.Utils;
 using Nox.Relay.Core.Types.Contents.Rooms;
 using Buffer = Nox.CCK.Utils.Buffer;
 
-namespace Nox.Relay.Core.Types.Voice {
+namespace Nox.Relay.Core.Types.Stream {
 	/// <summary>
-	/// Sub-types within the <c>Voice(0x14)</c> packet.
+	/// Sub-types within the <c>Stream(0x14)</c> packet.
 	/// </summary>
-	public enum VoiceSubType : byte {
-		/// <summary>Audio sample: [channel_id:u32][level_flags:u8][sample:bytes]</summary>
+	public enum StreamSubType : byte {
+		/// <summary>Audio/video sample: [channel_id:u32][level_flags:u8][sample:bytes]</summary>
 		Sample = 0x00,
 
 		/// <summary>Hearing control: [listener_id:u16][speaker_id:u16][control_flags:u8]</summary>
@@ -16,9 +16,9 @@ namespace Nox.Relay.Core.Types.Voice {
 	}
 
 	/// <summary>
-	/// Voice packet sent as a QUIC datagram (sub-type <c>Voice</c>).
+	/// Stream packet sent as a QUIC datagram (sub-type <c>Stream</c>).
 	/// After the outer <c>[iid:u8]</c> prefix (added by <c>Room.Emit</c>),
-	/// the payload begins with a <see cref="VoiceSubType"/> byte.
+	/// the payload begins with a <see cref="StreamSubType"/> byte.
 	/// <para>
 	/// <b>Sample</b> (0x00):
 	/// <c>[sub_type:0x00][channel_id:u32][level_flags:u8][sample:bytes…]</c>
@@ -28,26 +28,38 @@ namespace Nox.Relay.Core.Types.Voice {
 	/// <c>[sub_type:0x01][listener_id:u16][speaker_id:u16][control_flags:u8]</c>
 	/// </para>
 	/// </summary>
-	public class VoiceRequest : RoomRequest {
+	public class StreamRequest : RoomRequest {
 		/// <summary>Sub-type identifying the payload structure.</summary>
-		public VoiceSubType SubType;
+		public StreamSubType SubType;
 
 		// ── Sample fields ──
+
+		/// <summary>Local player ID (sent as hint; server uses authenticated ID).</summary>
+		public ushort PlayerId;
 
 		/// <summary>Voice channel identifier (CRC32, e.g. <see cref="ChannelId.Proximity"/>).</summary>
 		public uint ChannelId = Nox.Relay.Core.Types.Stream.ChannelId.Voice;
 
 		/// <summary>
-		/// Level flags. Bits 0-1: voice level (0=Whisper, 1=Normal, 2=Broadcast).
-		/// </summary>
+	/// Level flags.
+	/// <para>Bits 0-1: distance mode (0=Normal, 1=Whisper, 2=Broadcast).</para>
+	/// <para>Bit 2: Group flag — when set, <see cref="GroupId"/> follows after this byte.</para>
+	/// <para>Bits 3-7: Reserved.</para>
+	/// </summary>
 		public byte LevelFlags;
+
+		/// <summary>Group ID (present when Bit 2 of <see cref="LevelFlags"/> is set).</summary>
+		public ushort GroupId;
+
+		/// <summary>Whether a group ID is present in the sample packet.</summary>
+		public bool HasGroup
+			=> (LevelFlags & 0b_0000_0100) != 0;
 
 		/// <summary>Opus-encoded audio samples (Sample sub-type).</summary>
 		public byte[] Sample = Array.Empty<byte>();
 
-		/// <summary>Convenience: get/set voice level from LevelFlags.</summary>
-		public byte VoiceLevel {
-			get => (byte)(LevelFlags & 0b_0000_0011);
+		/// <summary>Convenience: get/set distance mode from LevelFlags.</summary>
+		public byte DistanceMode {
 			set => LevelFlags = (byte)((LevelFlags & 0b_1111_1100) | (value & 0b_0000_0011));
 		}
 
@@ -74,12 +86,21 @@ namespace Nox.Relay.Core.Types.Voice {
 
 		/// <summary>
 		/// Create a Sample sub-type request.
-		/// </summary>
-		public static VoiceRequest MakeSample(uint channelId, byte levelFlags, byte[] sample) {
-			return new VoiceRequest {
-				SubType    = VoiceSubType.Sample,
-				ChannelId  = channelId,
-				LevelFlags = levelFlags,
+	/// PlayerId is NOT serialized to the wire — the relay server resolves the
+	/// authenticated player from the QUIC connection and injects it in the broadcast.
+	/// </summary>
+	/// <param name="channelId">Stream channel identifier.</param>
+	/// <param name="distanceMode">Distance mode (0=Normal, 1=Whisper, 2=Broadcast).</param>
+	/// <param name="sample">Encoded audio/video sample bytes.</param>
+	/// <param name="groupId">Optional group ID (sets the Group flag bit).</param>
+	public static StreamRequest MakeSample(uint channelId, byte distanceMode, byte[] sample, ushort groupId = 0) {
+		byte flags = (byte)(distanceMode & 0b_0000_0011);
+		if (groupId != 0)
+			flags |= 0b_0000_0100;
+		return new StreamRequest {
+			SubType    = StreamSubType.Sample,
+			PlayerId   = 0, // not serialized but kept for local reference
+				GroupId    = groupId,
 				Sample     = sample ?? Array.Empty<byte>(),
 			};
 		}
@@ -87,9 +108,9 @@ namespace Nox.Relay.Core.Types.Voice {
 		/// <summary>
 		/// Create a Control sub-type request.
 		/// </summary>
-		public static VoiceRequest MakeControl(ushort listenerId, ushort speakerId, bool canHear) {
-			return new VoiceRequest {
-				SubType    = VoiceSubType.Control,
+		public static StreamRequest MakeControl(ushort listenerId, ushort speakerId, bool canHear) {
+			return new StreamRequest {
+				SubType    = StreamSubType.Control,
 				ListenerId = listenerId,
 				SpeakerId  = speakerId,
 				CanHear    = canHear,
@@ -101,13 +122,16 @@ namespace Nox.Relay.Core.Types.Voice {
 			buffer.Write((byte)SubType);
 
 			switch (SubType) {
-				case VoiceSubType.Sample:
+				case StreamSubType.Sample:
+					// Note: PlayerId is NOT written — server resolves it from the connection.
 					buffer.Write(ChannelId);
 					buffer.Write(LevelFlags);
+					if (HasGroup)
+						buffer.Write(GroupId);
 					buffer.Write(Sample);
 					break;
 
-				case VoiceSubType.Control:
+				case StreamSubType.Control:
 					buffer.Write(ListenerId);
 					buffer.Write(SpeakerId);
 					buffer.Write(ControlFlags);

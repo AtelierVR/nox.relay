@@ -9,6 +9,7 @@ using Nox.Controllers;
 using Nox.Relay.Core;
 using Nox.Relay.Core.Connectors;
 using Nox.Relay.Core.Types.Latency;
+using Nox.Microphone;
 using Nox.Sessions;
 using Nox.Users;
 using Nox.Worlds;
@@ -33,7 +34,7 @@ namespace Nox.Relay.Runtime {
 		public void OnInitializeMain(IMainModCoreAPI api) {
 			CoreAPI = api;
 			// Preload MsQuic native libraries using mod-aware plugin folders
-			var fol = api.LibAPI.GetNativePluginFolders();
+			var fol = api.LibAPI.GetFolders();
 			var ext = api.LibAPI.GetExtension();
 			api.LoggerAPI.LogDebug($"Initializing MsQuic with plugin folders: {string.Join(", ", fol)} and extension: {ext}");
 			MsQuic.Init(fol, ext);
@@ -194,5 +195,10 @@ namespace Nox.Relay.Runtime {
 			=> CoreAPI.ModAPI
 				.GetMod("avatar")
 				.GetInstance<IAvatarAPI>();
+
+		internal static IMicrophoneAPI MicrophoneAPI
+			=> CoreAPI.ModAPI
+				.GetMod("microphone")
+				.GetInstance<IMicrophoneAPI>();
 	}
 }

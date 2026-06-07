@@ -8,9 +8,11 @@ using Nox.CCK.Avatars;
 using Nox.CCK.Players;
 using Nox.CCK.Utils;
 using Nox.Entities;
+using Nox.Microphone.Players;
 using Nox.Players;
 using Nox.Relay.Core.Rooms;
 using Nox.Relay.Core.Types.Transform;
+using Nox.Relay.Runtime.Voice;
 using Nox.Users;
 using Nox.Worlds.Spawns;
 using UnityEngine;
@@ -19,7 +21,7 @@ using CorePlayer = Nox.Relay.Core.Players.Player;
 
 namespace Nox.Relay.Runtime.Players {
 
-	public abstract class Player : Entity, IPlayer, IPlayerAvatar {
+	public abstract class Player : Entity, IPlayer, IPlayerAvatar, IPlayerVoice {
 
 		protected Player(Entities context, CorePlayer player) : base(context, player.Id) {
 			Reference  = player;
@@ -324,6 +326,55 @@ namespace Nox.Relay.Runtime.Players {
 		override protected void OnPhysicalDestroyed() {
 			Context.Context.OnPlayerVisibilityChangedHandler(this, false);
 			SynchronizeAvatarParameters(null, IsLocal);
+		}
+
+		#endregion
+
+		#region IPlayerVoice Implementation
+
+		/// <summary>Current voice audio source. Set by VoiceReceiver (remote) or MicrophoneConnector (local).</summary>
+		protected IAudio _audio;
+
+		public ListenMode Listen => VoicePerms?.Listen ?? ListenMode.Normal;
+
+		public SpeakMode Speak {
+			get => VoicePerms?.Speak ?? SpeakMode.Normal;
+			set {
+				var p = VoicePerms;
+				if (p != null) p.Speak = value;
+			}
+		}
+
+		public virtual IAudio Audio => _audio;
+
+		public virtual LevelFlags Level {
+			get {
+				var p = VoicePerms;
+				if (p == null || !p.Speaking) return LevelFlags.None;
+				return LevelFlags.Speaking | p.Speak switch {
+					SpeakMode.Whisper   => LevelFlags.Whisper,
+					SpeakMode.Broadcast => LevelFlags.Broadcast,
+					_                   => LevelFlags.Normal
+				};
+			}
+		}
+
+		/// <summary>
+		/// Lazy-initialized voice permissions for this player.
+		/// Retrieved from <see cref="VoiceManager"/> on first access.
+		/// </summary>
+		private VoicePermissions _voicePermissions;
+		private VoiceManager _voiceManager;
+
+		private VoicePermissions VoicePerms {
+			get {
+				if (_voicePermissions == null) {
+					_voiceManager = Context.Context.VoiceManager;
+					if (_voiceManager != null)
+						_voicePermissions = _voiceManager.GetOrCreatePermissions(this);
+				}
+				return _voicePermissions;
+			}
 		}
 
 		#endregion

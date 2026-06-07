@@ -22,6 +22,7 @@ using Nox.Relay.Core.Types.Quit;
 using Nox.Relay.Core.Types.Transform;
 using Nox.Relay.Core.Types.Traveling;
 using Nox.Relay.Runtime.Players;
+using Nox.Relay.Runtime.Voice;
 using Nox.Sessions;
 using Nox.Worlds;
 using UnityEngine;
@@ -43,6 +44,7 @@ namespace Nox.Relay.Runtime {
 		readonly internal Entities InterEntities;
 		internal Core.Relay Adapter;
 		internal Room Room;
+		public VoiceManager VoiceManager { get; private set; }
 
 		public UnityEvent OnConnected { get; } = new();
 		public UnityEvent<string> OnDisconnected { get; } = new();
@@ -133,6 +135,9 @@ namespace Nox.Relay.Runtime {
 		public async UniTask Dispose() {
 			Logger.LogDebug("Disposing session", tag: Tag);
 
+			VoiceManager?.Dispose();
+			VoiceManager = null;
+
 			if (Adapter != null) {
 				Adapter.Connector.OnDisconnected.RemoveListener(OnDisconnectedHandler);
 				Adapter.Connector.OnConnected.RemoveListener(OnConnectedHandler);
@@ -156,6 +161,9 @@ namespace Nox.Relay.Runtime {
 
 			foreach (var player in entities)
 				player.Update();
+
+			// Update voice system (mic capture + send)
+			VoiceManager?.Update();
 
 			var tps = Room?.Tps ?? 0;
 			if (tps != _lastKnownTps) {
@@ -349,6 +357,11 @@ namespace Nox.Relay.Runtime {
 			Room.Threshold              = @event.Threshold;
 			Room.RenderEntity           = @event.RenderEntity;
 			Room.PropertyResendInterval = @event.PropertyResendInterval;
+
+			// Initialize voice chat system once Room is available
+			if (VoiceManager == null) {
+				VoiceManager = new VoiceManager(this);
+			}
 
 			if (travel)
 				Room.Traveling(TravelingRequest.Travel()).Forget();

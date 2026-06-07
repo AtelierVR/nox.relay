@@ -16,7 +16,7 @@ using Nox.Relay.Core.Types.Rooms;
 using Nox.Relay.Core.Types.ServerConfig;
 using Nox.Relay.Core.Types.Transform;
 using Nox.Relay.Core.Types.Traveling;
-using Nox.Relay.Core.Types.Voice;
+using Nox.Relay.Core.Types.Stream;
 using UnityEngine.Events;
 using Buffer = Nox.CCK.Utils.Buffer;
 
@@ -154,9 +154,11 @@ namespace Nox.Relay.Core.Rooms {
 		public UnityEvent<ServerConfigResponse> OnServerConfig { get; } = new();
 
 		/// <summary>
-		/// Event invoked when voice audio is received from a remote player.
+		/// Event invoked when stream data is received from a remote player.
+		/// Both <see cref="StreamSubType.Sample"/> and <see cref="StreamSubType.Control"/>
+		/// arrive through this event — check <c>voiceEvent.SubType</c> to distinguish.
 		/// </summary>
-		public UnityEvent<VoiceEvent> OnVoice { get; } = new();
+		public UnityEvent<StreamEvent> OnStream { get; } = new();
 
 		/// <summary>
 		/// Handles the reception of data for this relay room.
@@ -200,8 +202,8 @@ namespace Nox.Relay.Core.Rooms {
 				case ResponseType.ServerConfig:
 					HandleServerConfig(state, buffer);
 					break;
-				case ResponseType.Voice:
-					HandleVoice(state, buffer);
+				case ResponseType.Stream:
+					HandleStream(state, buffer);
 					break;
 				case ResponseType.Custom:
 				case ResponseType.Traveling:
@@ -340,14 +342,14 @@ namespace Nox.Relay.Core.Rooms {
 			OnServerConfig.Invoke(response);
 		}
 
-		private void HandleVoice(ushort state, Buffer buffer) {
-			var voice = new VoiceEvent { State = state, Connection = Connection, Room = this };
-			if (!voice.FromBuffer(buffer)) {
-				Logger.LogWarning("Failed to parse VoiceEvent", tag: Tag);
+		private void HandleStream(ushort state, Buffer buffer) {
+			var streamEvent = new StreamEvent { State = state, Connection = Connection, Room = this };
+			if (!streamEvent.FromBuffer(buffer)) {
+				Logger.LogWarning("Failed to parse StreamEvent", tag: Tag);
 				return;
 			}
 
-			OnVoice.Invoke(voice);
+			OnStream.Invoke(streamEvent);
 		}
 
 
@@ -475,10 +477,10 @@ namespace Nox.Relay.Core.Rooms {
 		/// </summary>
 		/// <param name="request">Voice request carrying the raw PCM sample.</param>
 		/// <returns><c>true</c> if the datagram was queued successfully.</returns>
-		public async UniTask<bool> Voice(VoiceRequest request)
+		public async UniTask<bool> Stream(StreamRequest request)
 			=> (await Emit(
 				request.ToBuffer(),
-				RequestType.Voice,
+				RequestType.Stream,
 				Connection.NextState()
 			)).Success;
 

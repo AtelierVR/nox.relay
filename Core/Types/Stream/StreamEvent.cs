@@ -3,14 +3,13 @@ using Nox.CCK.Utils;
 using Nox.Relay.Core.Types.Content.Rooms;
 using Buffer = Nox.CCK.Utils.Buffer;
 
-namespace Nox.Relay.Core.Types.Voice {
+namespace Nox.Relay.Core.Types.Stream {
 	/// <summary>
-	/// Server broadcast event carrying voice data from a remote player.
+	/// Server broadcast event carrying stream data from a remote player.
 	/// Received as a QUIC datagram. The outer <c>[iid:u8]</c> is already
 	/// stripped by the time this event is parsed.
 	/// <para>
-	/// Wire format:
-	/// <c>[sub_type:u8]</c> followed by sub-type specific fields.
+	/// Wire format: <c>[sub_type:u8]</c> followed by sub-type specific fields.
 	/// </para>
 	/// <para>
 	/// <b>Sample</b> (0x00):
@@ -21,56 +20,49 @@ namespace Nox.Relay.Core.Types.Voice {
 	/// <c>[sub_type:0x01][listener_id:u16][speaker_id:u16][control_flags:u8]</c>
 	/// </para>
 	/// </summary>
-	public class VoiceEvent : RoomResponse {
+	public class StreamEvent : RoomResponse {
 		/// <summary>Sub-type identifying the payload structure.</summary>
-		public VoiceSubType SubType;
+		public StreamSubType SubType;
 
 		// ── Sample fields ──
 
-		/// <summary>The player who sent the audio (Sample sub-type).</summary>
 		public ushort PlayerId;
-
-		/// <summary>Voice channel identifier (Sample sub-type).</summary>
 		public uint ChannelId;
-
-		/// <summary>Level flags. Bits 0-1: voice level.</summary>
 		public byte LevelFlags;
-
-		/// <summary>Opus-encoded audio samples (Sample sub-type).</summary>
+		public ushort GroupId;
 		public byte[] Sample = Array.Empty<byte>();
 
-		/// <summary>Voice level convenience.</summary>
-		public byte VoiceLevel
+		public bool HasGroup
+			=> (LevelFlags & 0b_0000_0100) != 0;
+
+		public byte DistanceMode
 			=> (byte)(LevelFlags & 0b_0000_0011);
 
 		// ── Control fields ──
 
-		/// <summary>The listener player (Control sub-type).</summary>
 		public ushort ListenerId;
-
-		/// <summary>The speaker player (Control sub-type).</summary>
 		public ushort SpeakerId;
-
-		/// <summary>Control flags (Control sub-type).</summary>
 		public byte ControlFlags;
 
 		public override bool FromBuffer(Buffer buffer) {
 			buffer.Start();
 
-			SubType = (VoiceSubType)buffer.ReadByte();
+			SubType = (StreamSubType)buffer.ReadByte();
 
 			switch (SubType) {
-				case VoiceSubType.Sample:
+				case StreamSubType.Sample:
 					PlayerId   = buffer.ReadUShort();
 					ChannelId  = (uint)buffer.ReadInt();
 					LevelFlags = buffer.ReadByte();
+					if ((LevelFlags & 0b_0000_0100) != 0)
+						GroupId = buffer.ReadUShort();
 					var remaining = (ushort)buffer.Remaining;
 					Sample = remaining > 0
 						? buffer.ReadBytes(remaining)
 						: Array.Empty<byte>();
 					break;
 
-				case VoiceSubType.Control:
+				case StreamSubType.Control:
 					ListenerId    = buffer.ReadUShort();
 					SpeakerId     = buffer.ReadUShort();
 					ControlFlags  = buffer.ReadByte();
@@ -82,9 +74,9 @@ namespace Nox.Relay.Core.Types.Voice {
 
 		public override string ToString()
 			=> SubType switch {
-				VoiceSubType.Sample =>
-					$"{GetType().Name}[Sample Player={PlayerId}, Channel={ChannelId:X8}, Level={VoiceLevel}, SampleBytes={Sample.Length}]",
-				VoiceSubType.Control =>
+				StreamSubType.Sample =>
+					$"{GetType().Name}[Sample Player={PlayerId}, Channel={ChannelId:X8}, Dist={DistanceMode}, Group={GroupId}, SampleBytes={Sample.Length}]",
+				StreamSubType.Control =>
 					$"{GetType().Name}[Control Listener={ListenerId}, Speaker={SpeakerId}, Flags={ControlFlags}]",
 				_ => $"{GetType().Name}[Unknown SubType={SubType}]"
 			};

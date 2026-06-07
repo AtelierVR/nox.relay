@@ -133,7 +133,7 @@ namespace Nox.Relay.Core {
 				case ResponseType.ServerConfig:
 				case ResponseType.Traveling:
 				case ResponseType.Teleport:
-				case ResponseType.Voice:
+				case ResponseType.Stream:
 				case ResponseType.Event:
 					HandleInstance(state, type, buffer.Clone(HeaderSize, length));
 					break;

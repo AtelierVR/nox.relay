@@ -8,6 +8,7 @@ using Nox.Avatars.Parameters;
 using Nox.Avatars.Rigging;
 using Nox.Avatars.Runtime.Network;
 using Nox.CCK.Avatars;
+using Nox.CCK.Events;
 using Nox.CCK.Players;
 using Nox.CCK.Utils;
 using Nox.Relay.Runtime.Players;
@@ -15,6 +16,9 @@ using UnityEngine;
 using Logger = Nox.CCK.Utils.Logger;
 namespace Nox.Relay.Runtime.Physicals {
 	public class RemotePhysical : Physical {
+		/// <summary>Fired when a new avatar is fully set up on this physical. Listeners may migrate voice/camera sources.</summary>
+		public readonly NoxEvent<IRuntimeAvatar> OnAvatarSet = new();
+
 		public new RemotePlayer Reference {
 			get => (RemotePlayer)base.Reference;
 			set {
@@ -196,7 +200,7 @@ namespace Nox.Relay.Runtime.Physicals {
 
 			await SetAvatar(avatar);
 
-			if (Reference != null && Reference.Avatar.IsValid())
+			if (Reference?.Avatar.IsValid() == true)
 				await SetAvatar(Reference.Avatar);
 		}
 
@@ -359,6 +363,8 @@ namespace Nox.Relay.Runtime.Physicals {
 			}
 
 			root.SetActive(true);
+
+			OnAvatarSet.Invoke(runtimeAvatar);
 
 			return true;
 		}

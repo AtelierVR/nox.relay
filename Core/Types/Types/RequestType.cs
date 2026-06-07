@@ -29,7 +29,7 @@ namespace Nox.Relay.Core.Types {
 		Properties = 0x0F,
 		PlayerUpdate = 0x12,
 		Rooms = 0x13,
-		Voice = 0x14,
+		Stream = 0x14,
 		Event = 0x15,
 	}
 }

@@ -2,16 +2,40 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Cysharp.Threading.Tasks;
+using Nox.Avatars;
 using Nox.Avatars.Controllers;
 using Nox.Avatars.Parameters;
+using Nox.CCK.Avatars.Voice;
+using Nox.CCK.Events;
 using Nox.CCK.Utils;
 using Nox.Controllers;
+using Nox.Microphone.Players;
 using Nox.Relay.Core.Types.Avatars;
+using UnityEngine;
+using Logger = Nox.CCK.Utils.Logger;
 using CorePlayer = Nox.Relay.Core.Players.Player;
 
 namespace Nox.Relay.Runtime.Players {
-	public class LocalPlayer : Player {
+	public class LocalPlayer : Player, ILocalPlayerVoice {
+		/// <summary>Fired when the local player's avatar is loaded or changed via controller.</summary>
+		public readonly NoxEvent<IRuntimeAvatar> OnAvatarLoaded = new();
+
 		public LocalPlayer(Entities context, CorePlayer player) : base(context, player) { }
+
+		private IRuntimeAvatar _currentAvatar;
+
+		/// <summary>
+		/// The live <see cref="IAudio"/> for this local player.
+		/// Setting it automatically routes the clip to the current avatar's <see cref="VoiceAvatarModule"/>
+		/// and syncs the AudioSource playback position to the mic write head (zero latency monitor).
+		/// </summary>
+		public new IAudio Audio {
+			get => _audio;
+			set {
+				_audio = value;
+				// RouteClipToAvatar();
+			}
+		}
 
 		public override bool IsLocal
 			=> true;
@@ -83,6 +107,39 @@ namespace Nox.Relay.Runtime.Players {
 				?? Array.Empty<IParameter>();
 
 			SynchronizeAvatarParameters(parameters, isLocal: true);
+
+			if (avatar != null) {
+				_currentAvatar = avatar;
+				// RouteClipToAvatar();
+				OnAvatarLoaded.Invoke(avatar);
+			}
 		}
+
+		// private void RouteClipToAvatar() {
+		// 	var module = _currentAvatar?.Descriptor
+		// 		?.GetModules<VoiceAvatarModule>()
+		// 		.FirstOrDefault();
+		// 	var source = module?.GetSource();
+		// 	if (!source) return;
+
+		// 	var clip = _audio?.Clip;
+		// 	source.loop = true;
+
+		// 	if (clip == null) {
+		// 		source.Stop();
+		// 		source.clip = null;
+		// 		return;
+		// 	}
+
+		// 	// Do not restart an already-playing source with the same clip:
+		// 	// restarting causes an audible gap/hole in the monitored audio.
+		// 	if (source.clip == clip && source.isPlaying)
+		// 		return;
+
+		// 	source.clip = clip;
+		// 	// Sync playback head to live mic write position — eliminates monitoring latency.
+		// 	source.timeSamples = _audio.GetPosition();
+		// 	source.Play();
+		// }
 	}
 }
