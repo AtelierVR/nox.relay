@@ -1,10 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <linker>
-	<assembly fullname="Nox.Mods.Relay" preserve="all" />
 	<assembly fullname="Nox.Relay.Core" preserve="all" />
-	<assembly fullname="Nox.Relay.Editor" preserve="all" />
 	<assembly fullname="Nox.Relay.Runtime" preserve="all" />
-	<assembly fullname="Nox.Relay.Tests" preserve="all" />
 	<assembly fullname="StirlingLabs.BigSpans" preserve="all" />
 	<assembly fullname="StirlingLabs.MsQuic" preserve="all" />
 	<assembly fullname="StirlingLabs.MsQuic.Bindings" preserve="all" />
