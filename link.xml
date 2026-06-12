@@ -1,7 +1,9 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <linker>
+	<assembly fullname="msquic-openssl" preserve="all" />
 	<assembly fullname="Nox.Relay.Core" preserve="all" />
 	<assembly fullname="Nox.Relay.Runtime" preserve="all" />
+	<assembly fullname="sa" preserve="all" />
 	<assembly fullname="StirlingLabs.BigSpans" preserve="all" />
 	<assembly fullname="StirlingLabs.MsQuic" preserve="all" />
 	<assembly fullname="StirlingLabs.MsQuic.Bindings" preserve="all" />
