@@ -527,8 +527,7 @@ namespace Nox.Relay.Runtime {
 				var travelVersion = @event.Identifier.GetVersion();
 				if (travelVersion == WorldIdentifierExtensions.DefaultVersion) {
 					var worldData = await Main.WorldAPI.Fetch(Identifier.Parse(identifier));
-					if (worldData != null && worldData.Release != WorldIdentifierExtensions.DefaultVersion)
-						travelVersion = worldData.Release;
+					travelVersion = worldData.Release.Value;
 				}
 				var req = new AssetSearchRequest {
 					Engines   = new[] { EngineExtensions.CurrentEngine.GetEngineName() },

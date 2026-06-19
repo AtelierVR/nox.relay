@@ -41,8 +41,7 @@ namespace Nox.Relay.Runtime {
 				var version = world.GetVersion();
 				if (version == WorldIdentifierExtensions.DefaultVersion) {
 					var worldData = await Main.WorldAPI.Fetch(world);
-					if (worldData != null && worldData.Release != WorldIdentifierExtensions.DefaultVersion)
-						version = worldData.Release;
+					version = worldData.Release.Value;
 				}
 
 				var req = new AssetSearchRequest {
