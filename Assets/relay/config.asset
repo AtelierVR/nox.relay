@@ -18,7 +18,7 @@ MonoBehaviour:
   JitterTimeWindow: 0.24
   JitterMeanOffsetWindow: 100
   OutputMinBufferFrames: 2
-  PitchProportionalGain: 1
-  PitchMaxCorrection: 0.2
+  PitchProportionalGain: 0.3
+  PitchMaxCorrection: 0.05
   FrameLifetime: 0.5
   MaxNegativeLatency: 0.25

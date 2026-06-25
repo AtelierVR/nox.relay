@@ -21,13 +21,13 @@ namespace Nox.Relay.Runtime.Voice {
 		public float MaxNegativeLatency = 0.25f;
 
 		[Header("Pitch P-Controller")]
-		[Tooltip("Proportional gain in % per second of latency error.")]
+		[Tooltip("Proportional gain in % per second of latency error. Lower = smoother.")]
 		[Range(0, 10)]
-		public float PitchProportionalGain = 1f;
+		public float PitchProportionalGain = 0.3f;
 
-		[Tooltip("Maximum pitch correction (fraction).")]
+		[Tooltip("Maximum pitch correction (fraction). Lower = less warbly.")]
 		[Range(0, 0.5f)]
-		public float PitchMaxCorrection = 0.2f;
+		public float PitchMaxCorrection = 0.05f;
 
 		private int _framesPerSecond;
 		private float _secondsPerFrame;

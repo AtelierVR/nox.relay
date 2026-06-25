@@ -39,13 +39,13 @@ namespace Nox.Relay.Runtime.Voice {
 		public float OutputMinBufferFrames = 2.0f;
 
 		[Header("Pitch Compensation")]
-		[Tooltip("P-controller proportional gain (0 = disabled).")]
+		[Tooltip("P-controller proportional gain (0 = disabled). Lower = smoother, less warbly.")]
 		[Range(0, 10)]
-		public float PitchProportionalGain = 1f;
+		public float PitchProportionalGain = 0.3f;
 
-		[Tooltip("Maximum pitch correction as fraction (±).")]
+		[Tooltip("Maximum pitch correction as fraction (±). Lower = less warbly artifact.")]
 		[Range(0, 0.5f)]
-		public float PitchMaxCorrection = 0.2f;
+		public float PitchMaxCorrection = 0.05f;
 
 		[Header("AudioSource Output")]
 		[Tooltip("Maximum frame lifetime in the buffer before clearing.")]
