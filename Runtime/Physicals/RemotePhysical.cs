@@ -62,6 +62,27 @@ namespace Nox.Relay.Runtime.Physicals {
 			Setup().Forget();
 		}
 
+		override protected void OnDisable() {
+			// Cancel any in-progress avatar loading when this physical is hidden/destroying
+			CancelAvatarLoading();
+			base.OnDisable();
+		}
+
+		private void OnDestroy() {
+			CancelAvatarLoading();
+			if (RuntimeAvatar != null) {
+				RuntimeAvatar.Dispose().Forget();
+				RuntimeAvatar = null;
+			}
+		}
+
+		/// <summary>Cancels any in-progress avatar loading and disposes the token source.</summary>
+		private void CancelAvatarLoading() {
+			AvatarLoadingCts?.Cancel();
+			AvatarLoadingCts?.Dispose();
+			AvatarLoadingCts = null;
+		}
+
 	private static float Smoothstep(float t) => t * t * (3f - 2f * t);
 
 	private void Update() {
@@ -290,6 +311,13 @@ namespace Nox.Relay.Runtime.Physicals {
 		public async UniTask<bool> SetAvatar(IRuntimeAvatar runtimeAvatar) {
 			if (runtimeAvatar == RuntimeAvatar)
 				return true;
+
+			// If this physical is being destroyed, refuse to attach and clean up the incoming avatar
+			if (!this || !gameObject || !transform) {
+				Logger.LogWarning("Physical is being destroyed, disposing incoming avatar instead of attaching.");
+				runtimeAvatar?.Dispose().Forget();
+				return false;
+			}
 
 			var old = RuntimeAvatar;
 			RuntimeAvatar = runtimeAvatar;
