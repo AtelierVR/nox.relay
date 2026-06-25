@@ -191,12 +191,47 @@ namespace Nox.Relay.Core.Connectors {
 				if (read <= 0)
 					return;
 
-				UniTask.Post(() => {
-					var buff = new Buffer();
-					buff.Write(buf, 0, read);
-					buff.Start();
-					OnReceived?.Invoke(buff);
-				});
+				// Split concatenated messages by length prefix.
+				// After a freeze, multiple relay messages may accumulate
+				// on the QUIC stream.  Each message is prefixed with a
+				// 2-byte big-endian uint16 total-length (header + payload).
+				int offset = 0;
+				const int LengthFieldSize = 2;
+				const int MinMessageSize = 5; // length(2) + state(2) + type(1)
+
+				while (offset + LengthFieldSize <= read) {
+					// Big-endian u16 length prefix
+					int msgLen = (buf[offset] << 8) | buf[offset + 1];
+
+					if (msgLen < MinMessageSize || offset + msgLen > read) {
+						// Truncated or corrupt — stop processing this chunk.
+						// Remaining bytes will be picked up on the next
+						// DataReceived together with new data.
+						if (msgLen >= MinMessageSize && offset + msgLen > read)
+							Logger.LogWarning(
+							$"Partial message at stream end " +
+							$"(need {msgLen}, have {read - offset} bytes left)",
+							tag: nameof(QuicConnector));
+					else if (msgLen < MinMessageSize && msgLen > 0)
+						Logger.LogWarning(
+							$"Corrupt length prefix {msgLen} " +
+							$"at offset {offset} — skipping {read - offset} bytes",
+							tag: nameof(QuicConnector));
+						break;
+					}
+
+					// Copy this individual message and dispatch
+					var msgBytes = new byte[msgLen];
+					Array.Copy(buf, offset, msgBytes, 0, msgLen);
+					offset += msgLen;
+
+					UniTask.Post(() => {
+						var buff = new Buffer();
+						buff.Write(msgBytes);
+						buff.Start();
+						OnReceived?.Invoke(buff);
+					});
+				}
 			};
 			// When the relay closes its send side the stream reaches SHUTDOWN_COMPLETE.
 			// Close the stream here so the native handle is returned to MsQuic
