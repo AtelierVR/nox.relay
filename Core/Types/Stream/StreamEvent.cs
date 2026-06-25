@@ -30,6 +30,13 @@ namespace Nox.Relay.Core.Types.Stream {
 		public uint ChannelId;
 		public byte LevelFlags;
 		public ushort GroupId;
+
+		/// <summary>Monotonically increasing frame index from sender (Sample sub-type).</summary>
+		public int FrameIndex;
+
+		/// <summary>Sender timestamp in seconds (Sample sub-type).</summary>
+		public double Timestamp;
+
 		public byte[] Sample = Array.Empty<byte>();
 
 		public bool HasGroup
@@ -56,6 +63,8 @@ namespace Nox.Relay.Core.Types.Stream {
 					LevelFlags = buffer.ReadByte();
 					if ((LevelFlags & 0b_0000_0100) != 0)
 						GroupId = buffer.ReadUShort();
+					FrameIndex = buffer.ReadInt();
+					Timestamp  = buffer.ReadDouble();
 					var remaining = (ushort)buffer.Remaining;
 					Sample = remaining > 0
 						? buffer.ReadBytes(remaining)

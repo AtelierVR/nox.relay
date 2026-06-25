@@ -28,7 +28,7 @@
       "type": "depends"
     },
     {
-      "id": "controller",
+      "id": "controllers",
       "type": "depends"
     },
     {

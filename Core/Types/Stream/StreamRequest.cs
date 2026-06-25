@@ -21,7 +21,7 @@ namespace Nox.Relay.Core.Types.Stream {
 	/// the payload begins with a <see cref="StreamSubType"/> byte.
 	/// <para>
 	/// <b>Sample</b> (0x00):
-	/// <c>[sub_type:0x00][channel_id:u32][level_flags:u8][sample:bytes…]</c>
+	/// <c>[sub_type:0x00][channel_id:u32][level_flags:u8][?group_id:u16][frame_index:i32][timestamp:f64][sample:bytes…]</c>
 	/// </para>
 	/// <para>
 	/// <b>Control</b> (0x01):
@@ -58,6 +58,12 @@ namespace Nox.Relay.Core.Types.Stream {
 		/// <summary>Opus-encoded audio samples (Sample sub-type).</summary>
 		public byte[] Sample = Array.Empty<byte>();
 
+		/// <summary>Monotonically increasing frame index for jitter buffer ordering (Sample sub-type).</summary>
+		public int FrameIndex;
+
+		/// <summary>Sender timestamp in seconds (Sample sub-type).</summary>
+		public double Timestamp;
+
 		/// <summary>Convenience: get/set distance mode from LevelFlags.</summary>
 		public byte DistanceMode {
 			set => LevelFlags = (byte)((LevelFlags & 0b_1111_1100) | (value & 0b_0000_0011));
@@ -92,8 +98,10 @@ namespace Nox.Relay.Core.Types.Stream {
 	/// <param name="channelId">Stream channel identifier.</param>
 	/// <param name="distanceMode">Distance mode (0=Normal, 1=Whisper, 2=Broadcast).</param>
 	/// <param name="sample">Encoded audio/video sample bytes.</param>
+	/// <param name="frameIndex">Monotonically increasing frame index for jitter buffer.</param>
+	/// <param name="timestamp">Sender timestamp in seconds.</param>
 	/// <param name="groupId">Optional group ID (sets the Group flag bit).</param>
-	public static StreamRequest MakeSample(uint channelId, byte distanceMode, byte[] sample, ushort groupId = 0) {
+	public static StreamRequest MakeSample(uint channelId, byte distanceMode, byte[] sample, int frameIndex = 0, double timestamp = 0, ushort groupId = 0) {
 		byte flags = (byte)(distanceMode & 0b_0000_0011);
 		if (groupId != 0)
 			flags |= 0b_0000_0100;
@@ -102,6 +110,8 @@ namespace Nox.Relay.Core.Types.Stream {
 			PlayerId   = 0, // not serialized but kept for local reference
 				GroupId    = groupId,
 				Sample     = sample ?? Array.Empty<byte>(),
+				FrameIndex = frameIndex,
+				Timestamp  = timestamp,
 			};
 		}
 
@@ -128,6 +138,8 @@ namespace Nox.Relay.Core.Types.Stream {
 					buffer.Write(LevelFlags);
 					if (HasGroup)
 						buffer.Write(GroupId);
+					buffer.Write(FrameIndex);
+					buffer.Write(Timestamp);
 					buffer.Write(Sample);
 					break;
 

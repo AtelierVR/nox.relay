@@ -1,0 +1,24 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: be654a667757ff74e98d16ff0ffdc344, type: 3}
+  m_Name: config
+  m_EditorClassIdentifier: Nox.Relay.Runtime::Nox.Relay.Runtime.Voice.NoxVoiceConfig
+  Complexity: 10
+  FrameSize: 20
+  Bitrate: 32000
+  JitterTimeWindow: 0.24
+  JitterMeanOffsetWindow: 100
+  OutputMinBufferFrames: 2
+  PitchProportionalGain: 1
+  PitchMaxCorrection: 0.2
+  FrameLifetime: 0.5
+  MaxNegativeLatency: 0.25

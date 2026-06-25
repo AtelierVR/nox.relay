@@ -1,20 +1,15 @@
 using System;
 using System.Collections.Generic;
-using Cysharp.Threading.Tasks;
 using Nox.Avatars;
 using Nox.Avatars.Controllers;
 using Nox.CCK.Mods.Cores;
 using Nox.CCK.Mods.Events;
 using Nox.Controllers;
-using Nox.Relay.Core;
-using Nox.Relay.Core.Connectors;
-using Nox.Relay.Core.Types.Latency;
 using Nox.Microphone;
 using Nox.Sessions;
 using Nox.Users;
 using Nox.Worlds;
 using StirlingLabs.MsQuic.Bindings;
-using UnityEngine;
 
 namespace Nox.Relay.Runtime {
 	public class Main : ISessionRegister {
@@ -43,105 +38,7 @@ namespace Nox.Relay.Runtime {
 				api.EventAPI.Subscribe("controller_avatar_changed", OnAvatarOfControllerChanged)
 			};
 			SessionAPI.Register(this);
-
-			#if UNITY_EDITOR
-			// CoreAPI.LoggerAPI.Log("Starting relay tests...");
-			// TestRelay().Forget();
-			#endif
-
 		}
-
-		#if UNITY_EDITOR
-		private static async UniTask TestRelay() {
-			if (Application.isPlaying) {
-				CoreAPI.LoggerAPI.LogWarning("Relay tests should be run in edit mode to avoid interference with gameplay.");
-				return;
-			}
-
-			var relay = Core.Relay.New<QuicConnector>();
-
-			if (!await relay.Connect("hactazia.fr", 30000)) {
-				CoreAPI.LoggerAPI.LogError("Failed to connect to relay server");
-				return;
-			}
-
-			CoreAPI.LoggerAPI.Log("Connected to relay server");
-
-			await UniTask.SwitchToMainThread();
-
-			var handshake = await relay.Handshake();
-			if (handshake == null) {
-				CoreAPI.LoggerAPI.LogError("Relay handshake failed");
-				await relay.Disconnect("Handshake failed");
-				await relay.Dispose();
-				return;
-			}
-
-			CoreAPI.LoggerAPI.Log($"{handshake}");
-
-			var ls = new List<LatencyResponse>();
-			for (var i = 0; i < 100; i++) {
-				var latency = await relay.Latency();
-				if (latency == null) {
-					CoreAPI.LoggerAPI.LogError("Failed to measure relay latency");
-					await relay.Disconnect("Latency test failed");
-					await relay.Dispose();
-					return;
-				}
-
-				ls.Add(latency);
-				await UniTask.Delay(100);
-			}
-
-			var avgLatency = 0d;
-			var maxLatency = double.MinValue;
-			var minLatency = double.MaxValue;
-
-			foreach (var l in ls) {
-				var v = l.GetLatency().TotalMilliseconds;
-				avgLatency += v;
-				if (v > maxLatency)
-					maxLatency = v;
-				if (v < minLatency)
-					minLatency = v;
-			}
-
-			avgLatency /= ls.Count;
-
-			CoreAPI.LoggerAPI.Log(
-				$"Relay latency over {ls.Count} tests: "
-				+ $"avg={avgLatency:F2}ms, "
-				+ $"min={minLatency:F2}ms, "
-				+ $"max={maxLatency:F2}ms"
-			);
-
-			var rooms = await relay.List();
-			if (rooms == null) {
-				CoreAPI.LoggerAPI.LogError("Failed to list relay rooms");
-				await relay.Disconnect("List rooms failed");
-				await relay.Dispose();
-				return;
-			}
-
-			foreach (var room in rooms.Rooms)
-				CoreAPI.LoggerAPI.Log($"Found room: {room}");
-
-			// var tasks = new List<UniTask<LatencyResponse>>();
-			// for (var i = 0; i < 1000; i++)
-			// 	tasks.Add(relay.Latency());
-			// var results = await UniTask.WhenAll(tasks);
-			// foreach (var result in results)
-			// 	if (result == null) {
-			// 		CoreAPI.LoggerAPI.LogError("Failed to measure relay latency in batch");
-			// 		await relay.Disconnect("Latency batch test failed");
-			// 		return;
-			// 	}
-
-			await relay.Disconnect("Done testing");
-			await relay.Dispose();
-			CoreAPI.LoggerAPI.Log("Disconnected from relay server");
-		}
-		#endif
 
 		private static void OnControllerChanged(EventData context) {
 			if (!context.TryGet(0, out IController controller))
@@ -183,7 +80,7 @@ namespace Nox.Relay.Runtime {
 
 		internal static IControllerAPI ControllerAPI
 			=> CoreAPI.ModAPI
-				.GetMod("controller")
+				.GetMod("controllers")
 				.GetInstance<IControllerAPI>();
 
 		internal static IUserAPI UserAPI

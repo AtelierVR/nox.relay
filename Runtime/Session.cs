@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Cysharp.Threading.Tasks;
 using Nox.Avatars.Controllers;
@@ -19,6 +20,7 @@ using Nox.Relay.Core.Types.Latency;
 using Nox.Relay.Core.Types.Leave;
 using Nox.Relay.Core.Types.Properties;
 using Nox.Relay.Core.Types.Quit;
+using Nox.Relay.Core.Types.Stream;
 using Nox.Relay.Core.Types.Transform;
 using Nox.Relay.Core.Types.Traveling;
 using Nox.Relay.Runtime.Players;
@@ -44,7 +46,12 @@ namespace Nox.Relay.Runtime {
 		readonly internal Entities InterEntities;
 		internal Core.Relay Adapter;
 		internal Room Room;
-		public VoiceManager VoiceManager { get; private set; }
+
+		/// <summary>The currently active relay session (set on connect, cleared on dispose).</summary>
+		internal static Session Current { get; private set; }
+
+		private bool _voiceRoutingSetup;
+		private readonly Dictionary<int, NoxVoiceRelayProvider> _voiceProviders = new();
 
 		public UnityEvent OnConnected { get; } = new();
 		public UnityEvent<string> OnDisconnected { get; } = new();
@@ -135,8 +142,7 @@ namespace Nox.Relay.Runtime {
 		public async UniTask Dispose() {
 			Logger.LogDebug("Disposing session", tag: Tag);
 
-			VoiceManager?.Dispose();
-			VoiceManager = null;
+			Current = null;
 
 			if (Adapter != null) {
 				Adapter.Connector.OnDisconnected.RemoveListener(OnDisconnectedHandler);
@@ -161,9 +167,6 @@ namespace Nox.Relay.Runtime {
 
 			foreach (var player in entities)
 				player.Update();
-
-			// Update voice system (mic capture + send)
-			VoiceManager?.Update();
 
 			var tps = Room?.Tps ?? 0;
 			if (tps != _lastKnownTps) {
@@ -205,6 +208,7 @@ namespace Nox.Relay.Runtime {
 
 			InterDimensions.SetActive(Runtime.Dimensions.MainIndex, true);
 			InterDimensions.SetCurrent();
+			Current = this;
 
 			OnControllerChanged(Main.ControllerAPI.Current);
 
@@ -306,8 +310,7 @@ namespace Nox.Relay.Runtime {
 				return;
 			}
 
-			player.Dispose();
-
+			player.OnQuit();
 			OnPlayerLeftOrQuitedHandler(player);
 		}
 
@@ -318,6 +321,7 @@ namespace Nox.Relay.Runtime {
 			if (player.IsLocal)
 				player.Respawn();
 
+			player.OnJoined();
 			OnPlayerJoinedOrEnteredHandler(player);
 		}
 
@@ -341,6 +345,8 @@ namespace Nox.Relay.Runtime {
 
 			foreach (var module in GetAllModules())
 				module.OnPlayerLeft(player);
+
+			player.Dispose();
 		}
 
 		internal void OnPlayerEnteredHandler(EnterResponse @event)
@@ -358,14 +364,15 @@ namespace Nox.Relay.Runtime {
 			Room.RenderEntity           = @event.RenderEntity;
 			Room.PropertyResendInterval = @event.PropertyResendInterval;
 
-			// Initialize voice chat system once Room is available
-			if (VoiceManager == null) {
-				VoiceManager = new VoiceManager(this);
+			// Initialize room voice routing
+			if (Room != null && !_voiceRoutingSetup) {
+				SetupVoiceRouting();
 			}
 
 			if (travel)
 				Room.Traveling(TravelingRequest.Travel()).Forget();
 
+			player.OnEntered();
 			OnPlayerJoinedOrEnteredHandler(player);
 		}
 
@@ -377,8 +384,7 @@ namespace Nox.Relay.Runtime {
 				return;
 			}
 
-			player.Dispose();
-
+			player.OnLeft();
 			OnPlayerLeftOrQuitedHandler(player);
 		}
 
@@ -624,6 +630,37 @@ namespace Nox.Relay.Runtime {
 
 			foreach (var module in GetAllModules())
 				module.OnPlayerVisibilityChanged(player, isVisible);
+		}
+
+		// ── Voice Chat Routing (MetaVoiceChat-style) ──
+
+		private void SetupVoiceRouting() {
+			if (_voiceRoutingSetup || Room == null) return;
+			_voiceRoutingSetup = true;
+
+			Room.OnStream.AddListener(OnVoiceStream);
+			Logger.LogDebug("[Session] Voice routing set up via Room.OnStream", tag: Tag);
+		}
+
+		/// <summary>Register a voice provider for a player (called when player voice is set up).</summary>
+		internal void RegisterVoiceProvider(int playerId, NoxVoiceRelayProvider provider) {
+			_voiceProviders[playerId] = provider;
+		}
+
+		/// <summary>Unregister a voice provider (called when player leaves).</summary>
+		internal void UnregisterVoiceProvider(int playerId) {
+			_voiceProviders.Remove(playerId);
+		}
+
+		private void OnVoiceStream(StreamEvent voiceEvent) {
+			int speakerId = voiceEvent.PlayerId;
+
+			// Provider is registered on physical creation, unregistered on destruction.
+			// If no provider exists, the physical isn't ready yet — drop the frame.
+			if (!_voiceProviders.TryGetValue(speakerId, out var provider) || provider?.gameObject == null)
+				return;
+
+			provider.ReceiveRelayFrame(voiceEvent);
 		}
 	}
 }

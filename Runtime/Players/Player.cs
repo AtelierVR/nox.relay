@@ -1,10 +1,8 @@
 using System.Collections.Generic;
 using System.Linq;
 using Cysharp.Threading.Tasks;
-using Nox.Avatars;
 using Nox.Avatars.Parameters;
 using Nox.Avatars.Players;
-using Nox.CCK.Avatars;
 using Nox.CCK.Players;
 using Nox.CCK.Utils;
 using Nox.Entities;
@@ -12,8 +10,6 @@ using Nox.Microphone.Players;
 using Nox.Players;
 using Nox.Relay.Core.Rooms;
 using Nox.Relay.Core.Types.Transform;
-using Nox.Relay.Runtime.Voice;
-using Nox.Users;
 using Nox.Worlds.Spawns;
 using UnityEngine;
 using Logger = Nox.CCK.Utils.Logger;
@@ -137,7 +133,7 @@ namespace Nox.Relay.Runtime.Players {
 			}
 		}
 
-		protected internal Identifier Avatar = Nox.CCK.Utils.Identifier.Invalid;
+		protected internal Identifier Avatar = Identifier.Invalid;
 
 		public virtual Identifier GetAvatar()
 			=> Avatar;
@@ -159,7 +155,7 @@ namespace Nox.Relay.Runtime.Players {
 		protected void SynchronizeAvatarParameters(IParameter[] parameters, bool isLocal) {
 			var paramKeys = new HashSet<int>();
 
-			if (parameters != null && parameters.Length > 0) {
+			if (parameters?.Length > 0) {
 				foreach (var param in parameters) {
 					var flags         = param.GetFlags();
 					var propertyFlags = PropertyFlags.None;
@@ -335,23 +331,21 @@ namespace Nox.Relay.Runtime.Players {
 		/// <summary>Current voice audio source. Set by VoiceReceiver (remote) or MicrophoneConnector (local).</summary>
 		protected IAudio _audio;
 
-		public ListenMode Listen => VoicePerms?.Listen ?? ListenMode.Normal;
+		public ListenMode Listen { get; set; } = ListenMode.Normal;
 
-		public SpeakMode Speak {
-			get => VoicePerms?.Speak ?? SpeakMode.Normal;
-			set {
-				var p = VoicePerms;
-				if (p != null) p.Speak = value;
-			}
-		}
+		public SpeakMode Speak { get; set; } = SpeakMode.Normal;
 
 		public virtual IAudio Audio => _audio;
 
+		/// <summary>
+		/// Speaking indicator for UI. Updated externally by NoxVoiceChat.
+		/// </summary>
+		public bool IsSpeaking { get; set; }
+
 		public virtual LevelFlags Level {
 			get {
-				var p = VoicePerms;
-				if (p == null || !p.Speaking) return LevelFlags.None;
-				return LevelFlags.Speaking | p.Speak switch {
+				if (!IsSpeaking) return LevelFlags.None;
+				return LevelFlags.Speaking | Speak switch {
 					SpeakMode.Whisper   => LevelFlags.Whisper,
 					SpeakMode.Broadcast => LevelFlags.Broadcast,
 					_                   => LevelFlags.Normal
@@ -359,23 +353,21 @@ namespace Nox.Relay.Runtime.Players {
 			}
 		}
 
-		/// <summary>
-		/// Lazy-initialized voice permissions for this player.
-		/// Retrieved from <see cref="VoiceManager"/> on first access.
-		/// </summary>
-		private VoicePermissions _voicePermissions;
-		private VoiceManager _voiceManager;
+		#endregion
 
-		private VoicePermissions VoicePerms {
-			get {
-				if (_voicePermissions == null) {
-					_voiceManager = Context.Context.VoiceManager;
-					if (_voiceManager != null)
-						_voicePermissions = _voiceManager.GetOrCreatePermissions(this);
-				}
-				return _voicePermissions;
-			}
-		}
+		#region Session Lifecycle Hooks
+
+		/// <summary>Called when this player joins the session (remote players).</summary>
+		public virtual void OnJoined() { }
+
+		/// <summary>Called when this player enters the session (local player).</summary>
+		public virtual void OnEntered() { }
+
+		/// <summary>Called when this player leaves the session.</summary>
+		public virtual void OnLeft() { }
+
+		/// <summary>Called when this player quits the session.</summary>
+		public virtual void OnQuit() { }
 
 		#endregion
 	}
