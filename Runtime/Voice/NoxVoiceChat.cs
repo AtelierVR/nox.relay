@@ -173,9 +173,14 @@ namespace Nox.Relay.Runtime.Voice {
 				if (CannotSpeak && !ShouldLocalEcho) {
 					AudioOutput.ReceiveAndFilterFrame(index, null, targetLatency);
 				} else {
-					bool hasDecodedYet = true;
+					bool hasDecodedYet = _decoder.IsValid;
 					CodecStopwatch.Start();
-					var samples = _decoder.Decode(data.ToArray(), Config.SamplesPerFrame);
+					float[] samples = null;
+					try {
+						samples = _decoder.Decode(data.ToArray(), Config.SamplesPerFrame);
+					} catch (Exception ex) {
+						Debug.LogWarning($"[NoxVoiceChat] Opus decode failed: {ex.Message}");
+					}
 					CodecStopwatch.Stop(MaxCodecMilliseconds, CodecTimeOverrunMessage,
 						!hasDecodedYet, AllowMultipleCodecWarningsPerFrame);
 
