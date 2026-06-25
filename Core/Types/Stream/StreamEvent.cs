@@ -28,7 +28,7 @@ namespace Nox.Relay.Core.Types.Stream {
 
 		public ushort PlayerId;
 		public uint ChannelId;
-		public byte LevelFlags;
+		public StreamLevelFlags LevelFlags;
 		public ushort GroupId;
 
 		/// <summary>Monotonically increasing frame index from sender (Sample sub-type).</summary>
@@ -40,10 +40,10 @@ namespace Nox.Relay.Core.Types.Stream {
 		public byte[] Sample = Array.Empty<byte>();
 
 		public bool HasGroup
-			=> (LevelFlags & 0b_0000_0100) != 0;
+			=> (LevelFlags & StreamLevelFlags.HasGroup) != 0;
 
 		public byte DistanceMode
-			=> (byte)(LevelFlags & 0b_0000_0011);
+			=> (byte)(LevelFlags & StreamLevelFlags.DistanceMode_Mask);
 
 		// ── Control fields ──
 
@@ -60,8 +60,8 @@ namespace Nox.Relay.Core.Types.Stream {
 				case StreamSubType.Sample:
 					PlayerId   = buffer.ReadUShort();
 					ChannelId  = (uint)buffer.ReadInt();
-					LevelFlags = buffer.ReadByte();
-					if ((LevelFlags & 0b_0000_0100) != 0)
+					LevelFlags = (StreamLevelFlags)buffer.ReadByte();
+					if ((LevelFlags & StreamLevelFlags.HasGroup) != 0)
 						GroupId = buffer.ReadUShort();
 					FrameIndex = buffer.ReadInt();
 					Timestamp  = buffer.ReadDouble();

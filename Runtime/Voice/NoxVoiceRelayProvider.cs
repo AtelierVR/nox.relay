@@ -164,6 +164,14 @@ namespace Nox.Relay.Runtime.Voice {
 		public void ReceiveRelayFrame(StreamEvent voiceEvent) {
 			if (!_started || VoiceChat == null) return;
 
+			// Update distance mode on the output if it changed
+			var mode = VoiceDistanceModeExtensions.FromLevelFlags(voiceEvent.LevelFlags);
+			var output = VoiceChat.AudioOutput as NoxVoiceAudioSourceOutput;
+			if (output != null && output.DistanceMode != mode) {
+				output.DistanceMode = mode;
+				output.ApplySpatialSettings();
+			}
+
 			VoiceChat.ReceiveFrame(
 				index: voiceEvent.FrameIndex,
 				timestamp: voiceEvent.Timestamp > 0 ? voiceEvent.Timestamp : Time.timeAsDouble,
@@ -176,7 +184,9 @@ namespace Nox.Relay.Runtime.Voice {
 			if (_room == null || !_started) return;
 
 			byte[] sample = data.IsEmpty ? Array.Empty<byte>() : data.ToArray();
-			_ = _room.Stream(StreamRequest.MakeSample(ChannelId, 0, sample, index, timestamp));
+			var flags = (VoiceChat?.Config?.DefaultDistanceMode ?? VoiceDistanceMode.Normal)
+				.ToLevelFlags();
+			_ = _room.Stream(StreamRequest.MakeSample(flags, sample, index, timestamp));
 		}
 
 		private void OnDestroy() {

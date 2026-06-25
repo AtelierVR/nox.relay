@@ -42,6 +42,10 @@
     {
       "id": "worlds",
       "type": "depends"
+    },
+    {
+      "id": "avatar",
+      "type": "depends"
     }
   ],
   "constraints": [

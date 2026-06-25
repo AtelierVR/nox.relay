@@ -27,6 +27,8 @@
         "Nox.CCK.Microphone",
         "Nox.CCK.Avatars.Voice",
         "Nox.Avatars.Voice",
+        "Nox.CCK.Scripting",
+        "Nox.Scripting",
         "StirlingLabs.MsQuic.Bindings"
     ],
     "includePlatforms": [],

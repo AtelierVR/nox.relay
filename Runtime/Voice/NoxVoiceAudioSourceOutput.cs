@@ -29,6 +29,43 @@ namespace Nox.Relay.Runtime.Voice {
 		[Range(0, 0.5f)]
 		public float PitchMaxCorrection = 0.05f;
 
+		[Header("3D Spatial")]
+		[Tooltip("Current distance mode for this output.")]
+		public VoiceDistanceMode DistanceMode = VoiceDistanceMode.Normal;
+
+		/// <summary>
+		/// Apply 3D spatial settings based on the current distance mode.
+		/// Call when the mode changes or after SetSource.
+		/// </summary>
+		public void ApplySpatialSettings() {
+			if (AudioSource == null) return;
+			var cfg = VoiceChat?.Config;
+			if (cfg == null) return;
+
+			switch (DistanceMode) {
+				case VoiceDistanceMode.Normal:
+					AudioSource.spatialBlend = 1f;
+					AudioSource.minDistance = cfg.SpatialMinDistance;
+					AudioSource.maxDistance = cfg.SpatialMaxDistanceNormal;
+					AudioSource.rolloffMode = cfg.SpatialRolloff;
+					break;
+				case VoiceDistanceMode.Whisper:
+					AudioSource.spatialBlend = 1f;
+					AudioSource.minDistance = cfg.SpatialMinDistance * 0.5f;
+					AudioSource.maxDistance = cfg.SpatialMaxDistanceWhisper;
+					AudioSource.rolloffMode = cfg.SpatialRolloff;
+					break;
+				case VoiceDistanceMode.Broadcast:
+					AudioSource.spatialBlend = 0f; // 2D global
+					AudioSource.rolloffMode = AudioRolloffMode.Custom;
+					AudioSource.SetCustomCurve(
+						AudioSourceCurveType.CustomRolloff,
+						AnimationCurve.Constant(0f, 1f, 1f)
+					); // flat volume
+					break;
+			}
+		}
+
 		private int _framesPerSecond;
 		private float _secondsPerFrame;
 
@@ -52,6 +89,8 @@ namespace Nox.Relay.Runtime.Voice {
 			}
 
 			AudioSource.dopplerLevel = 0; // Doppler interferes with pitch compensation
+
+			ApplySpatialSettings();
 
 			var config = VoiceChat?.Config;
 			if (config == null) {
@@ -183,6 +222,8 @@ namespace Nox.Relay.Runtime.Voice {
 			AudioSource.dopplerLevel = 0;
 			AudioSource.playOnAwake = false;
 			AudioSource.loop = true;
+
+			ApplySpatialSettings();
 
 			// Recreate the circular clip on the new AudioSource
 			_vcAudioClip?.Dispose();

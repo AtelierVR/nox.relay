@@ -56,6 +56,25 @@ namespace Nox.Relay.Runtime.Voice {
 		[Range(0.1f, 0.5f)]
 		public float MaxNegativeLatency = 0.25f;
 
+		[Header("3D Spatial")]
+		[Tooltip("Default distance mode for outgoing voice. 0=Normal, 1=Whisper, 2=Broadcast.")]
+		public VoiceDistanceMode DefaultDistanceMode = VoiceDistanceMode.Normal;
+
+		[Tooltip("Minimum distance for 3D audio (full volume).")]
+		[Range(0f, 50f)]
+		public float SpatialMinDistance = 1f;
+
+		[Tooltip("Maximum distance for 3D audio (silence). Normal mode.")]
+		[Range(1f, 500f)]
+		public float SpatialMaxDistanceNormal = 40f;
+
+		[Tooltip("Maximum distance for whisper mode.")]
+		[Range(0.5f, 20f)]
+		public float SpatialMaxDistanceWhisper = 5f;
+
+		[Tooltip("Volume rolloff curve for 3D audio.")]
+		public AudioRolloffMode SpatialRolloff = AudioRolloffMode.Logarithmic;
+
 		// ── Derived values (set by Init()) ──
 		[NonSerialized] public int FramePeriodMs;
 		[NonSerialized] public int FramesPerSecond;

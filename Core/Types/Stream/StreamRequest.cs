@@ -38,7 +38,7 @@ namespace Nox.Relay.Core.Types.Stream {
 		public ushort PlayerId;
 
 		/// <summary>Voice channel identifier (CRC32, e.g. <see cref="ChannelId.Proximity"/>).</summary>
-		public uint ChannelId = Nox.Relay.Core.Types.Stream.ChannelId.Voice;
+		public uint ChannelId = Stream.ChannelId.Voice;
 
 		/// <summary>
 	/// Level flags.
@@ -46,14 +46,14 @@ namespace Nox.Relay.Core.Types.Stream {
 	/// <para>Bit 2: Group flag — when set, <see cref="GroupId"/> follows after this byte.</para>
 	/// <para>Bits 3-7: Reserved.</para>
 	/// </summary>
-		public byte LevelFlags;
+		public StreamLevelFlags LevelFlags;
 
-		/// <summary>Group ID (present when Bit 2 of <see cref="LevelFlags"/> is set).</summary>
+		/// <summary>Group ID (present when <see cref="StreamLevelFlags.HasGroup"/> is set).</summary>
 		public ushort GroupId;
 
 		/// <summary>Whether a group ID is present in the sample packet.</summary>
 		public bool HasGroup
-			=> (LevelFlags & 0b_0000_0100) != 0;
+			=> (LevelFlags & StreamLevelFlags.HasGroup) != 0;
 
 		/// <summary>Opus-encoded audio samples (Sample sub-type).</summary>
 		public byte[] Sample = Array.Empty<byte>();
@@ -66,7 +66,7 @@ namespace Nox.Relay.Core.Types.Stream {
 
 		/// <summary>Convenience: get/set distance mode from LevelFlags.</summary>
 		public byte DistanceMode {
-			set => LevelFlags = (byte)((LevelFlags & 0b_1111_1100) | (value & 0b_0000_0011));
+			set => LevelFlags = (LevelFlags & ~StreamLevelFlags.DistanceMode_Mask) | (StreamLevelFlags)(value & 0b_0000_0011);
 		}
 
 		// ── Control fields ──
@@ -92,22 +92,21 @@ namespace Nox.Relay.Core.Types.Stream {
 
 		/// <summary>
 		/// Create a Sample sub-type request.
-	/// PlayerId is NOT serialized to the wire — the relay server resolves the
-	/// authenticated player from the QUIC connection and injects it in the broadcast.
-	/// </summary>
-	/// <param name="channelId">Stream channel identifier.</param>
-	/// <param name="distanceMode">Distance mode (0=Normal, 1=Whisper, 2=Broadcast).</param>
-	/// <param name="sample">Encoded audio/video sample bytes.</param>
-	/// <param name="frameIndex">Monotonically increasing frame index for jitter buffer.</param>
-	/// <param name="timestamp">Sender timestamp in seconds.</param>
-	/// <param name="groupId">Optional group ID (sets the Group flag bit).</param>
-	public static StreamRequest MakeSample(uint channelId, byte distanceMode, byte[] sample, int frameIndex = 0, double timestamp = 0, ushort groupId = 0) {
-		byte flags = (byte)(distanceMode & 0b_0000_0011);
-		if (groupId != 0)
-			flags |= 0b_0000_0100;
-		return new StreamRequest {
-			SubType    = StreamSubType.Sample,
-			PlayerId   = 0, // not serialized but kept for local reference
+		/// PlayerId is NOT serialized to the wire — the relay server resolves the
+		/// authenticated player from the QUIC connection and injects it in the broadcast.
+		/// </summary>
+		/// <param name="flags">Distance mode and group flag combined.</param>
+		/// <param name="sample">Encoded audio/video sample bytes.</param>
+		/// <param name="frameIndex">Monotonically increasing frame index for jitter buffer.</param>
+		/// <param name="timestamp">Sender timestamp in seconds.</param>
+		/// <param name="groupId">Optional group ID (ushort.MaxValue = no group).</param>
+		public static StreamRequest MakeSample(StreamLevelFlags flags, byte[] sample, int frameIndex = 0, double timestamp = 0, ushort groupId = ushort.MaxValue) {
+			if (groupId != ushort.MaxValue)
+				flags |= StreamLevelFlags.HasGroup;
+			return new StreamRequest {
+				SubType    = StreamSubType.Sample,
+				PlayerId   = 0, // not serialized but kept for local reference
+				LevelFlags = flags,
 				GroupId    = groupId,
 				Sample     = sample ?? Array.Empty<byte>(),
 				FrameIndex = frameIndex,
@@ -135,7 +134,7 @@ namespace Nox.Relay.Core.Types.Stream {
 				case StreamSubType.Sample:
 					// Note: PlayerId is NOT written — server resolves it from the connection.
 					buffer.Write(ChannelId);
-					buffer.Write(LevelFlags);
+					buffer.Write((byte)LevelFlags);
 					if (HasGroup)
 						buffer.Write(GroupId);
 					buffer.Write(FrameIndex);
