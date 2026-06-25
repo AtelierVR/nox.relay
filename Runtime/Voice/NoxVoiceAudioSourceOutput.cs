@@ -70,9 +70,16 @@ namespace Nox.Relay.Runtime.Voice {
 		}
 
 		private void Update() {
-			// Clear stale data when no frames received for a while
-			if (_isInit && TimeSincePreviousFrame > FrameLifetime)
+			// Clear stale data when no frames received for a while.
+			// Reset init state so playback can restart when frames resume.
+			if (_isInit && TimeSincePreviousFrame > FrameLifetime) {
 				_vcAudioClip.Clear();
+				_isInit = false;
+				_firstFrameIndex = -1;
+				_greatestFrameIndex = -1;
+				for (int i = 0; i < _clipFrameIndices.Length; i++)
+					_clipFrameIndices[i] = -1;
+			}
 
 			// Wait until buffer is built up to target latency before starting playback
 			if (!_isInit) {
@@ -198,10 +205,14 @@ namespace Nox.Relay.Runtime.Voice {
 					_clipFrameIndices[i] = -1;
 				_firstFrameIndex = -1;
 				_greatestFrameIndex = -1;
-			}
 
-			if (wasPlaying)
-				AudioSource.Play();
+				// Reset init so Update() re-buffers and calls Play() at the correct time.
+				// Don't call Play() here — let the buffer fill to target latency first.
+				if (_isInit) {
+					_isInit = false;
+					_frameStopwatch.Restart();
+				}
+			}
 		}
 	}
 }
