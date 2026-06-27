@@ -14,6 +14,7 @@ using Nox.Worlds.Spawns;
 using UnityEngine;
 using Logger = Nox.CCK.Utils.Logger;
 using CorePlayer = Nox.Relay.Core.Players.Player;
+using Nox.CCK.Events;
 
 namespace Nox.Relay.Runtime.Players {
 
@@ -22,6 +23,23 @@ namespace Nox.Relay.Runtime.Players {
 		protected Player(Entities context, CorePlayer player) : base(context, player.Id) {
 			Reference  = player;
 			Identifier = player.Identifier;
+			Data = Main.PlayerAPI.Get(Identifier);
+			Data.OnChanged.AddListener(OnDataChanged);
+
+			Main.VoiceRegister.OnVolume.AddListener(OnVolumeChanged);
+			Main.VoiceRegister.OnMute.AddListener(OnMuteChanged);
+			OnVolume.Invoke(Volume, EffectiveVolume);
+			OnMute.Invoke(IsMuted, IsEffectivelyMuted);
+		}
+
+        public override void Dispose() {
+			Data.OnChanged.RemoveListener(OnDataChanged);
+
+			Main.VoiceRegister.OnVolume.RemoveListener(OnVolumeChanged);
+			Main.VoiceRegister.OnMute.RemoveListener(OnMuteChanged);
+
+			Data.Dispose();
+			base.Dispose();
 		}
 
 		public readonly CorePlayer Reference;
@@ -132,6 +150,51 @@ namespace Nox.Relay.Runtime.Players {
 				return $"{GetType().Name}[Id={Id}, <initializing>]";
 			}
 		}
+
+		#region IPlayerVoice — Volume & Mute
+
+		public IPlayerData Data;
+
+		/// <inheritdoc />
+		public float Volume {
+			get => Data.Get("volume", 1f);
+			set => Data.Set("volume", Mathf.Clamp(value, 0f, 2f));
+		}
+
+		public readonly NoxEvent<float, float> OnVolume = new();
+
+		/// <inheritdoc />
+		public bool IsMuted {
+			get => Data.Get("mute", false);
+			set => Data.Set("mute", value);
+		}
+
+		public readonly NoxEvent<bool, bool> OnMute = new();
+
+		/// <inheritdoc />
+		public float EffectiveVolume
+			=> Main.VoiceRegister != null
+				? Mathf.Min(Volume, Main.VoiceRegister.Channel.EffectiveVolume)
+				: Volume;
+
+		/// <inheritdoc />
+		public bool IsEffectivelyMuted
+			=> IsMuted || (Main.VoiceRegister?.Channel.IsEffectivelyMuted ?? false);
+
+		private void OnDataChanged(string[] key, object @new, object @old) {
+			if(key.Length == 1 && key[0] == "volume")
+				OnVolume.Invoke(Volume, EffectiveVolume);
+			else if(key.Length == 1 && key[0] == "mute")
+				OnMute.Invoke(IsMuted, IsEffectivelyMuted);
+		}
+
+        private void OnVolumeChanged(float local, float effective)
+			=> OnVolume.Invoke(Volume, EffectiveVolume);
+
+        private void OnMuteChanged(bool local, bool effective)
+			=> OnMute.Invoke(IsMuted, IsEffectivelyMuted);
+
+		#endregion
 
 		protected internal Identifier Avatar = Identifier.Invalid;
 
@@ -370,5 +433,7 @@ namespace Nox.Relay.Runtime.Players {
 		public virtual void OnQuit() { }
 
 		#endregion
+
+
 	}
 }

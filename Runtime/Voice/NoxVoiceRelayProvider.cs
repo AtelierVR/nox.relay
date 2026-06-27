@@ -5,7 +5,6 @@ using Nox.CCK.Utils;
 using Nox.Relay.Core.Types.Stream;
 using Nox.Relay.Runtime.Physicals;
 using UnityEngine;
-using Object = UnityEngine.Object;
 
 namespace Nox.Relay.Runtime.Voice {
 	/// <summary>
@@ -64,6 +63,8 @@ namespace Nox.Relay.Runtime.Voice {
 			if (_physical != null) {
 				_physical.ActuallyDestroyed.AddListener(OnPhysicalDestroyed);
 				_physical.OnAvatarSet.AddListener(OnAvatarSet);
+				VoiceChat.Player = _physical.Reference;
+				VoiceChat.BindPlayerEvents();
 			}
 
 			CreateOrMigrateOutput();

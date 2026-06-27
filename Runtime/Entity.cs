@@ -9,7 +9,7 @@ using Logger = Nox.CCK.Utils.Logger;
 namespace Nox.Relay.Runtime {
 	public class Entity : IEntity {
 		readonly internal Entities Context;
-		protected Nox.Relay.Runtime.Physicals.Physical Physical;
+		protected Physicals.Physical Physical;
 
 		readonly internal Dictionary<int, IProperty> Properties = new();
 
@@ -22,7 +22,7 @@ namespace Nox.Relay.Runtime {
 		public int Id { get; }
 
 		public IProperty[] GetProperties()
-			=> Properties.Values.ToArray<IProperty>();
+			=> Properties.Values.ToArray();
 
 		public bool TryGetProperty(int key, out IProperty property) {
 			if (Properties.TryGetValue(key, out var prop)) {
@@ -127,7 +127,7 @@ namespace Nox.Relay.Runtime {
 			// HandlePhysicalActuallyDestroyed() will clear it after the delay.
 		}
 
-		public void Dispose() {
+		public virtual void Dispose() {
 			DestroyPhysical();
 			Context.UnregisterEntity(this);
 		}

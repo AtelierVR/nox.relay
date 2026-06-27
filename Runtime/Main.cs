@@ -6,10 +6,13 @@ using Nox.CCK.Mods.Cores;
 using Nox.CCK.Mods.Events;
 using Nox.Controllers;
 using Nox.Audio;
+using Nox.CCK.Audio;
 using Nox.Sessions;
 using Nox.Users;
 using Nox.Worlds;
 using StirlingLabs.MsQuic.Bindings;
+using Nox.Players;
+using Nox.CCK.Language;
 
 namespace Nox.Relay.Runtime {
 	public class Main : ISessionRegister {
@@ -24,15 +27,25 @@ namespace Nox.Relay.Runtime {
 		}
 
 		static internal IMainModCoreAPI CoreAPI;
+		static internal ChannelRegister VoiceRegister;
 		private EventSubscription[] _events = Array.Empty<EventSubscription>();
+		private LanguagePack _lang;
 
 		public void OnInitializeMain(IMainModCoreAPI api) {
 			CoreAPI = api;
+
+			_lang = api.AssetAPI.GetAsset<LanguagePack>("lang.asset");
+			LanguageManager.AddPack(_lang);
+
 			// Preload MsQuic native libraries using mod-aware plugin folders
 			var fol = api.LibAPI.GetFolders();
 			var ext = api.LibAPI.GetExtension();
 			api.LoggerAPI.LogDebug($"Initializing MsQuic with plugin folders: {string.Join(", ", fol)} and extension: {ext}");
 			MsQuic.Init(fol, ext);
+
+			// Register voice volume channel (protected from removal until dispose)
+			VoiceRegister = new ChannelRegister("voice", new[] { "general" }, api);
+
 			_events = new[] {
 				api.EventAPI.Subscribe("controller_changed", OnControllerChanged),
 				api.EventAPI.Subscribe("controller_avatar_changed", OnAvatarOfControllerChanged)
@@ -61,10 +74,14 @@ namespace Nox.Relay.Runtime {
 		}
 
 		public void OnDisposeMain() {
+			VoiceRegister?.Dispose();
+			VoiceRegister = null;
 			SessionAPI.Unregister(this);
 			foreach (var ev in _events)
 				CoreAPI.EventAPI.Unsubscribe(ev);
 			_events = Array.Empty<EventSubscription>();
+			LanguageManager.RemovePack(_lang);
+			_lang = null;
 			CoreAPI = null;
 		}
 
@@ -97,5 +114,10 @@ namespace Nox.Relay.Runtime {
 			=> CoreAPI.ModAPI
 				.GetMod("microphone")
 				.GetInstance<IMicrophoneAPI>();
+
+		internal static IPlayerAPI PlayerAPI
+			=> CoreAPI.ModAPI
+				.GetMod("players")
+				.GetInstance<IPlayerAPI>();
 	}
 }

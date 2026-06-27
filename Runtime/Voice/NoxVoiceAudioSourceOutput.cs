@@ -108,7 +108,7 @@ namespace Nox.Relay.Runtime.Voice {
 				_clipFrameIndices[i] = -1;
 		}
 
-		private void Update() {
+		public void Update() {
 			// Clear stale data when no frames received for a while.
 			// Reset init state so playback can restart when frames resume.
 			if (_isInit && TimeSincePreviousFrame > FrameLifetime) {

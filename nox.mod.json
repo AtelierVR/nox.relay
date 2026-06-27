@@ -46,17 +46,25 @@
     {
       "id": "avatar",
       "type": "depends"
+    },
+    {
+      "id": "players",
+      "type": "depends"
     }
   ],
   "constraints": [
     {
       "type": "after",
       "id": "session"
+    },
+    {
+      "type": "after",
+      "id": "players"
     }
   ],
   "entrypoints": {
     "main": [
       "Nox.Relay.Runtime.Main"
     ]
-  },
+  }
 }

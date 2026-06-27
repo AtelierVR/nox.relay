@@ -1,5 +1,6 @@
 using System;
 using Nox.Audio.Runtime;
+using Nox.Relay.Runtime.Players;
 using UnityEngine;
 
 namespace Nox.Relay.Runtime.Voice {
@@ -41,6 +42,44 @@ namespace Nox.Relay.Runtime.Voice {
 		public bool IsOutputMuted;
 		[Tooltip("This player is currently speaking.")]
 		public bool IsSpeaking { get; private set; }
+
+		/// <summary>
+		/// Link to the player for volume/mute control from the channel hierarchy.
+		/// Set externally by the provider after initialization.
+		/// </summary>
+		public Player Player;
+
+		/// <summary>Cached effective mute state, updated via events.</summary>
+		private bool _isEffectivelyMuted;
+
+		/// <summary>
+		/// Subscribe to the player's volume/mute events and apply initial values.
+		/// Call after <see cref="Player"/> is set.
+		/// </summary>
+		public void BindPlayerEvents() {
+			if (Player == null) return;
+			Player.OnVolume.AddListener(OnPlayerVolumeChanged);
+			Player.OnMute.AddListener(OnPlayerMuteChanged);
+			ApplyPlayerVolume(Player.EffectiveVolume);
+			_isEffectivelyMuted = Player.IsEffectivelyMuted;
+		}
+
+		private void UnbindPlayerEvents() {
+			if (Player == null) return;
+			Player.OnVolume.RemoveListener(OnPlayerVolumeChanged);
+			Player.OnMute.RemoveListener(OnPlayerMuteChanged);
+		}
+
+		private void OnPlayerVolumeChanged(float local, float effective)
+			=> ApplyPlayerVolume(effective);
+
+		private void ApplyPlayerVolume(float effective) {
+			if (AudioOutput is NoxVoiceAudioSourceOutput src && src.AudioSource != null)
+				src.AudioSource.volume = effective;
+		}
+
+		private void OnPlayerMuteChanged(bool local, bool effective)
+			=> _isEffectivelyMuted = effective;
 
 		// ── Internal state ──
 		private INoxVoiceNetProvider _netProvider;
@@ -164,6 +203,13 @@ namespace Nox.Relay.Runtime.Voice {
 				targetLatency += jitter;
 			}
 
+			// If player is effectively muted via the channel hierarchy, skip processing
+			if (!_isLocalPlayer && _isEffectivelyMuted) {
+				SetIsSpeaking(false);
+				AudioOutput.ReceiveAndFilterFrame(index, null, targetLatency);
+				return;
+			}
+
 			if (data.Length == 0) {
 				SetIsSpeaking(false);
 				AudioOutput.ReceiveAndFilterFrame(index, null, targetLatency);
@@ -199,6 +245,7 @@ namespace Nox.Relay.Runtime.Voice {
 		}
 
 		private void OnDestroy() {
+			UnbindPlayerEvents();
 			StopClient();
 		}
 	}
