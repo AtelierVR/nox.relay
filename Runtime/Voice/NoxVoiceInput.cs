@@ -1,5 +1,5 @@
 using System;
-using Nox.Microphone.Players;
+using Nox.Audio.Players;
 using UnityEngine;
 
 namespace Nox.Relay.Runtime.Voice {

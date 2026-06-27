@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using Cysharp.Threading.Tasks;
 using Nox.Avatars;
@@ -7,11 +6,9 @@ using Nox.Avatars.Controllers;
 using Nox.Avatars.Parameters;
 using Nox.CCK.Avatars.Voice;
 using Nox.CCK.Events;
-using Nox.CCK.Utils;
 using Nox.Controllers;
-using Nox.Microphone.Players;
+using Nox.Audio.Players;
 using Nox.Relay.Core.Types.Avatars;
-using UnityEngine;
 using Logger = Nox.CCK.Utils.Logger;
 using CorePlayer = Nox.Relay.Core.Players.Player;
 
@@ -25,11 +22,11 @@ namespace Nox.Relay.Runtime.Players {
 		private IRuntimeAvatar _currentAvatar;
 
 		/// <summary>
-		/// The live <see cref="IAudio"/> for this local player.
+		/// The live <see cref="ICapturedAudio"/> for this local player.
 		/// Setting it automatically routes the clip to the current avatar's <see cref="VoiceAvatarModule"/>
 		/// and syncs the AudioSource playback position to the mic write head (zero latency monitor).
 		/// </summary>
-		public new IAudio Audio {
+		public new ICapturedAudio Audio {
 			get => _audio;
 			set {
 				_audio = value;

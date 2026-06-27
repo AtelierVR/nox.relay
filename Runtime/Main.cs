@@ -5,7 +5,7 @@ using Nox.Avatars.Controllers;
 using Nox.CCK.Mods.Cores;
 using Nox.CCK.Mods.Events;
 using Nox.Controllers;
-using Nox.Microphone;
+using Nox.Audio;
 using Nox.Sessions;
 using Nox.Users;
 using Nox.Worlds;

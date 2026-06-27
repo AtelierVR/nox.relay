@@ -6,7 +6,7 @@ using Nox.Avatars.Players;
 using Nox.CCK.Players;
 using Nox.CCK.Utils;
 using Nox.Entities;
-using Nox.Microphone.Players;
+using Nox.Audio.Players;
 using Nox.Players;
 using Nox.Relay.Core.Rooms;
 using Nox.Relay.Core.Types.Transform;
@@ -329,13 +329,13 @@ namespace Nox.Relay.Runtime.Players {
 		#region IPlayerVoice Implementation
 
 		/// <summary>Current voice audio source. Set by VoiceReceiver (remote) or MicrophoneConnector (local).</summary>
-		protected IAudio _audio;
+		protected ICapturedAudio _audio;
 
 		public ListenMode Listen { get; set; } = ListenMode.Normal;
 
 		public SpeakMode Speak { get; set; } = SpeakMode.Normal;
 
-		public virtual IAudio Audio => _audio;
+		public virtual ICapturedAudio Audio => _audio;
 
 		/// <summary>
 		/// Speaking indicator for UI. Updated externally by NoxVoiceChat.

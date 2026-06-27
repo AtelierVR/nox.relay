@@ -1,5 +1,5 @@
 using System;
-using Nox.Microphone.Runtime;
+using Nox.Audio.Runtime;
 using UnityEngine;
 
 namespace Nox.Relay.Runtime.Voice {
@@ -74,7 +74,7 @@ namespace Nox.Relay.Runtime.Voice {
 			if (_started) return;
 
 			// Ensure config is initialized (may not have run Awake yet)
-			if (Config != null) Config.Init();
+			if (Config) Config.Init();
 
 			_started = true;
 
