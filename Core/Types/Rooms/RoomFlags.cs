@@ -9,7 +9,7 @@ namespace Nox.Relay.Core.Types.Rooms {
 
 		/// <summary>
 		/// Indicates that the room is public
-		/// and is visible to all users by <see cref="RequestType.Rooms"/>
+		/// and is visible to all users by <see cref="PacketType.Sessions"/>
 		/// </summary>
 		IsPublic = 1 << 0,
 

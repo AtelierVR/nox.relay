@@ -34,7 +34,7 @@ namespace Nox.Relay.Core {
 		/// Consists of:
 		/// - Length <see cref="ushort"/> (2 bytes)
 		/// - State  <see cref="ushort"/> (2 bytes)
-		/// - Type   <see cref="RequestType"/> (1 byte)
+		/// - Type   <see cref="PacketType"/> (1 byte)
 		/// </summary>
 		public const int HeaderSize = 5;
 
@@ -82,7 +82,7 @@ namespace Nox.Relay.Core {
 		/// <summary>
 		/// Invoked when a packet is received from the connector.
 		/// </summary>
-		public readonly UnityEvent<ushort, ResponseType, Buffer> OnReceivePacket = new();
+		public readonly UnityEvent<ushort, PacketType, Buffer> OnReceivePacket = new();
 
 		/// <summary>
 		/// Generates the next state value for the next request.
@@ -113,7 +113,7 @@ namespace Nox.Relay.Core {
 
 			var length = buffer.ReadUShort();
 			var state  = buffer.ReadUShort();
-			var type   = buffer.ReadEnum<ResponseType>();
+			var type   = buffer.ReadEnum<PacketType>();
 			if (length < HeaderSize || length > buffer.Length) {
 				Logger.LogWarning(
 					$"Received invalid packet length: {length} (expected >= {HeaderSize} and <= {buffer.Length})\n{buffer}");
@@ -121,40 +121,40 @@ namespace Nox.Relay.Core {
 			}
 
 			switch (type) {
-				case ResponseType.Enter:
-				case ResponseType.Quit:
-				case ResponseType.Join:
-				case ResponseType.Leave:
-				case ResponseType.Transform:
-				case ResponseType.Custom:
-				case ResponseType.AvatarChanged:
-				case ResponseType.Properties:
-				case ResponseType.PlayerUpdate:
-				case ResponseType.ServerConfig:
-				case ResponseType.Traveling:
-				case ResponseType.Teleport:
-				case ResponseType.Stream:
-				case ResponseType.Event:
+				case PacketType.Enter:
+				case PacketType.Quit:
+				case PacketType.Join:
+				case PacketType.Leave:
+				case PacketType.Transform:
+				case PacketType.Custom:
+				case PacketType.AvatarChanged:
+				case PacketType.Properties:
+				case PacketType.PlayerUpdate:
+				case PacketType.ServerConfig:
+				case PacketType.Traveling:
+				case PacketType.Teleport:
+				case PacketType.Stream:
+				case PacketType.Event:
 					HandleInstance(state, type, buffer.Clone(HeaderSize, length));
 					break;
-				case ResponseType.Disconnect:
+				case PacketType.Disconnect:
 					HandleDisconnect(state, buffer.Clone(HeaderSize, length));
 					break;
-				case ResponseType.Latency:
+				case PacketType.Latency:
 					HandleLatency(state, buffer.Clone(HeaderSize, length));
 					break;
-				case ResponseType.Handshake:
+				case PacketType.Handshake:
 					HandleHandshake(state, buffer.Clone(HeaderSize, length));
 					break;
-				case ResponseType.Message:
+				case PacketType.Message:
 					HandleMessage(state, buffer.Clone(HeaderSize, length));
 					break;
-				case ResponseType.Reliable:
-				case ResponseType.Authentification:
-				case ResponseType.Rooms:
+				case PacketType.Reliable:
+				case PacketType.Authentication:
+				case PacketType.Sessions:
 					break;
-				case ResponseType.None:
-				case ResponseType.PasswordRequirement:
+				case PacketType.None:
+				case PacketType.PasswordRequirement:
 				default:
 					Logger.LogWarning($"Unknown receive type: {type}: {buffer}");
 					break;
@@ -192,7 +192,7 @@ namespace Nox.Relay.Core {
 			OnLatency.Invoke(LastLatency);
 		}
 
-		private void HandleInstance(ushort state, ResponseType type, Buffer buffer) {
+		private void HandleInstance(ushort state, PacketType type, Buffer buffer) {
 			buffer.Start();
 			var iid      = buffer.ReadByte();
 			var instance = Rooms.FirstOrDefault(s => s.InternalId == iid);
@@ -326,7 +326,7 @@ namespace Nox.Relay.Core {
 		/// <returns></returns>
 		public async UniTask<EmitResult> Emit(
 			Buffer      data,
-			RequestType type  = RequestType.None,
+			PacketType type  = PacketType.None,
 			ushort      state = Broadcast,
 			SendType    send  = SendType.Auto
 		) {
@@ -356,10 +356,10 @@ namespace Nox.Relay.Core {
 
 		public struct ValidateInput<T> where T : ContentResponse, new() {
 			public ushort expectedState;
-			public ResponseType expectedType;
+			public PacketType expectedType;
 
 			public ushort receivedState;
-			public ResponseType receivedType;
+			public PacketType receivedType;
 			public Buffer payload;
 
 			public T response;
@@ -384,12 +384,12 @@ namespace Nox.Relay.Core {
 		/// <returns></returns>
 		public async UniTask<T> Request<T>(
 			ContentRequest                                                   request,
-			RequestType                                                      @out,
-			ResponseType                                                     @in,
+			PacketType                                                      @out,
+			PacketType                                                     @in,
 			ushort                                                           state    = Broadcast,
 			SendType                                                         send     = SendType.Auto,
 			ushort                                                           timeout  = DefaultTimeout,
-			Func<Buffer, RequestType, ushort, SendType, UniTask<EmitResult>> emitter  = null,
+			Func<Buffer, PacketType, ushort, SendType, UniTask<EmitResult>> emitter  = null,
 			Func<ValidateInput<T>, bool>                                     validate = null
 		) where T : ContentResponse, new() {
 			if (!Connector.IsConnected)
@@ -407,7 +407,7 @@ namespace Nox.Relay.Core {
 			// Store the actual state in a boxed container to avoid capture issues
 			var stateContainer = new ushort[ 1 ];
 
-			UnityAction<ushort, ResponseType, Buffer> handler = OnPacket;
+			UnityAction<ushort, PacketType, Buffer> handler = OnPacket;
 
 			OnReceivePacket.AddListener(handler);
 
@@ -436,7 +436,7 @@ namespace Nox.Relay.Core {
 			Logger.LogWarning($"{stateContainer[0]}:{@out} timeout", tag: nameof(Relay));
 			return null;
 
-			void OnPacket(ushort s, ResponseType t, Buffer payload) {
+			void OnPacket(ushort s, PacketType t, Buffer payload) {
 				var expectedState = stateContainer[0];
 
 				if (t != @in)
@@ -473,8 +473,8 @@ namespace Nox.Relay.Core {
 					Engine          = EngineExtensions.CurrentEngine,
 					Platform        = PlatformExtensions.CurrentPlatform
 				},
-				RequestType.Handshake,
-				ResponseType.Handshake,
+				PacketType.Handshake,
+				PacketType.Handshake,
 				NextState()
 			);
 
@@ -488,8 +488,8 @@ namespace Nox.Relay.Core {
 
 			var res = await Request<LatencyResponse>(
 				req,
-				RequestType.Latency,
-				ResponseType.Latency,
+				PacketType.Latency,
+				PacketType.Latency,
 				NextState()
 			) ?? LatencyResponse.Failed();
 
@@ -513,7 +513,7 @@ namespace Nox.Relay.Core {
 				new Types.Disconnect.DisconnectRequest {
 					Reason = reason
 				}.ToBuffer(),
-				RequestType.Disconnect,
+				PacketType.Disconnect,
 				NextState()
 			)).Success;
 
@@ -528,8 +528,8 @@ namespace Nox.Relay.Core {
 		)
 			=> await Request<AuthenticationResponse>(
 					request,
-					RequestType.Authentification,
-					ResponseType.Authentification,
+					PacketType.Authentication,
+					PacketType.Authentication,
 					NextState()
 				)
 				?? AuthenticationResponse
@@ -543,8 +543,8 @@ namespace Nox.Relay.Core {
 		public async UniTask<RoomsResponse> List(byte page) {
 			var sessions = await Request<RoomsResponse>(
 				new RoomsRequest { Page = page },
-				RequestType.Rooms,
-				ResponseType.Rooms,
+				PacketType.Sessions,
+				PacketType.Sessions,
 				NextState()
 			);
 

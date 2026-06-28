@@ -167,47 +167,47 @@ namespace Nox.Relay.Core.Rooms {
 		/// <param name="state"></param>
 		/// <param name="type"></param>
 		/// <param name="buffer"></param>
-		internal void OnReceived(ushort state, ResponseType type, Buffer buffer) {
+		internal void OnReceived(ushort state, PacketType type, Buffer buffer) {
 			buffer.Start();
 
 			// ReSharper disable once SwitchStatementHandlesSomeKnownEnumValuesWithDefault
 			switch (type) {
-				case ResponseType.Quit:
+				case PacketType.Quit:
 					HandleQuit(state, buffer);
 					break;
-				case ResponseType.Enter:
+				case PacketType.Enter:
 					HandleEnter(state, buffer);
 					break;
-				case ResponseType.Join:
+				case PacketType.Join:
 					HandleJoin(state, buffer);
 					break;
-				case ResponseType.Leave:
+				case PacketType.Leave:
 					HandleLeave(state, buffer);
 					break;
-				case ResponseType.Transform:
+				case PacketType.Transform:
 					HandleTransform(state, buffer);
 					break;
-				case ResponseType.Event:
+				case PacketType.Event:
 					HandleEvent(state, buffer);
 					break;
-				case ResponseType.Properties:
+				case PacketType.Properties:
 					HandleProperties(state, buffer);
 					break;
-				case ResponseType.AvatarChanged:
+				case PacketType.AvatarChanged:
 					HandleAvatarChanged(state, buffer);
 					break;
-				case ResponseType.PlayerUpdate:
+				case PacketType.PlayerUpdate:
 					HandlePlayerUpdate(state, buffer);
 					break;
-				case ResponseType.ServerConfig:
+				case PacketType.ServerConfig:
 					HandleServerConfig(state, buffer);
 					break;
-				case ResponseType.Stream:
+				case PacketType.Stream:
 					HandleStream(state, buffer);
 					break;
-				case ResponseType.Custom:
-				case ResponseType.Traveling:
-				case ResponseType.Teleport:
+				case PacketType.Custom:
+				case PacketType.Traveling:
+				case PacketType.Teleport:
 					break;
 				default:
 					Logger.LogWarning($"[] Unhandled room response type: {type} (state: {state}) {buffer}", tag: Tag);
@@ -363,8 +363,8 @@ namespace Nox.Relay.Core.Rooms {
 		public async UniTask<EnterResponse> Enter(EnterRequest request) {
 			var enter = await Request<EnterResponse>(
 				request,
-				RequestType.Enter,
-				ResponseType.Enter,
+				PacketType.Enter,
+				PacketType.Enter,
 				Connection.NextState()
 			);
 
@@ -390,8 +390,8 @@ namespace Nox.Relay.Core.Rooms {
 					Type = type,
 					Reason = reason
 				},
-				RequestType.Quit,
-				ResponseType.Quit,
+				PacketType.Quit,
+				PacketType.Quit,
 				Connection.NextState()
 			);
 
@@ -411,7 +411,7 @@ namespace Nox.Relay.Core.Rooms {
 		public async UniTask<bool> Properties(PropertiesRequest request)
 			=> (await Emit(
 				request.ToBuffer(),
-				RequestType.Properties,
+				PacketType.Properties,
 				Connection.NextState()
 			)).Success;
 
@@ -423,7 +423,7 @@ namespace Nox.Relay.Core.Rooms {
 		public async UniTask<bool> Transform(TransformRequest request)
 			=> (await Emit(
 				request.ToBuffer(),
-				RequestType.Transform,
+				PacketType.Transform,
 				Connection.NextState(),
 				SendType.Datagram // Transforms are latency-sensitive and can be sent as unreliable datagrams
 			)).Success;
@@ -436,7 +436,7 @@ namespace Nox.Relay.Core.Rooms {
 		public async UniTask<bool> Event(EventRequest request)
 			=> (await Emit(
 				request.ToBuffer(),
-				RequestType.Event,
+				PacketType.Event,
 				Connection.NextState()
 			)).Success;
 
@@ -450,8 +450,8 @@ namespace Nox.Relay.Core.Rooms {
 		public async UniTask<PlayerUpdateResponse> PlayerUpdate(PlayerUpdateRequest request)
 			=> await Request<PlayerUpdateResponse>(
 				request,
-				RequestType.PlayerUpdate,
-				ResponseType.PlayerUpdate,
+				PacketType.PlayerUpdate,
+				PacketType.PlayerUpdate,
 				Connection.NextState()
 			);
 
@@ -466,8 +466,8 @@ namespace Nox.Relay.Core.Rooms {
 		public async UniTask<ServerConfigResponse> ServerConfig(ServerConfigRequest request)
 			=> await Request<ServerConfigResponse>(
 				request,
-				RequestType.ServerConfig,
-				ResponseType.ServerConfig,
+				PacketType.ServerConfig,
+				PacketType.ServerConfig,
 				Connection.NextState()
 			);
 
@@ -480,7 +480,7 @@ namespace Nox.Relay.Core.Rooms {
 		public async UniTask<bool> Stream(StreamRequest request)
 			=> (await Emit(
 				request.ToBuffer(),
-				RequestType.Stream,
+				PacketType.Stream,
 				Connection.NextState()
 			)).Success;
 
@@ -492,7 +492,7 @@ namespace Nox.Relay.Core.Rooms {
 		/// <param name="state"></param>
 		/// <param name="send"></param>
 		/// <returns></returns>
-		public async UniTask<Relay.EmitResult> Emit(Buffer request, RequestType type, ushort state = Relay.Broadcast, SendType send = SendType.Auto) {
+		public async UniTask<Relay.EmitResult> Emit(Buffer request, PacketType type, ushort state = Relay.Broadcast, SendType send = SendType.Auto) {
 			var buffer = new Buffer();
 			buffer.Write(InternalId);
 			buffer.Write(request);
@@ -511,8 +511,8 @@ namespace Nox.Relay.Core.Rooms {
 		/// <returns></returns>
 		public async UniTask<T> Request<T>(
 			RoomRequest request,
-			RequestType @out,
-			ResponseType @in,
+			PacketType @out,
+			PacketType @in,
 			ushort state = Relay.Broadcast,
 			SendType send = SendType.Auto,
 			ushort timeout = Relay.DefaultTimeout)
@@ -545,8 +545,8 @@ namespace Nox.Relay.Core.Rooms {
 		public async UniTask<TravelingEvent> Traveling(TravelingRequest request)
 			=> (await Request<TravelingEvent>(
 					request,
-					RequestType.Traveling,
-					ResponseType.Traveling,
+					PacketType.Traveling,
+					PacketType.Traveling,
 					Connection.NextState()
 				))
 				?? TravelingEvent.Unknown(this, "Unknown traveling request");
@@ -554,8 +554,8 @@ namespace Nox.Relay.Core.Rooms {
 		public async UniTask<AvatarChangedEvent> ChangeAvatar(AvatarChangedRequest request)
 			=> (await Request<AvatarChangedEvent>(
 					request,
-					RequestType.AvatarChanged,
-					ResponseType.AvatarChanged,
+					PacketType.AvatarChanged,
+					PacketType.AvatarChanged,
 					Connection.NextState()
 				))
 				?? AvatarChangedEvent.Unknown(this, "Unknown avatar change request");
