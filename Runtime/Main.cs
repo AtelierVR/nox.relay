@@ -37,11 +37,8 @@ namespace Nox.Relay.Runtime {
 			_lang = api.AssetAPI.GetAsset<LanguagePack>("lang.asset");
 			LanguageManager.AddPack(_lang);
 
-			// Preload MsQuic native libraries using mod-aware plugin folders
-			var fol = api.LibAPI.GetFolders();
-			var ext = api.LibAPI.GetExtension();
-			api.LoggerAPI.LogDebug($"Initializing MsQuic with plugin folders: {string.Join(", ", fol)} and extension: {ext}");
-			MsQuic.Init(fol, ext);
+			// Preload MsQuic native libraries using LibAPI (mod-aware plugin folders, platform detection, ref-counted loading)
+			MsQuic.Init(api.LibAPI.Load);
 
 			// Register voice volume channel (protected from removal until dispose)
 			VoiceRegister = new ChannelRegister("voice", new[] { "general" }, api);

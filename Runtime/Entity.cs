@@ -128,7 +128,7 @@ namespace Nox.Relay.Runtime {
 		}
 
 		public virtual void Dispose() {
-			DestroyPhysical();
+			DestroyPhysical(true);
 			Context.UnregisterEntity(this);
 		}
 

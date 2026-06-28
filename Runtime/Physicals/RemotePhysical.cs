@@ -28,7 +28,7 @@ namespace Nox.Relay.Runtime.Physicals {
 		}
 
 		private Dictionary<string, object> AvatarParameters
-			=> new Dictionary<string, object> {
+			=> new() {
 				["local"] = false,
 				["desktop"] = true,
 			};
@@ -68,15 +68,13 @@ namespace Nox.Relay.Runtime.Physicals {
 			base.OnDisable();
 		}
 
-		private void OnDestroy() {
+		public void OnDestroy() {
 			CancelAvatarLoading();
-			if (RuntimeAvatar != null) {
-				RuntimeAvatar.Dispose().Forget();
-				RuntimeAvatar = null;
-			}
+			if (RuntimeAvatar == null) return;
+			RuntimeAvatar.Dispose().Forget();
+			RuntimeAvatar = null;
 		}
 
-		/// <summary>Cancels any in-progress avatar loading and disposes the token source.</summary>
 		private void CancelAvatarLoading() {
 			AvatarLoadingCts?.Cancel();
 			AvatarLoadingCts?.Dispose();
@@ -154,14 +152,14 @@ namespace Nox.Relay.Runtime.Physicals {
 				if (Quaternion.Angle(state.StartRotation, state.TargetRotation) > threshold * 0.1f) {
 					transform.rotation = Quaternion.Slerp(state.StartRotation, state.TargetRotation, tRot);
 					var deltaRot = state.TargetRotation * Quaternion.Inverse(transform.rotation);
-					deltaRot.ToAngleAxis(out var angle, out var axis);
-					if (angle > 180f) angle -= 360f;
+						deltaRot.ToAngleAxis(out var angle, out var axis);
+						if (angle > 180f) angle -= 360f;
 					if (_tickInterval > 0)
 						rigidbody.angularVelocity = axis * (angle * Mathf.Deg2Rad / _tickInterval);
 				} else {
 					transform.rotation        = state.TargetRotation;
 					rigidbody.angularVelocity = part.Angular;
-				}
+					}
 
 				// Scale
 				transform.localScale = Vector3.Distance(state.StartScale, state.TargetScale) > threshold * 0.1f
@@ -216,13 +214,23 @@ namespace Nox.Relay.Runtime.Physicals {
 				return;
 			}
 
-			AvatarLoadingCts?.Cancel();
-			AvatarLoadingCts = new CancellationTokenSource();
+			try {
+				if (AvatarLoadingCts.IsCancellationRequested || !this || !gameObject)
+					return;
 
-			await SetAvatar(avatar);
+				await SetAvatar(avatar);
+				// Ownership transferred to SetAvatar (or disposed on failure)
 
-			if (Reference?.Avatar.IsValid() == true)
-				await SetAvatar(Reference.Avatar);
+				if (Reference?.Avatar.IsValid() == true) {
+					AvatarLoadingCts?.Cancel();
+					AvatarLoadingCts = new CancellationTokenSource();
+					await SetAvatar(Reference.Avatar);
+				}
+			} finally {
+				// If loading avatar wasn't attached (e.g. physical destroyed mid-setup), dispose it
+				if (avatar != RuntimeAvatar)
+					avatar.Dispose().Forget();
+			}
 		}
 
 		public async UniTask<IRuntimeAvatar> SetAvatar(Identifier identifier) {
@@ -259,7 +267,7 @@ namespace Nox.Relay.Runtime.Physicals {
 			};
 
 			var asset = (await Main.AvatarAPI.SearchAssets(identifier, req)
-					.AttachExternalCancellation(AvatarLoadingCts.Token))
+				.AttachExternalCancellation(AvatarLoadingCts.Token))
 				.Items
 				.FirstOrDefault();
 

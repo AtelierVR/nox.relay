@@ -24,7 +24,7 @@ namespace Nox.Relay.Runtime.Physicals {
 		public void Destroy(bool immediate = false) {
 			if (immediate || !gameObject) {
 				_destroyCts?.Cancel();
-				gameObject?.Destroy();
+				gameObject?.DestroyImmediate();
 				return;
 			}
 
@@ -46,8 +46,9 @@ namespace Nox.Relay.Runtime.Physicals {
 				TimeSpan.FromSeconds(Settings.ClearPhysicalAfterSeconds),
 				cancellationToken: ct
 			);
-			if (!ct.IsCancellationRequested)
-				gameObject?.Destroy();
+			if (ct.IsCancellationRequested || !this || !gameObject)
+				return;
+			gameObject.Destroy();
 		}
 
 		/// <summary>Cancels the pending delayed destruction and re-activates the GameObject.</summary>
