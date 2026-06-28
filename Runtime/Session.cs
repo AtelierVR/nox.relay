@@ -474,7 +474,6 @@ namespace Nox.Relay.Runtime {
 		}
 
 		internal void OnEventHandler(EventEvent @event) {
-			Logger.LogDebug($"OnEvent: {@event} from SenderId={@event.SenderId}");
 			var player = InterEntities.GetEntity<Player>(@event.SenderId);
 			if (player == null) {
 				Logger.LogWarning($"Player with ID {@event.SenderId} not found for Event event", tag: Tag);
