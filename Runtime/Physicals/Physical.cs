@@ -79,12 +79,12 @@ namespace Nox.Relay.Runtime.Physicals {
 
 		public void OnDrawGizmos() {
 			if (Reference != null) {
-				Gizmos.color = Color.cyan;
+				Gizmos.Color = Color.cyan;
 				Gizmos.DrawWireSphere(Reference.Position, 0.1f);
 				Gizmos.DrawLine(Reference.Position, Reference.Position + Vector3.up * 2f);
 			}
 
-			Gizmos.color = Color.yellow;
+			Gizmos.Color = Color.yellow;
 			Gizmos.DrawWireCube(transform.position, Vector3.one * 0.2f);
 			Gizmos.DrawLine(transform.position, transform.position + Vector3.up * 2f);
 		}
