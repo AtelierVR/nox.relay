@@ -3,8 +3,9 @@ using UnityEngine;
 
 namespace Nox.Relay.Runtime.Voice {
 	/// <summary>
-	/// Microphone-based voice input — MetaVoiceChat VcMicAudioInput equivalent.
-	/// Wraps Unity's Microphone API with configurable sample rate and frame size.
+	/// Microphone-based voice input — wraps Unity's Microphone API.
+	/// Noise suppression and activation gate are handled by <see cref="MicrophoneProcessor"/>
+	/// (in nox.audio) via the <see cref="NoxVoiceInput.OptionalFirstInputFilter"/> chain.
 	/// </summary>
 	public class NoxVoiceMicInput : NoxVoiceInput {
 		[Tooltip("Microphone device name (null = default device).")]
@@ -25,7 +26,6 @@ namespace Nox.Relay.Runtime.Voice {
 			var config = VoiceChat.Config;
 			_frameBuffer = new float[config.SamplesPerFrame];
 
-			// Start Unity microphone capture
 			_micClip = UnityEngine.Microphone.Start(DeviceName, loop: true, lengthSec: 1, frequency: SampleRate);
 			if (_micClip == null) {
 				Debug.LogError($"[NoxVoiceMicInput] Failed to start microphone '{DeviceName}'");
@@ -53,12 +53,10 @@ namespace Nox.Relay.Runtime.Voice {
 			int frameSize = config.SamplesPerFrame;
 
 			while (samplesAvailable >= frameSize) {
-				// Read one frame from the ring buffer
 				int start = _lastPosition % _micClip.samples;
 				if (start + frameSize <= _micClip.samples) {
 					_micClip.GetData(_frameBuffer, start);
 				} else {
-					// Wraparound
 					int first = _micClip.samples - start;
 					int second = frameSize - first;
 					var temp = new float[first];
@@ -72,9 +70,9 @@ namespace Nox.Relay.Runtime.Voice {
 				_lastPosition = (start + frameSize) % _micClip.samples;
 				samplesAvailable -= frameSize;
 
-				// Pass through filter chain and fire event
 				float[] frameCopy = new float[frameSize];
 				Array.Copy(_frameBuffer, frameCopy, frameSize);
+
 				SendAndFilterFrame(_frameIndex++, frameCopy);
 			}
 		}
