@@ -2627,12 +2627,11 @@ namespace StirlingLabs.MsQuic.Bindings
 
     public static unsafe partial class MsQuic
     {
-        [DllImport("msquic-openssl", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
-        [return: NativeTypeName("HRESULT")]
-        public static extern int MsQuicOpenVersion([NativeTypeName("uint32_t")] uint Version, [NativeTypeName("const void **")] void** QuicApi);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate int MsQuicOpenVersionFn([NativeTypeName("uint32_t")] uint Version, [NativeTypeName("const void **")] void** QuicApi);
 
-        [DllImport("msquic-openssl", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
-        public static extern void MsQuicClose([NativeTypeName("const void *")] void* QuicApi);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate void MsQuicCloseFn([NativeTypeName("const void *")] void* QuicApi);
 
         [NativeTypeName("#define QUIC_MAX_ALPN_LENGTH 255")]
         public const uint QUIC_MAX_ALPN_LENGTH = 255;

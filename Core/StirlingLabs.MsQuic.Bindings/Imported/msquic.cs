@@ -28,15 +28,19 @@ namespace StirlingLabs.MsQuic.Bindings
     {
         public static unsafe QUIC_API_TABLE* Open()
         {
+            var open = Marshal.GetDelegateForFunctionPointer<MsQuicOpenVersionFn>(
+                ResolveSymbol(MsQuicLib, "MsQuicOpenVersion"));
             QUIC_API_TABLE* ApiTable;
-            int Status = MsQuicOpenVersion(2, (void**)&ApiTable);
+            int Status = open(2, (void**)&ApiTable);
             ThrowIfFailure(Status);
             return ApiTable;
         }
 
         public static unsafe void Close(QUIC_API_TABLE* ApiTable)
         {
-            MsQuicClose(ApiTable);
+            var close = Marshal.GetDelegateForFunctionPointer<MsQuicCloseFn>(
+                ResolveSymbol(MsQuicLib, "MsQuicClose"));
+            close(ApiTable);
         }
 
         public static void ThrowIfFailure(int status, string? message = null)
