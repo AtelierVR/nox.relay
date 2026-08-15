@@ -48,8 +48,11 @@ namespace Nox.Relay.Runtime.Voice {
 				}
 			}
 
-			if (VoiceChat.AudioOutput == null)
-				VoiceChat.AudioOutput = gameObject.GetOrAddComponent<NoxVoiceAudioSourceOutput>();
+			if (VoiceChat.AudioOutput == null) {
+				var output = gameObject.GetOrAddComponent<NoxVoiceAudioSourceOutput>();
+				output.VoiceChat = VoiceChat;
+				VoiceChat.AudioOutput = output;
+			}
 		}
 
 		/// <summary>Initialize for a remote player (receiving voice).</summary>
@@ -82,8 +85,11 @@ namespace Nox.Relay.Runtime.Voice {
 
 			EnsureComponents();
 
-			if (VoiceChat.AudioInput == null)
-				VoiceChat.AudioInput = gameObject.GetOrAddComponent<NoxVoiceMicInput>();
+			if (VoiceChat.AudioInput == null) {
+				var input = gameObject.GetOrAddComponent<NoxVoiceMicInput>();
+				input.VoiceChat = VoiceChat;
+				VoiceChat.AudioInput = input;
+			}
 
 			if (!_started) {
 				VoiceChat.StartClient(this, true, MaxDataBytesPerPacket);

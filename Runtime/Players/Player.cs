@@ -26,8 +26,10 @@ namespace Nox.Relay.Runtime.Players {
 			Data = Main.PlayerAPI.Get(Identifier);
 			Data.OnChanged.AddListener(OnDataChanged);
 
-			Main.VoiceRegister.OnVolume.AddListener(OnVolumeChanged);
-			Main.VoiceRegister.OnMute.AddListener(OnMuteChanged);
+			if (Main.VoiceRegister != null) {
+				Main.VoiceRegister.OnVolume.AddListener(OnVolumeChanged);
+				Main.VoiceRegister.OnMute.AddListener(OnMuteChanged);
+			}
 			OnVolume.Invoke(Volume, EffectiveVolume);
 			OnMute.Invoke(IsMuted, IsEffectivelyMuted);
 		}
@@ -35,8 +37,10 @@ namespace Nox.Relay.Runtime.Players {
         public override void Dispose() {
 			Data.OnChanged.RemoveListener(OnDataChanged);
 
-			Main.VoiceRegister.OnVolume.RemoveListener(OnVolumeChanged);
-			Main.VoiceRegister.OnMute.RemoveListener(OnMuteChanged);
+			if (Main.VoiceRegister != null) {
+				Main.VoiceRegister.OnVolume.RemoveListener(OnVolumeChanged);
+				Main.VoiceRegister.OnMute.RemoveListener(OnMuteChanged);
+			}
 
 			Data.Dispose();
 			base.Dispose();
