@@ -160,36 +160,40 @@ namespace Nox.Relay.Runtime.Voice {
 					samples[i] = Amplitude * Mathf.Sin(i * multiplier);
 			}
 
-			bool isSpeaking = samples != null;
+			bool isSpeaking = HasSignal(samples);
 			IsSpeaking = isSpeaking;
 
-			bool shouldRelayEmpty = IsEchoEnabled
-				? !isSpeaking
-				: !isSpeaking || IsDeafened || IsInputMuted;
-
-			if (shouldRelayEmpty) {
-				if (IsEchoEnabled)
-					ReceiveFrame(index, Timestamp, 0, ReadOnlySpan<byte>.Empty);
-				_netProvider.RelayFrame(index, Timestamp, ReadOnlySpan<byte>.Empty);
-			} else {
+			// Encode only when there is voice to send (skip silence / muted frames).
+			byte[] encoded = null;
+			if (isSpeaking && !IsDeafened && !IsInputMuted) {
 				bool hasEncodedYet = _encoder.IsValid;
 				CodecStopwatch.Start();
-				var data = _encoder.Encode(samples, Config.SamplesPerFrame);
+				encoded = _encoder.Encode(samples, Config.SamplesPerFrame);
 				CodecStopwatch.Stop(MaxCodecMilliseconds, CodecTimeOverrunMessage,
 					!hasEncodedYet, AllowMultipleCodecWarningsPerFrame);
 
-				if (data == null) data = Array.Empty<byte>();
+				if (encoded == null) encoded = Array.Empty<byte>();
+			}
 
-				if (IsEchoEnabled)
-					ReceiveFrame(index, Timestamp, 0, data);
+			// Local echo (testing) always feeds the output to stay in sync.
+			if (IsEchoEnabled) {
+				if (encoded != null && encoded.Length > 0)
+					ReceiveFrame(index, Timestamp, 0, encoded);
 				else
 					ReceiveFrame(index, Timestamp, 0, ReadOnlySpan<byte>.Empty);
-
-				if (IsDeafened || IsInputMuted)
-					_netProvider.RelayFrame(index, Timestamp, ReadOnlySpan<byte>.Empty);
-				else
-					_netProvider.RelayFrame(index, Timestamp, data);
 			}
+
+			// Bandwidth optimization: don't send packets for silence.
+			if (encoded != null && encoded.Length > 0)
+				_netProvider.RelayFrame(index, Timestamp, encoded);
+		}
+
+		private static bool HasSignal(float[] samples) {
+			if (samples == null) return false;
+			float sumSq = 0f;
+			for (int i = 0; i < samples.Length; i++)
+				sumSq += samples[i] * samples[i];
+			return sumSq > 1e-6f;
 		}
 
 		// ── Receive (all players) ──

@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: config
   m_EditorClassIdentifier: Nox.Relay.Runtime::Nox.Relay.Runtime.Voice.NoxVoiceConfig
   Complexity: 10
-  FrameSize: 20
+  FrameSize: 10
   Bitrate: 32000
   JitterTimeWindow: 0.24
   JitterMeanOffsetWindow: 100

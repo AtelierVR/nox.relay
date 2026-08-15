@@ -19,8 +19,8 @@ namespace Nox.Relay.Runtime.Voice {
 		[Range(0, 10)]
 		public int Complexity = 10;
 
-		[Tooltip("Opus frame duration in ms. Valid: 10, 20, 40. Default 20ms.")]
-		public OpusFrameSize FrameSize = OpusFrameSize.Ms20;
+		[Tooltip("Opus frame duration in ms. Valid: 10, 20, 40. Default 10ms.")]
+		public OpusFrameSize FrameSize = OpusFrameSize.Ms10;
 
 		[Tooltip("Opus target bitrate in bps.")]
 		public int Bitrate = 32000;
