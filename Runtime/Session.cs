@@ -637,18 +637,15 @@ namespace Nox.Relay.Runtime {
 
 		// ── Voice Chat Routing ──
 
-		private void SetupVoiceRouting() {
-			VoiceManager.SetupRouting(Room);
-		}
+		private void SetupVoiceRouting()
+			=> VoiceManager.SetupRouting(Room);
 
 		/// <summary>Register a voice provider for a player (called when player voice is set up).</summary>
-		internal void RegisterVoiceProvider(int playerId, VoiceRelayProvider provider) {
-			VoiceManager.RegisterProvider(playerId, provider);
-		}
+		internal void RegisterVoiceProvider(int playerId, VoiceProvider provider)
+			=> VoiceManager.RegisterProvider(playerId, provider);
 
 		/// <summary>Unregister a voice provider (called when player leaves).</summary>
-		internal void UnregisterVoiceProvider(int playerId) {
-			VoiceManager.UnregisterProvider(playerId);
-		}
+		internal void UnregisterVoiceProvider(int playerId)
+			=> VoiceManager.UnregisterProvider(playerId);
 	}
 }

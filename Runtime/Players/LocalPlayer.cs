@@ -10,9 +10,7 @@ using Nox.Controllers;
 using Nox.Audio.Players;
 using Nox.Relay.Core.Types.Avatars;
 using Nox.Relay.Runtime.Voice;
-using UnityEngine;
 using Logger = Nox.CCK.Utils.Logger;
-using Object = UnityEngine.Object;
 using CorePlayer = Nox.Relay.Core.Players.Player;
 
 namespace Nox.Relay.Runtime.Players {
@@ -20,7 +18,9 @@ namespace Nox.Relay.Runtime.Players {
 		/// <summary>Fired when the local player's avatar is loaded or changed via controller.</summary>
 		public readonly NoxEvent<IRuntimeAvatar> OnAvatarLoaded = new();
 
-		public LocalPlayer(Entities context, CorePlayer player) : base(context, player) { }
+		public LocalPlayer(Entities context, CorePlayer player) : base(context, player) {
+			VoiceProvider = new LocalVoiceProvider(this);
+		}
 
 		private IRuntimeAvatar _currentAvatar;
 
@@ -46,62 +46,19 @@ namespace Nox.Relay.Runtime.Players {
 
 		// ── Voice (local) ──
 
-		private VoiceRelayProvider _voiceProvider;
-		private GameObject _voiceRoot;
-
 		public override void OnEntered() {
 			base.OnEntered();
-			TrySetupVoice();
+			VoiceProvider.Initialize();
 		}
 
 		public override void OnQuit() {
-			RemoveVoice();
+			VoiceProvider.Dispose();
 			base.OnQuit();
 		}
 
 		public override void OnLeft() {
-			RemoveVoice();
+			VoiceProvider.Dispose();
 			base.OnLeft();
-		}
-
-		/// <summary>
-		/// Starts the local voice pipeline (microphone capture → Opus → relay).
-		/// Mirrors <see cref="RemotePlayer"/> voice setup; the local player has no
-		/// physical representation, so the provider is hosted on a dedicated
-		/// persistent GameObject.
-		/// </summary>
-		private void TrySetupVoice() {
-			if (_voiceProvider != null)
-				return;
-
-			var session = Context?.Context;
-			if (session?.Room == null)
-				return;
-
-			_voiceRoot = new GameObject($"LocalVoice_{Id}");
-			Object.DontDestroyOnLoad(_voiceRoot);
-
-			_voiceProvider = _voiceRoot.AddComponent<VoiceRelayProvider>();
-			_voiceProvider.InitializeLocal(session.Room);
-
-			session.RegisterVoiceProvider(Id, _voiceProvider);
-
-			Logger.LogDebug($"[Session] Voice chat set up for local player {Id}", tag: nameof(LocalPlayer));
-		}
-
-		/// <summary>
-		/// Tears down the local voice pipeline and destroys its host GameObject.
-		/// </summary>
-		private void RemoveVoice() {
-			if (_voiceProvider != null) {
-				Context?.Context.UnregisterVoiceProvider(Id);
-				_voiceProvider = null;
-			}
-
-			if (_voiceRoot != null) {
-				Object.Destroy(_voiceRoot);
-				_voiceRoot = null;
-			}
 		}
 
 		// Note: Tick() is inherited from Player.cs and handles SendTransformsIfNeeded()

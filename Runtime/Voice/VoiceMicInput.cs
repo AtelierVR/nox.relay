@@ -1,7 +1,7 @@
 using System;
 using UnityEngine;
-using AudioMicrophone = Nox.Audio.Runtime.Microphone.Microphone;
-using AudioMicrophoneManager = Nox.Audio.Runtime.Microphone.MicrophoneManager;
+using Nox.Audio;
+using Nox.CCK.Audio.Opus;
 
 namespace Nox.Relay.Runtime.Voice {
 	/// <summary>
@@ -10,13 +10,10 @@ namespace Nox.Relay.Runtime.Voice {
 	/// activation gate) via the microphone, then emits processed frames.
 	/// </summary>
 	public class VoiceMicInput : MonoBehaviour {
-		public VoiceChat VoiceChat;
-
 		/// <summary>Fired when a new (processed) audio frame is ready: (frameIndex, pcmSamples).</summary>
 		public event Action<int, float[]> OnFrameReady;
 
-		private AudioMicrophoneManager _manager;
-		private AudioMicrophone _mic;
+		private IMicrophone _mic;
 
 		private AudioClip _micClip;
 		private int _lastPosition;
@@ -27,19 +24,14 @@ namespace Nox.Relay.Runtime.Voice {
 		public void StartLocalPlayer() {
 			if (_isRecording) return;
 
-			var config = VoiceChat.Config;
-			_frameBuffer = new float[config.SamplesPerFrame];
+			_frameBuffer = new float[OpusConfig.SamplesPerFrame];
 
-			_manager = Nox.Audio.Runtime.Main.MicrophoneManager;
-			if (_manager == null) {
+			if (Main.MicrophoneAPI == null) {
 				Debug.LogError("[VoiceMicInput] nox.audio MicrophoneManager is unavailable.");
 				return;
 			}
 
-			// Follow device changes.
-			_manager.OnCurrentChanged.AddListener(OnCurrentMicChanged);
-
-			if (!BeginCapture(_manager.Current))
+			if (!BeginCapture(Main.MicrophoneAPI.Current))
 				return;
 
 			_frameIndex = 0;
@@ -47,7 +39,7 @@ namespace Nox.Relay.Runtime.Voice {
 		}
 
 		/// <summary>Start (or switch) capture on the given microphone.</summary>
-		private bool BeginCapture(AudioMicrophone mic) {
+		private bool BeginCapture(IMicrophone mic) {
 			if (mic == null) {
 				Debug.LogError("[VoiceMicInput] No microphone available via nox.audio.");
 				return false;
@@ -65,15 +57,13 @@ namespace Nox.Relay.Runtime.Voice {
 			// that may already be full (e.g. started by MicrophoneManager's "current"
 			// user). Reading from 0 would replay seconds of stale audio.
 			_lastPosition = mic.Position;
+
+			// Diagnostic: the whole pipeline assumes 48 kHz. If the device records at
+			// a different rate (e.g. 44100), each frame is slightly off → pitch shift +
+			// periodic buffer underrun (audible "grésillement").
+			if (clip.frequency != OpusConfig.SamplesPerSecond)
+				Debug.LogWarning($"[VoiceMicInput] Microphone '{mic.Name}' records at {clip.frequency} Hz (expected {OpusConfig.SamplesPerSecond}). Resampling required.");
 			return true;
-		}
-
-		private void OnCurrentMicChanged(AudioMicrophone arg0) {
-			if (!_isRecording) return;
-
-			// Release the previous device and switch to the new current microphone.
-			_mic?.Stop("voice");
-			BeginCapture(_manager.Current);
 		}
 
 		private void Update() {
@@ -90,8 +80,9 @@ namespace Nox.Relay.Runtime.Voice {
 			else
 				samplesAvailable = (_micClip.samples - _lastPosition) + pos;
 
-			var config = VoiceChat.Config;
-			int frameSize = config.SamplesPerFrame;
+			int frameSize = OpusConfig.SamplesPerFrame;
+			if (frameSize <= 0)
+				return;
 
 			while (samplesAvailable >= frameSize) {
 				int start = _lastPosition % _micClip.samples;
@@ -114,8 +105,13 @@ namespace Nox.Relay.Runtime.Voice {
 				float[] frameCopy = new float[frameSize];
 				Array.Copy(_frameBuffer, frameCopy, frameSize);
 
-				// Apply nox.audio DSP (volume, noise suppression, activation gate).
-				_mic.Process(frameCopy);
+				// The microphone's ClipProcessor (in nox.audio) normally mutes the clip
+				// in place, but it runs on a different update (OnUpdateMain vs. this
+				// MonoBehaviour.Update), so it can race with this reader. Enforce mute
+				// here as an authoritative, idempotent boundary check so no sound ever
+				// leaks while muted.
+				if (_mic.IsMuted)
+					Array.Clear(frameCopy, 0, frameCopy.Length);
 
 				OnFrameReady?.Invoke(_frameIndex++, frameCopy);
 			}
@@ -126,10 +122,6 @@ namespace Nox.Relay.Runtime.Voice {
 				_mic?.Stop("voice");
 				_isRecording = false;
 			}
-
-			if (_manager != null)
-				_manager.OnCurrentChanged.RemoveListener(OnCurrentMicChanged);
-			_manager = null;
 		}
 	}
 }

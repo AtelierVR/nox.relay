@@ -6,7 +6,6 @@ using Cysharp.Threading.Tasks;
 using Nox.Avatars;
 using Nox.Avatars.Parameters;
 using Nox.Avatars.Rigging;
-using Nox.Avatars.Runtime.Network;
 using Nox.CCK.Avatars;
 using Nox.CCK.Events;
 using Nox.CCK.Players;
@@ -260,10 +259,10 @@ namespace Nox.Relay.Runtime.Physicals {
 			AvatarLoadingCts = new CancellationTokenSource();
 
 			var req = new AssetSearchRequest {
-				Engines = new[] { EngineExtensions.CurrentEngine.GetEngineName() },
+				Engines   = new[] { EngineExtensions.CurrentEngine.GetEngineName() },
 				Platforms = new[] { PlatformExtensions.CurrentPlatform.GetPlatformName() },
-				Versions = new[] { identifier.GetVersion() },
-				Limit = 1
+				Versions  = new[] { identifier.GetVersion() },
+				Limit     = 1
 			};
 
 			var asset = (await Main.AvatarAPI.SearchAssets(identifier, req)

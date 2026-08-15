@@ -16,7 +16,7 @@ namespace Nox.Relay.Runtime {
 		private readonly Session _session;
 
 		private bool _routingSetup;
-		private readonly Dictionary<int, VoiceRelayProvider> _providers = new();
+		private readonly Dictionary<int, VoiceProvider> _providers = new();
 		private readonly Dictionary<int, VoiceBroadcastReceiver> _broadcastReceivers = new();
 		private GameObject _broadcastRoot;
 
@@ -34,14 +34,12 @@ namespace Nox.Relay.Runtime {
 		}
 
 		/// <summary>Register a voice provider for a player.</summary>
-		public void RegisterProvider(int playerId, VoiceRelayProvider provider) {
-			_providers[playerId] = provider;
-		}
+		public void RegisterProvider(int playerId, VoiceProvider provider)
+			=> _providers[playerId] = provider;
 
 		/// <summary>Unregister a voice provider for a player.</summary>
-		public void UnregisterProvider(int playerId) {
-			_providers.Remove(playerId);
-		}
+		public void UnregisterProvider(int playerId)
+			=> _providers.Remove(playerId);
 
 		/// <summary>Remove and destroy a broadcast receiver for a player.</summary>
 		public void RemoveBroadcastReceiver(int playerId) {
@@ -59,13 +57,13 @@ namespace Nox.Relay.Runtime {
 
 			// ── Broadcast mode — create a global 2D receiver if no physical exists ──
 			if (mode == VoiceDistanceMode.Broadcast) {
-				if (!_providers.TryGetValue(speakerId, out var provider) || provider?.gameObject == null) {
+				if (!_providers.TryGetValue(speakerId, out var provider) || provider is not RemoteVoiceProvider) {
 					// No physical for this speaker — use/create a broadcast receiver
-					if (!_broadcastReceivers.TryGetValue(speakerId, out var receiver) || receiver == null) {
-						receiver = CreateBroadcastReceiver(speakerId);
-						if (receiver == null) return;
+					if (!_broadcastReceivers.TryGetValue(speakerId, out var broadcastReceiver) || broadcastReceiver == null) {
+						broadcastReceiver = CreateBroadcastReceiver(speakerId);
+						if (broadcastReceiver == null) return;
 					}
-					receiver.ReceiveFrame(
+					broadcastReceiver.ReceiveFrame(
 						voiceEvent.FrameIndex,
 						voiceEvent.Timestamp > 0 ? voiceEvent.Timestamp : Time.timeAsDouble,
 						Time.deltaTime,
@@ -77,10 +75,10 @@ namespace Nox.Relay.Runtime {
 
 			// Provider is registered on physical creation, unregistered on destruction.
 			// If no provider exists, the physical isn't ready yet — drop the frame.
-			if (!_providers.TryGetValue(speakerId, out var normalProvider) || normalProvider?.gameObject == null)
+			if (!_providers.TryGetValue(speakerId, out var normalProvider) || normalProvider is not RemoteVoiceProvider receiver)
 				return;
 
-			normalProvider.ReceiveRelayFrame(voiceEvent);
+			receiver.ReceiveRelayFrame(voiceEvent);
 		}
 
 		private VoiceBroadcastReceiver CreateBroadcastReceiver(int speakerId) {
@@ -93,13 +91,7 @@ namespace Nox.Relay.Runtime {
 			go.transform.SetParent(_broadcastRoot.transform, false);
 
 			var receiver = go.AddComponent<VoiceBroadcastReceiver>();
-			var config = Main.CoreAPI?.AssetAPI?.GetAsset<VoiceConfig>("config.asset");
-			if (config == null) {
-				config = ScriptableObject.CreateInstance<VoiceConfig>();
-				config.Init();
-			}
-
-			receiver.Initialize(speakerId, config, _session.Room);
+			receiver.Initialize(speakerId);
 			_broadcastReceivers[speakerId] = receiver;
 
 			Logger.LogDebug(

@@ -19,6 +19,7 @@ namespace Nox.Relay.Runtime.Players {
 		public RemotePlayer(Entities context, CorePlayer player) : base(context, player) {
 			// Initialize default parts for a basic player rig
 			InitializeDefaultParts();
+			VoiceProvider = new RemoteVoiceProvider(this);
 		}
 
 		public override bool IsLocal
@@ -64,7 +65,7 @@ namespace Nox.Relay.Runtime.Players {
 			base.OnPhysicalCreated();
 
 			// Set up voice on the new physical
-			TrySetupVoice();
+			VoiceProvider.Initialize();
 
 			// If we have an avatar assigned, set it now
 			if (Avatar.IsValid()) {
@@ -74,7 +75,7 @@ namespace Nox.Relay.Runtime.Players {
 		}
 
 		override protected void OnPhysicalDestroyed() {
-			RemoveVoice();
+			VoiceProvider.Dispose();
 			base.OnPhysicalDestroyed();
 		}
 
@@ -122,7 +123,7 @@ namespace Nox.Relay.Runtime.Players {
 			InitializeAvatarParameters(result);
 
 			// Avatar may have brought a new VoiceAvatarModule — retry voice setup
-			TrySetupVoice();
+			VoiceProvider.Initialize();
 
 			return true;
 		}
@@ -137,31 +138,6 @@ namespace Nox.Relay.Runtime.Players {
 			var parameterModule = descriptor?.GetModules<IParameterModule>().FirstOrDefault();
 			var parameters = parameterModule?.GetParameters() ?? Array.Empty<IParameter>();
 			SynchronizeAvatarParameters(parameters, isLocal: false);
-		}
-
-		/// <summary>
-		/// Try to create voice chat components on this remote player's physical.
-		/// No-op if the physical or room isn't available yet.
-		/// </summary>
-		private void TrySetupVoice() {
-			var session = Context?.Context;
-			if (session?.Room == null) return;
-
-			if (!TryGetPhysical<RemotePhysical>(out var physical))
-				return; // Avatar not loaded yet — retry on next voice frame
-
-			var provider = physical.gameObject.GetOrAddComponent<VoiceRelayProvider>();
-			provider.InitializeRemote(session.Room, Id);
-
-			session.RegisterVoiceProvider(Id, provider);
-			Logger.LogDebug($"[Session] Voice chat set up for remote player {Id}", tag: nameof(RemotePlayer));
-		}
-
-		/// <summary>
-		/// Remove voice chat components for this remote player.
-		/// </summary>
-		private void RemoveVoice() {
-			Context?.Context.UnregisterVoiceProvider(Id);
 		}
 	}
 }

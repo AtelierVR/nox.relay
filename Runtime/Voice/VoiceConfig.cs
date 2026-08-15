@@ -1,106 +1,48 @@
-using System;
 using UnityEngine;
+using Nox.CCK.Utils;
 
 namespace Nox.Relay.Runtime.Voice {
 	/// <summary>
-	/// Voice chat configuration — MetaVoiceChat-style VcConfig equivalent.
-	/// Created as a ScriptableObject asset for editor tuning.
+	/// Voice chat configuration — static accessor over the shared config store
+	/// (<see cref="Config.Load()"/>). Values are read live from config.json with
+	/// sensible defaults, so no ScriptableObject asset is required.
 	/// </summary>
-	[CreateAssetMenu(fileName = "VoiceConfig", menuName = "Nox/Voice Config")]
-	public class VoiceConfig : ScriptableObject {
-		// ── Constants (matching Opus specs) ──
-		public const int BitsPerSample = 16;
-		public const int SamplesPerSecond = 48_000;
-		public const int ClipLoopSeconds = 1;
-		public const int SamplesPerClip = SamplesPerSecond * ClipLoopSeconds;
+	public static class VoiceConfig {
+		private const string Prefix = "settings.relay.voice";
 
-		[Header("Opus Codec")]
-		[Tooltip("Opus complexity: 0=fast/low quality, 10=slow/high quality. Default 10.")]
-		[Range(0, 10)]
-		public int Complexity = 10;
+		private static T Get<T>(string key, T fallback)
+			=> Config.Load().Get($"{Prefix}.{key}", fallback);
 
-		[Tooltip("Opus frame duration in ms. Valid: 10, 20, 40. Default 10ms.")]
-		public OpusFrameSize FrameSize = OpusFrameSize.Ms10;
+		// ── Jitter Buffer ──
+		public static float JitterTimeWindow 
+			=> Get("jitter_time_window", 0.240f);
+		public static int JitterMeanOffsetWindow 
+			=> Get("jitter_mean_offset_window", 100);
+		public static float OutputMinBufferFrames 
+			=> Get("output_min_buffer_frames", 2.0f);
 
-		[Tooltip("Opus target bitrate in bps.")]
-		public int Bitrate = 32000;
+		// ── Pitch Compensation ──
+		public static float PitchProportionalGain 
+			=> Get("pitch_proportional_gain", 0.05f);
+		public static float PitchMaxCorrection 
+			=> Get("pitch_max_correction", 0.01f);
 
-		[Header("Jitter Buffer")]
-		[Tooltip("RMS jitter calculation window in seconds.")]
-		[Range(0.040f, 1.200f)]
-		public float JitterTimeWindow = 0.240f;
+		// ── AudioSource Output ──
+		public static float FrameLifetime 
+			=> Get("frame_lifetime", 0.5f);
+		public static float MaxNegativeLatency 
+			=> Get("max_negative_latency", 0.25f);
 
-		[Tooltip("Number of updates for mean offset calculation.")]
-		[Range(10, 1000)]
-		public int JitterMeanOffsetWindow = 100;
-
-		[Tooltip("Minimum fractional frames between buffer read/write. Lower = less latency but riskier.")]
-		[Range(1, 10)]
-		public float OutputMinBufferFrames = 2.0f;
-
-		[Header("Pitch Compensation")]
-		[Tooltip("P-controller proportional gain (0 = disabled). Lower = smoother, less warbly.")]
-		[Range(0, 10)]
-		public float PitchProportionalGain = 0.3f;
-
-		[Tooltip("Maximum pitch correction as fraction (±). Lower = less warbly artifact.")]
-		[Range(0, 0.5f)]
-		public float PitchMaxCorrection = 0.05f;
-
-		[Header("AudioSource Output")]
-		[Tooltip("Maximum frame lifetime in the buffer before clearing.")]
-		[Range(0.1f, 0.75f)]
-		public float FrameLifetime = 0.5f;
-
-		[Tooltip("Largest negative latency before wrapping. Used for AudioClip circular buffer.")]
-		[Range(0.1f, 0.5f)]
-		public float MaxNegativeLatency = 0.25f;
-
-		[Header("3D Spatial")]
-		[Tooltip("Default distance mode for outgoing voice. 0=Normal, 1=Whisper, 2=Broadcast.")]
-		public VoiceDistanceMode DefaultDistanceMode = VoiceDistanceMode.Normal;
-
-		[Tooltip("Minimum distance for 3D audio (full volume).")]
-		[Range(0f, 50f)]
-		public float SpatialMinDistance = 1f;
-
-		[Tooltip("Maximum distance for 3D audio (silence). Normal mode.")]
-		[Range(1f, 500f)]
-		public float SpatialMaxDistanceNormal = 40f;
-
-		[Tooltip("Maximum distance for whisper mode.")]
-		[Range(0.5f, 20f)]
-		public float SpatialMaxDistanceWhisper = 5f;
-
-		[Tooltip("Volume rolloff curve for 3D audio.")]
-		public AudioRolloffMode SpatialRolloff = AudioRolloffMode.Logarithmic;
-
-		// ── Derived values (set by Init()) ──
-		[NonSerialized] public int FramePeriodMs;
-		[NonSerialized] public int FramesPerSecond;
-		[NonSerialized] public float SecondsPerFrame;
-		[NonSerialized] public int SamplesPerFrame;
-		[NonSerialized] public int FramesPerClip;
-
-		public void Init() {
-			FramePeriodMs = FrameSize switch {
-				OpusFrameSize.Ms10 => 10,
-				OpusFrameSize.Ms20 => 20,
-				OpusFrameSize.Ms40 => 40,
-				_ => 20
-			};
-
-			FramesPerSecond = 1000 / FramePeriodMs;
-			SecondsPerFrame = FramePeriodMs / 1000f;
-			SamplesPerFrame = SamplesPerSecond / FramesPerSecond;
-			FramesPerClip = FramesPerSecond * ClipLoopSeconds;
-		}
-	}
-
-	/// <summary>Opus frame duration.</summary>
-	public enum OpusFrameSize {
-		Ms10 = 10,
-		Ms20 = 20,
-		Ms40 = 40
+		// ── 3D Spatial ──
+		public static VoiceDistanceMode DefaultDistanceMode 
+			=> Get("default_distance_mode", VoiceDistanceMode.Normal);
+		public static float SpatialMinDistance 
+			=> Get("spatial_min_distance", 1f);
+		public static float SpatialMaxDistanceNormal 
+			=> Get("spatial_max_distance_normal", 40f);
+		public static float SpatialMaxDistanceWhisper 
+			=> Get("spatial_max_distance_whisper", 5f);
+		public static AudioRolloffMode SpatialRolloff 
+			=> Get("spatial_rolloff", AudioRolloffMode.Logarithmic);
 	}
 }

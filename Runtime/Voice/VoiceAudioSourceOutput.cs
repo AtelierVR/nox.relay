@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using Nox.CCK.Audio.Opus;
 
 namespace Nox.Relay.Runtime.Voice {
 	/// <summary>
@@ -8,8 +9,6 @@ namespace Nox.Relay.Runtime.Voice {
 	/// Uses a circular AudioClip for zero-copy frame writing.
 	/// </summary>
 	public class VoiceAudioSourceOutput : MonoBehaviour {
-		public VoiceChat VoiceChat;
-
 		[Tooltip("The output AudioSource.")]
 		public AudioSource AudioSource;
 
@@ -25,11 +24,11 @@ namespace Nox.Relay.Runtime.Voice {
 		[Header("Pitch P-Controller")]
 		[Tooltip("Proportional gain in % per second of latency error. Lower = smoother.")]
 		[Range(0, 10)]
-		public float PitchProportionalGain = 0.3f;
+		public float PitchProportionalGain = 0.05f;
 
 		[Tooltip("Maximum pitch correction (fraction). Lower = less warbly.")]
 		[Range(0, 0.5f)]
-		public float PitchMaxCorrection = 0.05f;
+		public float PitchMaxCorrection = 0.01f;
 
 		[Header("3D Spatial")]
 		[Tooltip("Current distance mode for this output.")]
@@ -41,21 +40,19 @@ namespace Nox.Relay.Runtime.Voice {
 		/// </summary>
 		public void ApplySpatialSettings() {
 			if (AudioSource == null) return;
-			var cfg = VoiceChat?.Config;
-			if (cfg == null) return;
 
 			switch (DistanceMode) {
 				case VoiceDistanceMode.Normal:
 					AudioSource.spatialBlend = 1f;
-					AudioSource.minDistance = cfg.SpatialMinDistance;
-					AudioSource.maxDistance = cfg.SpatialMaxDistanceNormal;
-					AudioSource.rolloffMode = cfg.SpatialRolloff;
+					AudioSource.minDistance = VoiceConfig.SpatialMinDistance;
+					AudioSource.maxDistance = VoiceConfig.SpatialMaxDistanceNormal;
+					AudioSource.rolloffMode = VoiceConfig.SpatialRolloff;
 					break;
 				case VoiceDistanceMode.Whisper:
 					AudioSource.spatialBlend = 1f;
-					AudioSource.minDistance = cfg.SpatialMinDistance * 0.5f;
-					AudioSource.maxDistance = cfg.SpatialMaxDistanceWhisper;
-					AudioSource.rolloffMode = cfg.SpatialRolloff;
+					AudioSource.minDistance = VoiceConfig.SpatialMinDistance * 0.5f;
+					AudioSource.maxDistance = VoiceConfig.SpatialMaxDistanceWhisper;
+					AudioSource.rolloffMode = VoiceConfig.SpatialRolloff;
 					break;
 				case VoiceDistanceMode.Broadcast:
 					AudioSource.spatialBlend = 0f; // 2D global
@@ -94,18 +91,16 @@ namespace Nox.Relay.Runtime.Voice {
 
 			ApplySpatialSettings();
 
-			var config = VoiceChat?.Config;
-			if (config == null) {
-				Debug.LogWarning("[VoiceAudioSourceOutput] No config on VoiceChat, using defaults");
-				return;
-			}
+			_framesPerSecond = OpusConfig.FramesPerSecond;
+			_secondsPerFrame = OpusConfig.SecondsPerFrame;
 
-			config.Init();
-			_framesPerSecond = config.FramesPerSecond;
-			_secondsPerFrame = config.SecondsPerFrame;
+			// Apply config pitch-compensation settings (otherwise the serialized field
+			// defaults are used and tuning VoiceConfig has no effect on the wobble).
+			PitchProportionalGain = VoiceConfig.PitchProportionalGain;
+			PitchMaxCorrection = VoiceConfig.PitchMaxCorrection;
 
-			_vcAudioClip = new VoiceAudioClip(config, AudioSource);
-			_clipFrameIndices = new int[config.FramesPerClip];
+			_vcAudioClip = new VoiceAudioClip(AudioSource);
+			_clipFrameIndices = new int[OpusConfig.FramesPerClip];
 			for (int i = 0; i < _clipFrameIndices.Length; i++)
 				_clipFrameIndices[i] = -1;
 		}
@@ -229,32 +224,28 @@ namespace Nox.Relay.Runtime.Voice {
 
 			// Recreate the circular clip on the new AudioSource
 			_vcAudioClip?.Dispose();
-			var config = VoiceChat?.Config;
-			if (config != null) {
-				config.Init();
 
-				// Ensure fields are initialized (may be called before Start())
-				if (_framesPerSecond == 0) {
-					_framesPerSecond = config.FramesPerSecond;
-					_secondsPerFrame = config.SecondsPerFrame;
-				}
+			// Ensure fields are initialized (may be called before Start())
+			if (_framesPerSecond == 0) {
+				_framesPerSecond = OpusConfig.FramesPerSecond;
+				_secondsPerFrame = OpusConfig.SecondsPerFrame;
+			}
 
-				_vcAudioClip = new VoiceAudioClip(config, AudioSource);
+			_vcAudioClip = new VoiceAudioClip(AudioSource);
 
-				// Reset frame tracking (handle uninitialized array from pre-Start call)
-				if (_clipFrameIndices == null || _clipFrameIndices.Length != config.FramesPerClip)
-					_clipFrameIndices = new int[config.FramesPerClip];
-				for (int i = 0; i < _clipFrameIndices.Length; i++)
-					_clipFrameIndices[i] = -1;
-				_firstFrameIndex = -1;
-				_greatestFrameIndex = -1;
+			// Reset frame tracking (handle uninitialized array from pre-Start call)
+			if (_clipFrameIndices == null || _clipFrameIndices.Length != OpusConfig.FramesPerClip)
+				_clipFrameIndices = new int[OpusConfig.FramesPerClip];
+			for (int i = 0; i < _clipFrameIndices.Length; i++)
+				_clipFrameIndices[i] = -1;
+			_firstFrameIndex = -1;
+			_greatestFrameIndex = -1;
 
-				// Reset init so Update() re-buffers and calls Play() at the correct time.
-				// Don't call Play() here — let the buffer fill to target latency first.
-				if (_isInit) {
-					_isInit = false;
-					_frameStopwatch.Restart();
-				}
+			// Reset init so Update() re-buffers and calls Play() at the correct time.
+			// Don't call Play() here — let the buffer fill to target latency first.
+			if (_isInit) {
+				_isInit = false;
+				_frameStopwatch.Restart();
 			}
 		}
 	}
@@ -273,16 +264,16 @@ namespace Nox.Relay.Runtime.Voice {
 
 		public float Length => _audioClip.length;
 
-		public VoiceAudioClip(VoiceConfig config, AudioSource audioSource) {
-			_samplesPerFrame = config.SamplesPerFrame;
-			_framesPerClip = config.FramesPerClip;
+		public VoiceAudioClip(AudioSource audioSource) {
+			_samplesPerFrame = OpusConfig.SamplesPerFrame;
+			_framesPerClip = OpusConfig.FramesPerClip;
 
 			_audioClip = AudioClip.Create(nameof(VoiceAudioClip),
-				VoiceConfig.SamplesPerClip, channels: 1,
-				VoiceConfig.SamplesPerSecond, stream: false);
+				OpusConfig.SamplesPerClip, channels: 1,
+				OpusConfig.SamplesPerSecond, stream: false);
 
 			_emptyFrame = new float[_samplesPerFrame];
-			_emptyClip = new float[VoiceConfig.SamplesPerClip];
+			_emptyClip = new float[OpusConfig.SamplesPerClip];
 
 			audioSource.playOnAwake = false;
 			audioSource.Stop();

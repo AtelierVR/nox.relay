@@ -109,7 +109,7 @@ namespace Nox.Relay.Runtime {
 
 		internal static IMicrophoneAPI MicrophoneAPI
 			=> CoreAPI.ModAPI
-				.GetMod("microphone")
+				.GetMod("audio")
 				.GetInstance<IMicrophoneAPI>();
 
 		internal static IPlayerAPI PlayerAPI

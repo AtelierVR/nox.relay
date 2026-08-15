@@ -13,12 +13,12 @@ MonoBehaviour:
   m_Name: config
   m_EditorClassIdentifier: Nox.Relay.Runtime::Nox.Relay.Runtime.Voice.VoiceConfig
   Complexity: 10
-  FrameSize: 10
-  Bitrate: 32000
+  FrameSize: 20
+  Bitrate: 0
   JitterTimeWindow: 0.24
   JitterMeanOffsetWindow: 100
   OutputMinBufferFrames: 2
-  PitchProportionalGain: 0.3
-  PitchMaxCorrection: 0.05
+  PitchProportionalGain: 0.05
+  PitchMaxCorrection: 0.01
   FrameLifetime: 0.5
   MaxNegativeLatency: 0.25

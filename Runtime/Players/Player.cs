@@ -10,6 +10,7 @@ using Nox.Audio.Players;
 using Nox.Players;
 using Nox.Relay.Core.Rooms;
 using Nox.Relay.Core.Types.Transform;
+using Nox.Relay.Runtime.Voice;
 using Nox.Worlds.Spawns;
 using UnityEngine;
 using Logger = Nox.CCK.Utils.Logger;
@@ -47,6 +48,12 @@ namespace Nox.Relay.Runtime.Players {
 		}
 
 		public readonly CorePlayer Reference;
+
+		/// <summary>
+		/// The voice pipeline for this player (local microphone capture or remote playback).
+		/// Assigned by <see cref="LocalPlayer"/> / <see cref="RemotePlayer"/>.
+		/// </summary>
+		public VoiceProvider VoiceProvider { get; protected set; }
 
 		readonly internal Dictionary<ushort, IPart> Parts = new();
 
@@ -405,7 +412,7 @@ namespace Nox.Relay.Runtime.Players {
 		public virtual ICapturedAudio Audio => _audio;
 
 		/// <summary>
-		/// Speaking indicator for UI. Updated externally by VoiceChat.
+		/// Speaking indicator for UI. Updated by the player's voice provider.
 		/// </summary>
 		public bool IsSpeaking { get; set; }
 
