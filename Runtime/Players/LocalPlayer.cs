@@ -46,7 +46,7 @@ namespace Nox.Relay.Runtime.Players {
 
 		// ── Voice (local) ──
 
-		private NoxVoiceRelayProvider _voiceProvider;
+		private VoiceRelayProvider _voiceProvider;
 		private GameObject _voiceRoot;
 
 		public override void OnEntered() {
@@ -81,7 +81,7 @@ namespace Nox.Relay.Runtime.Players {
 			_voiceRoot = new GameObject($"LocalVoice_{Id}");
 			Object.DontDestroyOnLoad(_voiceRoot);
 
-			_voiceProvider = _voiceRoot.AddComponent<NoxVoiceRelayProvider>();
+			_voiceProvider = _voiceRoot.AddComponent<VoiceRelayProvider>();
 			_voiceProvider.InitializeLocal(session.Room);
 
 			session.RegisterVoiceProvider(Id, _voiceProvider);

@@ -6,8 +6,8 @@ namespace Nox.Relay.Runtime.Voice {
 	/// Voice chat configuration — MetaVoiceChat-style VcConfig equivalent.
 	/// Created as a ScriptableObject asset for editor tuning.
 	/// </summary>
-	[CreateAssetMenu(fileName = "NoxVoiceConfig", menuName = "Nox/Voice Config")]
-	public class NoxVoiceConfig : ScriptableObject {
+	[CreateAssetMenu(fileName = "VoiceConfig", menuName = "Nox/Voice Config")]
+	public class VoiceConfig : ScriptableObject {
 		// ── Constants (matching Opus specs) ──
 		public const int BitsPerSample = 16;
 		public const int SamplesPerSecond = 48_000;

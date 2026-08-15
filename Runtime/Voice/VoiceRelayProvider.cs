@@ -8,13 +8,13 @@ using UnityEngine;
 
 namespace Nox.Relay.Runtime.Voice {
 	/// <summary>
-	/// Relay network provider — bridges NoxVoiceChat with the QUIC relay.
+	/// Relay network provider — bridges VoiceChat with the QUIC relay.
 	/// Handles avatar lifecycle: creates voice on a temporary anchor if no avatar,
 	/// migrates to VoiceAvatarModule's AudioSource when the avatar loads.
 	/// </summary>
-	[RequireComponent(typeof(NoxVoiceChat))]
-	public class NoxVoiceRelayProvider : MonoBehaviour, INoxVoiceNetProvider {
-		public NoxVoiceChat VoiceChat { get; private set; }
+	[RequireComponent(typeof(VoiceChat))]
+	public class VoiceRelayProvider : MonoBehaviour {
+		public VoiceChat VoiceChat { get; private set; }
 
 		public uint ChannelId = 0;
 		public int MaxDataBytesPerPacket = 1000;
@@ -28,28 +28,29 @@ namespace Nox.Relay.Runtime.Voice {
 		private GameObject _anchor;
 		private int _playerId = -1;
 
-		bool INoxVoiceNetProvider.IsLocalPlayerDeafened => _isLocal && VoiceChat?.IsDeafened == true;
+		public bool IsLocalPlayerDeafened 
+			=> _isLocal && VoiceChat?.IsDeafened == true;
 
 		private void Awake() {
-			VoiceChat = GetComponent<NoxVoiceChat>();
+			VoiceChat = GetComponent<VoiceChat>();
 			EnsureComponents();
 		}
 
-		/// <summary>Ensure NoxVoiceChat + NoxVoiceAudioSourceOutput exist on this GameObject.</summary>
+		/// <summary>Ensure VoiceChat + VoiceAudioSourceOutput exist on this GameObject.</summary>
 		private void EnsureComponents() {
 			if (VoiceChat == null)
-				VoiceChat = gameObject.AddComponent<NoxVoiceChat>();
+				VoiceChat = gameObject.AddComponent<VoiceChat>();
 
 			if (VoiceChat.Config == null) {
-				VoiceChat.Config = Main.CoreAPI?.AssetAPI?.GetAsset<NoxVoiceConfig>("config.asset");
+				VoiceChat.Config = Main.CoreAPI?.AssetAPI?.GetAsset<VoiceConfig>("config.asset");
 				if (VoiceChat.Config == null) {
-					VoiceChat.Config = ScriptableObject.CreateInstance<NoxVoiceConfig>();
+					VoiceChat.Config = ScriptableObject.CreateInstance<VoiceConfig>();
 					VoiceChat.Config.Init();
 				}
 			}
 
 			if (VoiceChat.AudioOutput == null) {
-				var output = gameObject.GetOrAddComponent<NoxVoiceAudioSourceOutput>();
+				var output = gameObject.GetOrAddComponent<VoiceAudioSourceOutput>();
 				output.VoiceChat = VoiceChat;
 				VoiceChat.AudioOutput = output;
 			}
@@ -86,7 +87,7 @@ namespace Nox.Relay.Runtime.Voice {
 			EnsureComponents();
 
 			if (VoiceChat.AudioInput == null) {
-				var input = gameObject.GetOrAddComponent<NoxVoiceMicInput>();
+				var input = gameObject.GetOrAddComponent<VoiceMicInput>();
 				input.VoiceChat = VoiceChat;
 				VoiceChat.AudioInput = input;
 			}
@@ -123,7 +124,7 @@ namespace Nox.Relay.Runtime.Voice {
 				}
 
 				// Recreate output on this GameObject (may have been on destroyed anchor)
-				var output = gameObject.GetOrAddComponent<NoxVoiceAudioSourceOutput>();
+				var output = gameObject.GetOrAddComponent<VoiceAudioSourceOutput>();
 				output.VoiceChat = VoiceChat;
 				VoiceChat.AudioOutput = output;
 
@@ -138,12 +139,12 @@ namespace Nox.Relay.Runtime.Voice {
 				_anchor.transform.localPosition = Vector3.zero;
 				_anchor.transform.localRotation = Quaternion.identity;
 
-				var anchorOutput = _anchor.AddComponent<NoxVoiceAudioSourceOutput>();
+				var anchorOutput = _anchor.AddComponent<VoiceAudioSourceOutput>();
 				anchorOutput.VoiceChat = VoiceChat;
 				VoiceChat.AudioOutput = anchorOutput;
 
 				// Remove old output on this GameObject (replaced by anchor's)
-				var oldOutput = GetComponent<NoxVoiceAudioSourceOutput>();
+				var oldOutput = GetComponent<VoiceAudioSourceOutput>();
 				if (oldOutput != null && oldOutput != anchorOutput)
 					oldOutput.Destroy();
 			}
@@ -173,7 +174,7 @@ namespace Nox.Relay.Runtime.Voice {
 
 			// Update distance mode on the output if it changed
 			var mode = VoiceDistanceModeExtensions.FromLevelFlags(voiceEvent.LevelFlags);
-			var output = VoiceChat.AudioOutput as NoxVoiceAudioSourceOutput;
+			var output = VoiceChat.AudioOutput as VoiceAudioSourceOutput;
 			if (output != null && output.DistanceMode != mode) {
 				output.DistanceMode = mode;
 				output.ApplySpatialSettings();
@@ -187,7 +188,7 @@ namespace Nox.Relay.Runtime.Voice {
 			);
 		}
 
-		void INoxVoiceNetProvider.RelayFrame(int index, double timestamp, ReadOnlySpan<byte> data) {
+		public void RelayFrame(int index, double timestamp, ReadOnlySpan<byte> data) {
 			if (_room == null || !_started) return;
 
 			byte[] sample = data.IsEmpty ? Array.Empty<byte>() : data.ToArray();

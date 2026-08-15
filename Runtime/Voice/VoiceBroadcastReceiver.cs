@@ -6,29 +6,29 @@ namespace Nox.Relay.Runtime.Voice {
 	/// when a Broadcast-mode StreamEvent arrives from a speaker whose
 	/// physical is not instantiated locally.
 	/// <para>
-	/// Each instance wraps a NoxVoiceChat with a NoxVoiceAudioSourceOutput
+	/// Each instance wraps a VoiceChat with a VoiceAudioSourceOutput
 	/// configured for spatialBlend=0 (2D, no distance attenuation).
 	/// </para>
 	/// </summary>
-	[RequireComponent(typeof(NoxVoiceChat))]
-	[RequireComponent(typeof(NoxVoiceAudioSourceOutput))]
-	public class NoxVoiceBroadcastReceiver : MonoBehaviour {
-		public NoxVoiceChat VoiceChat { get; private set; }
-		public NoxVoiceAudioSourceOutput Output { get; private set; }
+	[RequireComponent(typeof(VoiceChat))]
+	[RequireComponent(typeof(VoiceAudioSourceOutput))]
+	public class VoiceBroadcastReceiver : MonoBehaviour {
+		public VoiceChat VoiceChat { get; private set; }
+		public VoiceAudioSourceOutput Output { get; private set; }
 
 		public int SpeakerId { get; private set; }
 		public bool IsStarted { get; private set; }
 
 		private void Awake() {
-			VoiceChat = GetComponent<NoxVoiceChat>();
-			Output = GetComponent<NoxVoiceAudioSourceOutput>();
+			VoiceChat = GetComponent<VoiceChat>();
+			Output = GetComponent<VoiceAudioSourceOutput>();
 		}
 
 		/// <summary>
 		/// Initialize for a broadcast speaker. Sets the AudioSource to 2D
 		/// (spatialBlend=0) so everyone hears the speaker globally.
 		/// </summary>
-		public void Initialize(int speakerId, NoxVoiceConfig config, Core.Rooms.Room room) {
+		public void Initialize(int speakerId, VoiceConfig config, Core.Rooms.Room room) {
 			if (IsStarted) return;
 
 			SpeakerId = speakerId;
@@ -49,9 +49,9 @@ namespace Nox.Relay.Runtime.Voice {
 			source.spatialize = false;
 
 			// Start the voice client (receive-only — isLocalPlayer=false)
-			var netProvider = GetComponent<NoxVoiceRelayProvider>();
+			var netProvider = GetComponent<VoiceRelayProvider>();
 			if (netProvider == null)
-				netProvider = gameObject.AddComponent<NoxVoiceRelayProvider>();
+				netProvider = gameObject.AddComponent<VoiceRelayProvider>();
 			VoiceChat.StartClient(netProvider, isLocalPlayer: false, maxDataBytesPerPacket: 1000);
 			IsStarted = true;
 		}

@@ -16,8 +16,8 @@ namespace Nox.Relay.Runtime {
 		private readonly Session _session;
 
 		private bool _routingSetup;
-		private readonly Dictionary<int, NoxVoiceRelayProvider> _providers = new();
-		private readonly Dictionary<int, NoxVoiceBroadcastReceiver> _broadcastReceivers = new();
+		private readonly Dictionary<int, VoiceRelayProvider> _providers = new();
+		private readonly Dictionary<int, VoiceBroadcastReceiver> _broadcastReceivers = new();
 		private GameObject _broadcastRoot;
 
 		public VoiceManager(Session session) {
@@ -34,7 +34,7 @@ namespace Nox.Relay.Runtime {
 		}
 
 		/// <summary>Register a voice provider for a player.</summary>
-		public void RegisterProvider(int playerId, NoxVoiceRelayProvider provider) {
+		public void RegisterProvider(int playerId, VoiceRelayProvider provider) {
 			_providers[playerId] = provider;
 		}
 
@@ -83,7 +83,7 @@ namespace Nox.Relay.Runtime {
 			normalProvider.ReceiveRelayFrame(voiceEvent);
 		}
 
-		private NoxVoiceBroadcastReceiver CreateBroadcastReceiver(int speakerId) {
+		private VoiceBroadcastReceiver CreateBroadcastReceiver(int speakerId) {
 			if (_broadcastRoot == null) {
 				_broadcastRoot = new GameObject("VoiceBroadcastReceivers");
 				Object.DontDestroyOnLoad(_broadcastRoot);
@@ -92,10 +92,10 @@ namespace Nox.Relay.Runtime {
 			var go = new GameObject($"BroadcastReceiver_{speakerId}");
 			go.transform.SetParent(_broadcastRoot.transform, false);
 
-			var receiver = go.AddComponent<NoxVoiceBroadcastReceiver>();
-			var config = Main.CoreAPI?.AssetAPI?.GetAsset<NoxVoiceConfig>("config.asset");
+			var receiver = go.AddComponent<VoiceBroadcastReceiver>();
+			var config = Main.CoreAPI?.AssetAPI?.GetAsset<VoiceConfig>("config.asset");
 			if (config == null) {
-				config = ScriptableObject.CreateInstance<NoxVoiceConfig>();
+				config = ScriptableObject.CreateInstance<VoiceConfig>();
 				config.Init();
 			}
 

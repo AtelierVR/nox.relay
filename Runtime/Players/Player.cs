@@ -405,7 +405,7 @@ namespace Nox.Relay.Runtime.Players {
 		public virtual ICapturedAudio Audio => _audio;
 
 		/// <summary>
-		/// Speaking indicator for UI. Updated externally by NoxVoiceChat.
+		/// Speaking indicator for UI. Updated externally by VoiceChat.
 		/// </summary>
 		public bool IsSpeaking { get; set; }
 

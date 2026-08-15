@@ -11,7 +11,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: be654a667757ff74e98d16ff0ffdc344, type: 3}
   m_Name: config
-  m_EditorClassIdentifier: Nox.Relay.Runtime::Nox.Relay.Runtime.Voice.NoxVoiceConfig
+  m_EditorClassIdentifier: Nox.Relay.Runtime::Nox.Relay.Runtime.Voice.VoiceConfig
   Complexity: 10
   FrameSize: 10
   Bitrate: 32000

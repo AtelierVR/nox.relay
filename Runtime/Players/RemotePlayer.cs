@@ -150,7 +150,7 @@ namespace Nox.Relay.Runtime.Players {
 			if (!TryGetPhysical<RemotePhysical>(out var physical))
 				return; // Avatar not loaded yet — retry on next voice frame
 
-			var provider = physical.gameObject.GetOrAddComponent<NoxVoiceRelayProvider>();
+			var provider = physical.gameObject.GetOrAddComponent<VoiceRelayProvider>();
 			provider.InitializeRemote(session.Room, Id);
 
 			session.RegisterVoiceProvider(Id, provider);

@@ -6,13 +6,14 @@ using AudioMicrophoneManager = Nox.Audio.Runtime.Microphone.MicrophoneManager;
 namespace Nox.Relay.Runtime.Voice {
 	/// <summary>
 	/// Microphone-based voice input — reads the shared microphone stream from
-	/// nox.audio's MicrophoneManager. Noise suppression and activation gate are handled
-	/// by <see cref="MicrophoneProcessor"/> (in nox.audio) via the
-	/// <see cref="NoxVoiceInput.OptionalFirstInputFilter"/> chain.
+	/// nox.audio's MicrophoneManager, applies the DSP (volume, noise suppression,
+	/// activation gate) via the microphone, then emits processed frames.
 	/// </summary>
-	public class NoxVoiceMicInput : NoxVoiceInput {
-		[Tooltip("Microphone device name (null = current device).")]
-		public string DeviceName;
+	public class VoiceMicInput : MonoBehaviour {
+		public VoiceChat VoiceChat;
+
+		/// <summary>Fired when a new (processed) audio frame is ready: (frameIndex, pcmSamples).</summary>
+		public event Action<int, float[]> OnFrameReady;
 
 		private AudioMicrophoneManager _manager;
 		private AudioMicrophone _mic;
@@ -23,7 +24,7 @@ namespace Nox.Relay.Runtime.Voice {
 		private float[] _frameBuffer;
 		private bool _isRecording;
 
-		public override void StartLocalPlayer() {
+		public void StartLocalPlayer() {
 			if (_isRecording) return;
 
 			var config = VoiceChat.Config;
@@ -31,36 +32,30 @@ namespace Nox.Relay.Runtime.Voice {
 
 			_manager = Nox.Audio.Runtime.Main.MicrophoneManager;
 			if (_manager == null) {
-				Debug.LogError("[NoxVoiceMicInput] nox.audio MicrophoneManager is unavailable.");
+				Debug.LogError("[VoiceMicInput] nox.audio MicrophoneManager is unavailable.");
 				return;
 			}
 
-			// Follow device changes when using the "current" microphone.
-			if (string.IsNullOrEmpty(DeviceName))
-				_manager.OnCurrentChanged.AddListener(OnCurrentMicChanged);
+			// Follow device changes.
+			_manager.OnCurrentChanged.AddListener(OnCurrentMicChanged);
 
-			if (!BeginCapture(ResolveMic()))
+			if (!BeginCapture(_manager.Current))
 				return;
 
 			_frameIndex = 0;
 			_isRecording = true;
 		}
 
-		private AudioMicrophone ResolveMic()
-			=> string.IsNullOrEmpty(DeviceName)
-				? _manager?.Current
-				: _manager?.Microphones.Find(m => m.Name == DeviceName);
-
 		/// <summary>Start (or switch) capture on the given microphone.</summary>
 		private bool BeginCapture(AudioMicrophone mic) {
 			if (mic == null) {
-				Debug.LogError("[NoxVoiceMicInput] No microphone available via nox.audio.");
+				Debug.LogError("[VoiceMicInput] No microphone available via nox.audio.");
 				return false;
 			}
 
 			var clip = mic.Start("voice");
 			if (clip == null) {
-				Debug.LogError($"[NoxVoiceMicInput] Failed to start microphone '{mic.Name}'");
+				Debug.LogError($"[VoiceMicInput] Failed to start microphone '{mic.Name}'");
 				return false;
 			}
 
@@ -122,7 +117,7 @@ namespace Nox.Relay.Runtime.Voice {
 				// Apply nox.audio DSP (volume, noise suppression, activation gate).
 				_mic.Process(frameCopy);
 
-				SendAndFilterFrame(_frameIndex++, frameCopy);
+				OnFrameReady?.Invoke(_frameIndex++, frameCopy);
 			}
 		}
 
@@ -132,7 +127,7 @@ namespace Nox.Relay.Runtime.Voice {
 				_isRecording = false;
 			}
 
-			if (_manager != null && string.IsNullOrEmpty(DeviceName))
+			if (_manager != null)
 				_manager.OnCurrentChanged.RemoveListener(OnCurrentMicChanged);
 			_manager = null;
 		}

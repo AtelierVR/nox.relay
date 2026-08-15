@@ -7,7 +7,9 @@ namespace Nox.Relay.Runtime.Voice {
 	/// MetaVoiceChat VcAudioSourceOutput equivalent.
 	/// Uses a circular AudioClip for zero-copy frame writing.
 	/// </summary>
-	public class NoxVoiceAudioSourceOutput : NoxVoiceOutput {
+	public class VoiceAudioSourceOutput : MonoBehaviour {
+		public VoiceChat VoiceChat;
+
 		[Tooltip("The output AudioSource.")]
 		public AudioSource AudioSource;
 
@@ -69,7 +71,7 @@ namespace Nox.Relay.Runtime.Voice {
 		private int _framesPerSecond;
 		private float _secondsPerFrame;
 
-		private NoxVoiceAudioClip _vcAudioClip;
+		private VoiceAudioClip _vcAudioClip;
 		private int[] _clipFrameIndices;
 
 		private int _firstFrameIndex = -1;
@@ -94,7 +96,7 @@ namespace Nox.Relay.Runtime.Voice {
 
 			var config = VoiceChat?.Config;
 			if (config == null) {
-				Debug.LogWarning("[NoxVoiceAudioSourceOutput] No config on VoiceChat, using defaults");
+				Debug.LogWarning("[VoiceAudioSourceOutput] No config on VoiceChat, using defaults");
 				return;
 			}
 
@@ -102,7 +104,7 @@ namespace Nox.Relay.Runtime.Voice {
 			_framesPerSecond = config.FramesPerSecond;
 			_secondsPerFrame = config.SecondsPerFrame;
 
-			_vcAudioClip = new NoxVoiceAudioClip(config, AudioSource);
+			_vcAudioClip = new VoiceAudioClip(config, AudioSource);
 			_clipFrameIndices = new int[config.FramesPerClip];
 			for (int i = 0; i < _clipFrameIndices.Length; i++)
 				_clipFrameIndices[i] = -1;
@@ -183,7 +185,7 @@ namespace Nox.Relay.Runtime.Voice {
 		private float GetWrappedTime(int frameIndex)
 			=> _vcAudioClip.GetOffsetFrames(frameIndex) * _secondsPerFrame;
 
-		protected override void ReceiveFrame(int index, float[] samples, float targetLatency) {
+		public void ReceiveFrame(int index, float[] samples, float targetLatency) {
 			if (_vcAudioClip == null) return;
 
 			_targetLatency = targetLatency;
@@ -237,7 +239,7 @@ namespace Nox.Relay.Runtime.Voice {
 					_secondsPerFrame = config.SecondsPerFrame;
 				}
 
-				_vcAudioClip = new NoxVoiceAudioClip(config, AudioSource);
+				_vcAudioClip = new VoiceAudioClip(config, AudioSource);
 
 				// Reset frame tracking (handle uninitialized array from pre-Start call)
 				if (_clipFrameIndices == null || _clipFrameIndices.Length != config.FramesPerClip)
@@ -254,6 +256,69 @@ namespace Nox.Relay.Runtime.Voice {
 					_frameStopwatch.Restart();
 				}
 			}
+		}
+	}
+
+	/// <summary>
+	/// Circular AudioClip for voice playback — manages a looping AudioClip with
+	/// frame-indexed write positions.
+	/// </summary>
+	public class VoiceAudioClip : IDisposable {
+		private readonly int _samplesPerFrame;
+		private readonly int _framesPerClip;
+		private readonly AudioClip _audioClip;
+
+		private readonly float[] _emptyFrame;
+		private readonly float[] _emptyClip;
+
+		public float Length => _audioClip.length;
+
+		public VoiceAudioClip(VoiceConfig config, AudioSource audioSource) {
+			_samplesPerFrame = config.SamplesPerFrame;
+			_framesPerClip = config.FramesPerClip;
+
+			_audioClip = AudioClip.Create(nameof(VoiceAudioClip),
+				VoiceConfig.SamplesPerClip, channels: 1,
+				VoiceConfig.SamplesPerSecond, stream: false);
+
+			_emptyFrame = new float[_samplesPerFrame];
+			_emptyClip = new float[VoiceConfig.SamplesPerClip];
+
+			audioSource.playOnAwake = false;
+			audioSource.Stop();
+			audioSource.loop = true;
+			audioSource.clip = _audioClip;
+		}
+
+		/// <summary>Write a frame of PCM samples at the given frame offset.</summary>
+		public void WriteFrame(int offsetFrames, float[] samples) {
+			samples ??= _emptyFrame;
+
+			if (samples.Length != _samplesPerFrame) {
+				Debug.LogWarning("[VoiceAudioClip] Sample count mismatch with config!");
+				return;
+			}
+
+			int offsetSamples = _samplesPerFrame * offsetFrames;
+			_audioClip.SetData(samples, offsetSamples);
+		}
+
+		/// <summary>Get the circular frame offset for a monotonic frame index.</summary>
+		public int GetOffsetFrames(int frameIndex)
+			=> frameIndex % _framesPerClip;
+
+		/// <summary>Clear a single frame (set to silence).</summary>
+		public void ClearFrame(int offsetFrames) {
+			_audioClip.SetData(_emptyFrame, _samplesPerFrame * offsetFrames);
+		}
+
+		/// <summary>Clear the entire clip.</summary>
+		public void Clear() {
+			_audioClip.SetData(_emptyClip, 0);
+		}
+
+		public void Dispose() {
+			UnityEngine.Object.Destroy(_audioClip);
 		}
 	}
 }

@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Nox.Audio.Runtime;
 using Nox.Relay.Runtime.Players;
 using UnityEngine;
@@ -9,18 +11,18 @@ namespace Nox.Relay.Runtime.Voice {
 	/// One instance per player. Handles encoding+sending (local) and
 	/// receiving+decoding+playback (remote).
 	/// <para>
-	/// Setup: add this component + a NoxVoiceInput + a NoxVoiceOutput
-	/// + a NoxVoiceRelayProvider to the same GameObject.
+	/// Setup: add this component + a VoiceMicInput + a VoiceAudioSourceOutput
+	/// + a VoiceRelayProvider to the same GameObject.
 	/// </para>
 	/// </summary>
-	public class NoxVoiceChat : MonoBehaviour {
+	public class VoiceChat : MonoBehaviour {
 		private const string CodecTimeOverrunMessage =
 			"Opus codec took too long this frame. Reduce complexity or increase maxCodecMs.";
 
 		[Header("General")]
-		public NoxVoiceInput AudioInput;
-		public NoxVoiceOutput AudioOutput;
-		public NoxVoiceConfig Config;
+		public VoiceMicInput AudioInput;
+		public VoiceAudioSourceOutput AudioOutput;
+		public VoiceConfig Config;
 
 		[Header("Testing")]
 		[Tooltip("Plays back the local player's own voice.")]
@@ -74,7 +76,7 @@ namespace Nox.Relay.Runtime.Voice {
 			=> ApplyPlayerVolume(effective);
 
 		private void ApplyPlayerVolume(float effective) {
-			if (AudioOutput is NoxVoiceAudioSourceOutput src && src.AudioSource != null)
+			if (AudioOutput is VoiceAudioSourceOutput src && src.AudioSource != null)
 				src.AudioSource.volume = effective;
 		}
 
@@ -82,13 +84,13 @@ namespace Nox.Relay.Runtime.Voice {
 			=> _isEffectivelyMuted = effective;
 
 		// ── Internal state ──
-		private INoxVoiceNetProvider _netProvider;
+		private VoiceRelayProvider _netProvider;
 		private bool _isLocalPlayer;
 		private bool _started;
 
 		private OpusEncoder.OpusEncoderInstance _encoder;
 		private OpusDecoder.OpusDecoderInstance _decoder;
-		private NoxVoiceJitter _jitter;
+		private VoiceJitter _jitter;
 
 		private readonly System.Diagnostics.Stopwatch _stopwatch = new();
 		private double Timestamp => _stopwatch.Elapsed.TotalSeconds;
@@ -109,7 +111,7 @@ namespace Nox.Relay.Runtime.Voice {
 		/// <summary>
 		/// Called by the net provider when the network is ready.
 		/// </summary>
-		public void StartClient(INoxVoiceNetProvider netProvider, bool isLocalPlayer, int maxDataBytesPerPacket) {
+		public void StartClient(VoiceRelayProvider netProvider, bool isLocalPlayer, int maxDataBytesPerPacket) {
 			if (_started) return;
 
 			// Ensure config is initialized (may not have run Awake yet)
@@ -123,14 +125,14 @@ namespace Nox.Relay.Runtime.Voice {
 			if (isLocalPlayer) {
 				int maxBytes = Math.Min(maxDataBytesPerPacket, 1275);
 				_encoder = new OpusEncoder.OpusEncoderInstance(
-					NoxVoiceConfig.SamplesPerSecond, 1, Config.Bitrate);
+					VoiceConfig.SamplesPerSecond, 1, Config.Bitrate);
 
 				AudioInput.OnFrameReady += SendFrame;
 				AudioInput.StartLocalPlayer();
 			}
 
-			_decoder = new OpusDecoder.OpusDecoderInstance(NoxVoiceConfig.SamplesPerSecond, 1);
-			_jitter = new NoxVoiceJitter(Config);
+			_decoder = new OpusDecoder.OpusDecoderInstance(VoiceConfig.SamplesPerSecond, 1);
+			_jitter = new VoiceJitter(Config);
 			_stopwatch.Start();
 		}
 
@@ -210,18 +212,18 @@ namespace Nox.Relay.Runtime.Voice {
 			// If player is effectively muted via the channel hierarchy, skip processing
 			if (!_isLocalPlayer && _isEffectivelyMuted) {
 				SetIsSpeaking(false);
-				AudioOutput.ReceiveAndFilterFrame(index, null, targetLatency);
+				AudioOutput.ReceiveFrame(index, null, targetLatency);
 				return;
 			}
 
 			if (data.Length == 0) {
 				SetIsSpeaking(false);
-				AudioOutput.ReceiveAndFilterFrame(index, null, targetLatency);
+				AudioOutput.ReceiveFrame(index, null, targetLatency);
 			} else {
 				SetIsSpeaking(true);
 
 				if (CannotSpeak && !ShouldLocalEcho) {
-					AudioOutput.ReceiveAndFilterFrame(index, null, targetLatency);
+					AudioOutput.ReceiveFrame(index, null, targetLatency);
 				} else {
 					bool hasDecodedYet = _decoder.IsValid;
 					CodecStopwatch.Start();
@@ -229,15 +231,15 @@ namespace Nox.Relay.Runtime.Voice {
 					try {
 						samples = _decoder.Decode(data.ToArray(), Config.SamplesPerFrame);
 					} catch (Exception ex) {
-						Debug.LogWarning($"[NoxVoiceChat] Opus decode failed: {ex.Message}");
+						Debug.LogWarning($"[VoiceChat] Opus decode failed: {ex.Message}");
 					}
 					CodecStopwatch.Stop(MaxCodecMilliseconds, CodecTimeOverrunMessage,
 						!hasDecodedYet, AllowMultipleCodecWarningsPerFrame);
 
 					if (samples != null && samples.Length == Config.SamplesPerFrame) {
-						AudioOutput.ReceiveAndFilterFrame(index, samples, targetLatency);
+						AudioOutput.ReceiveFrame(index, samples, targetLatency);
 					} else {
-						AudioOutput.ReceiveAndFilterFrame(index, null, targetLatency);
+						AudioOutput.ReceiveFrame(index, null, targetLatency);
 					}
 				}
 			}
@@ -267,5 +269,81 @@ namespace Nox.Relay.Runtime.Voice {
 				Debug.LogWarning(message);
 		}
 		public void Reset() => _sw.Reset();
+	}
+
+	/// <summary>
+	/// RMS jitter calculator — tracks network jitter to adjust output latency.
+	/// </summary>
+	public class VoiceJitter {
+		private readonly double _timeWindow;
+		private readonly int _meanOffsetWindow;
+
+		private readonly System.Diagnostics.Stopwatch _stopwatch = new();
+		private double LocalTimestamp => _stopwatch.Elapsed.TotalSeconds;
+
+		private readonly Queue<Entry> _entries = new();
+		private readonly Queue<double> _offsets = new();
+
+		public VoiceJitter(VoiceConfig config) {
+			_timeWindow = config.JitterTimeWindow;
+			_meanOffsetWindow = config.JitterMeanOffsetWindow;
+		}
+
+		/// <summary>
+		/// Feed a new packet and get the current RMS jitter.
+		/// When sender timestamps are unavailable (timestamp=0), uses arrival-timing mode.
+		/// </summary>
+		public float Update(double timestamp) {
+			if (!_stopwatch.IsRunning) {
+				_stopwatch.Restart();
+				return 0;
+			}
+
+			double localTimestamp = LocalTimestamp;
+			double effectiveTimestamp = timestamp > 0 ? timestamp : localTimestamp;
+
+			_entries.Enqueue(new Entry(effectiveTimestamp, localTimestamp));
+			while (_entries.TryPeek(out var entry)) {
+				if (entry.GetAge(localTimestamp) > _timeWindow)
+					_entries.Dequeue();
+				else
+					break;
+			}
+
+			_offsets.Enqueue(localTimestamp - effectiveTimestamp);
+			if (_offsets.Count > _meanOffsetWindow)
+				_offsets.Dequeue();
+
+			double meanOffset = _offsets.Average();
+
+			if (_entries.Count > 1) {
+				float SquareDeviation(Entry e) {
+					double deviation = meanOffset + e.timestamp - e.localTimestamp;
+					return (float)(deviation * deviation);
+				}
+				return Mathf.Sqrt(_entries.Average(SquareDeviation));
+			}
+
+			return 0;
+		}
+
+		public void Reset() {
+			_stopwatch.Reset();
+			_entries.Clear();
+			_offsets.Clear();
+		}
+
+		private readonly struct Entry {
+			public readonly double timestamp;
+			public readonly double localTimestamp;
+
+			public Entry(double timestamp, double localTimestamp) {
+				this.timestamp = timestamp;
+				this.localTimestamp = localTimestamp;
+			}
+
+			public float GetAge(double localTimestamp)
+				=> (float)(localTimestamp - this.localTimestamp);
+		}
 	}
 }

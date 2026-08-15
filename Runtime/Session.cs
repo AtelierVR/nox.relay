@@ -642,7 +642,7 @@ namespace Nox.Relay.Runtime {
 		}
 
 		/// <summary>Register a voice provider for a player (called when player voice is set up).</summary>
-		internal void RegisterVoiceProvider(int playerId, NoxVoiceRelayProvider provider) {
+		internal void RegisterVoiceProvider(int playerId, VoiceRelayProvider provider) {
 			VoiceManager.RegisterProvider(playerId, provider);
 		}
 
