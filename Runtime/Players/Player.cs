@@ -250,12 +250,16 @@ namespace Nox.Relay.Runtime.Players {
 						else if (existingProp is UnassignedProperty) {
 							// Replace unassigned property with AvatarParameterProperty
 							var newProp = new AvatarParameterProperty(this, param, propertyFlags);
+							if (propertyFlags.HasFlag(PropertyFlags.LocalEmit))
+								newProp.IsDirty = true; // force the initial value to be sent immediately
 							SetProperty(newProp);
 							Logger.LogDebug($"Replaced unassigned property for parameter {param.GetName()} (key={key}, flags={flags}) with propertyFlags={propertyFlags}", tag: GetType().Name);
 						}
 					} else {
 						// Create new AvatarParameterProperty
 						var newProp = new AvatarParameterProperty(this, param, propertyFlags);
+						if (propertyFlags.HasFlag(PropertyFlags.LocalEmit))
+							newProp.IsDirty = true; // force the initial value to be sent immediately
 						SetProperty(newProp);
 						Logger.LogDebug($"Created property for parameter {param.GetName()} (key={key}, flags={flags}) with propertyFlags={propertyFlags}", tag: GetType().Name);
 					}

@@ -51,7 +51,7 @@ namespace Nox.Relay.Runtime.Physicals {
 
 	private readonly Dictionary<ushort, PartInterpolationState> _partStates = new();
 	private float _tickInterval;
-	private IRiggingModule _riggingModule;
+	private IRigProvider _rigProvider;
 
 	private new Rigidbody rigidbody
 		=> _rigidbody ??= gameObject.GetOrAddComponent<Rigidbody>();
@@ -84,6 +84,10 @@ namespace Nox.Relay.Runtime.Physicals {
 
 	private void Update() {
 		if (Reference == null) return;
+
+		// The rig provider is a stable MonoBehaviour that exposes the current IRigging.
+		// It is resolved once in SetAvatar; the rig itself may be hot-swapped underneath.
+		var activeRig = _rigProvider?.GetRig();
 
 		var dt        = Time.deltaTime;
 		var tps       = Reference.Reference.Room.Tps;
@@ -164,7 +168,7 @@ namespace Nox.Relay.Runtime.Physicals {
 				transform.localScale = Vector3.Distance(state.StartScale, state.TargetScale) > threshold * 0.1f
 					? Vector3.Lerp(state.StartScale, state.TargetScale, tScale)
 					: state.TargetScale;
-			} else if (_riggingModule != null && _riggingModule.TryGetPart(partId, out var rigPart)) {
+			} else if (activeRig != null && activeRig.TryGetPart(partId, out var rigPart)) {
 				var rigTransform = rigPart.GetTransform();
 				if (rigTransform != null) {
 					var interpolatedPos = Vector3.Distance(state.StartPosition, state.TargetPosition) > threshold * 0.1f
@@ -329,7 +333,7 @@ namespace Nox.Relay.Runtime.Physicals {
 			var old = RuntimeAvatar;
 			RuntimeAvatar = runtimeAvatar;
 			_partStates.Clear();
-			_riggingModule = null;
+			_rigProvider = null;
 
 			if (RuntimeAvatar == null) {
 				Logger.LogWarning("Setting avatar to null, removing current avatar.");
@@ -370,8 +374,8 @@ namespace Nox.Relay.Runtime.Physicals {
 				await UniTask.WaitUntil(() => animator.runtimeAnimatorController);
 			}
 
-			_riggingModule = RuntimeAvatar?.Descriptor?.Anchor
-				?.GetComponentInChildren<IRiggingModule>(true);
+			_rigProvider = RuntimeAvatar?.Descriptor?.Anchor
+				?.GetComponentInChildren<IRigProvider>(true);
 
 			var parameters = parameterModule.GetParameters();
 			foreach (var param in parameters) {
