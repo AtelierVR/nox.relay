@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using Cysharp.Threading.Tasks;
 using Nox.Avatars.Controllers;
@@ -20,7 +19,6 @@ using Nox.Relay.Core.Types.Latency;
 using Nox.Relay.Core.Types.Leave;
 using Nox.Relay.Core.Types.Properties;
 using Nox.Relay.Core.Types.Quit;
-using Nox.Relay.Core.Types.Stream;
 using Nox.Relay.Core.Types.Transform;
 using Nox.Relay.Core.Types.Traveling;
 using Nox.Relay.Runtime.Players;
