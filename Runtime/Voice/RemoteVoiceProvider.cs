@@ -4,6 +4,7 @@ using Nox.Avatars;
 using Nox.Avatars.Voice;
 using Nox.CCK.Utils;
 using Nox.Relay.Core.Types.Stream;
+using Nox.Relay.Runtime;
 using Nox.Relay.Runtime.Physicals;
 using Nox.Relay.Runtime.Players;
 using UnityEngine;
@@ -193,6 +194,10 @@ namespace Nox.Relay.Runtime.Voice {
 			if (_physical == null)
 				return;
 
+			// Assign a unique mixer track (0..255) per player so each voice can be
+			// individually attenuated/muted in the AudioMixer.
+			var mixerGroup = Main.VoiceRegister?.GetTrack(Player.Id & 0xFF);
+
 			var voiceModules = _runtimeAvatar?.Descriptor?.GetModules<IVoiceModule>();
 			var avatarSource = (voiceModules?.Length > 0)
 				? voiceModules[0].GetSource()
@@ -206,6 +211,7 @@ namespace Nox.Relay.Runtime.Voice {
 				}
 
 				_output = _physical.gameObject.GetOrAddComponent<VoiceAudioSourceOutput>();
+				_output.MixerGroup = mixerGroup;
 				_output.SetSource(avatarSource);
 				return;
 			}
@@ -218,6 +224,7 @@ namespace Nox.Relay.Runtime.Voice {
 				_anchor.transform.localRotation = Quaternion.identity;
 
 				_output = _anchor.AddComponent<VoiceAudioSourceOutput>();
+				_output.MixerGroup = mixerGroup;
 
 				var oldOutput = _physical.gameObject.GetComponent<VoiceAudioSourceOutput>();
 				if (oldOutput != null && oldOutput != _output)

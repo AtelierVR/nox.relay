@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using UnityEngine.Audio;
 using Nox.CCK.Audio.Opus;
 
 namespace Nox.Relay.Runtime.Voice {
@@ -11,6 +12,9 @@ namespace Nox.Relay.Runtime.Voice {
 	public class VoiceAudioSourceOutput : MonoBehaviour {
 		[Tooltip("The output AudioSource.")]
 		public AudioSource AudioSource;
+
+		[Tooltip("Optional mixer group to route this output through (e.g. a voice track).")]
+		public AudioMixerGroup MixerGroup;
 
 		[Header("Buffer Tuning")]
 		[Tooltip("Frame lifetime in the buffer before clearing. Units: seconds.")]
@@ -88,6 +92,7 @@ namespace Nox.Relay.Runtime.Voice {
 			}
 
 			AudioSource.dopplerLevel = 0; // Doppler interferes with pitch compensation
+			AudioSource.outputAudioMixerGroup = MixerGroup;
 
 			ApplySpatialSettings();
 
@@ -219,6 +224,7 @@ namespace Nox.Relay.Runtime.Voice {
 			AudioSource.dopplerLevel = 0;
 			AudioSource.playOnAwake = false;
 			AudioSource.loop = true;
+			AudioSource.outputAudioMixerGroup = MixerGroup;
 
 			ApplySpatialSettings();
 
