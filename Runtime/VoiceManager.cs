@@ -91,6 +91,8 @@ namespace Nox.Relay.Runtime {
 			go.transform.SetParent(_broadcastRoot.transform, false);
 
 			var receiver = go.AddComponent<VoiceBroadcastReceiver>();
+			if (receiver.Output != null)
+				receiver.Output.MixerGroup = Main.VoiceRegister?.MixerGroup;
 			receiver.Initialize(speakerId);
 			_broadcastReceivers[speakerId] = receiver;
 

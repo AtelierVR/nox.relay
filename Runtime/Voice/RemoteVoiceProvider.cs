@@ -194,9 +194,9 @@ namespace Nox.Relay.Runtime.Voice {
 			if (_physical == null)
 				return;
 
-			// Assign a unique mixer track (0..255) per player so each voice can be
-			// individually attenuated/muted in the AudioMixer.
-			var mixerGroup = Main.VoiceRegister?.GetTrack(Player.Id & 0xFF);
+			// Route the player's voice through the channel's dedicated mixer track so
+			// all voices mix together on the voice group (volume controlled per channel).
+			var mixerGroup = Main.VoiceRegister?.MixerGroup;
 
 			var voiceModules = _runtimeAvatar?.Descriptor?.GetModules<IVoiceModule>();
 			var avatarSource = (voiceModules?.Length > 0)
