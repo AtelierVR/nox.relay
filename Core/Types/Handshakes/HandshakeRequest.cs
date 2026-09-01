@@ -1,3 +1,4 @@
+using System.Net;
 using Nox.CCK.Utils;
 using Nox.Relay.Core.Types.Contents;
 
@@ -12,6 +13,8 @@ namespace Nox.Relay.Core.Types.Handshakes {
 		/// The version of the protocol being used by the client.
 		/// </summary>
 		public ushort ProtocolVersion;
+
+		public EndPoint Endpoint;
 
 		/// <summary>
 		/// Engine
@@ -30,6 +33,17 @@ namespace Nox.Relay.Core.Types.Handshakes {
 		public override Buffer ToBuffer() {
 			var buffer = new Buffer();
 			buffer.Write(ProtocolVersion);
+			if (Endpoint is IPEndPoint ip) {
+				buffer.Write(ip.Address.ToString());
+				buffer.Write((ushort)ip.Port);
+			} else if (Endpoint is DnsEndPoint host) {
+				buffer.Write(host.Host);
+				buffer.Write((ushort)host.Port);
+			} else {
+				Logger.LogWarning($"Endpoint '{Endpoint}' {Endpoint?.GetType().Name ?? "null"} is not a valid {nameof(EndPoint)} type.");
+				buffer.Write(string.Empty);
+				buffer.Write(ushort.MinValue);
+			}
 			buffer.Write(Engine.GetEngineName());
 			buffer.Write(Platform.GetPlatformName());
 			return buffer;

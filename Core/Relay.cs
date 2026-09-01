@@ -27,7 +27,7 @@ namespace Nox.Relay.Core {
 		/// <summary>
 		/// Current protocol version used by the relay system.
 		/// </summary>
-		public const ushort ProtocolVersion = 1;
+		public const ushort ProtocolVersion = 2;
 
 		/// <summary>
 		/// Size of the relay packet header in bytes.
@@ -470,6 +470,7 @@ namespace Nox.Relay.Core {
 			=> await Request<Types.Handshakes.HandshakeResponse>(
 				new Types.Handshakes.HandshakeRequest {
 					ProtocolVersion = ProtocolVersion,
+					Endpoint        = Connector.EndPoint,
 					Engine          = EngineExtensions.CurrentEngine,
 					Platform        = PlatformExtensions.CurrentPlatform
 				},

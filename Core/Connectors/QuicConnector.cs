@@ -28,7 +28,7 @@ namespace Nox.Relay.Core.Connectors {
 		// MsQuicClose crash where a native worker thread is still delivering a
 		// DataReceived callback while the library tears down.)
 		private readonly ConcurrentBag<QuicStream> _openStreams = new();
-		private IPEndPoint _endPoint;
+		private EndPoint _endPoint;
 		private volatile bool _isConnected;
 		private bool _disposed;
 
@@ -81,8 +81,9 @@ namespace Nox.Relay.Core.Connectors {
 			// Set provisional endpoint from the call parameters so EndPoint is
 			// available as soon as Connect() completes, regardless of whether
 			// the MsQuic RemoteEndPoint is populated at Connected-event time.
-			if (IPAddress.TryParse(address, out var parsedIp))
-				_endPoint = new IPEndPoint(parsedIp, port);
+			_endPoint = IPAddress.TryParse(address, out var parsedIp) 
+				? new IPEndPoint(parsedIp, port)
+				: new DnsEndPoint(address, port);
 
 			// NO_CERTIFICATE_VALIDATION is already set in the config — no cert callback needed.
 			// (Adding a CertificateReceived lambda here would create a closure IL2CPP cannot

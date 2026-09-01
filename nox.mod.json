@@ -50,6 +50,10 @@
     {
       "id": "players",
       "type": "depends"
+    },
+    {
+      "id": "audio",
+      "type": "depends"
     }
   ],
   "constraints": [
@@ -60,6 +64,10 @@
     {
       "type": "after",
       "id": "players"
+    },
+    {
+      "type": "after",
+      "id": "audio"
     }
   ],
   "entrypoints": {
