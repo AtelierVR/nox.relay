@@ -86,6 +86,16 @@ namespace Nox.Relay.Runtime.Players {
 
 		public abstract bool IsLocal { get; }
 
+		protected abstract IPart CreatePart(ushort index);
+
+		public IPart GetOrCreatePart(ushort index) {
+			if (!Parts.TryGetValue(index, out var p)) {
+				p = CreatePart(index);
+				Parts[index] = p;
+			}
+			return p;
+		}
+
 		public void Teleport(Vector3 position, Quaternion rotation) {
 			Position = position;
 			Rotation = rotation;
@@ -110,47 +120,27 @@ namespace Nox.Relay.Runtime.Players {
 
 		public Vector3 Position {
 			get => Parts.TryGetValue(PlayerRig.Base.ToIndex(), out var p) ? p.Position : Vector3.zero;
-			set {
-				if (!Parts.TryGetValue(PlayerRig.Base.ToIndex(), out var p))
-					return;
-				p.Position = value;
-			}
+			set => GetOrCreatePart(PlayerRig.Base.ToIndex()).Position = value;
 		}
 
 		public Quaternion Rotation {
 			get => Parts.TryGetValue(PlayerRig.Base.ToIndex(), out var p) ? p.Rotation : Quaternion.identity;
-			set {
-				if (!Parts.TryGetValue(PlayerRig.Base.ToIndex(), out var p))
-					return;
-				p.Rotation = value;
-			}
+			set => GetOrCreatePart(PlayerRig.Base.ToIndex()).Rotation = value;
 		}
 
 		public Vector3 Scale {
 			get => Parts.TryGetValue(PlayerRig.Base.ToIndex(), out var p) ? p.Scale : Vector3.one;
-			set {
-				if (!Parts.TryGetValue(PlayerRig.Base.ToIndex(), out var p))
-					return;
-				p.Scale = value;
-			}
+			set => GetOrCreatePart(PlayerRig.Base.ToIndex()).Scale = value;
 		}
 
 		public Vector3 Velocity {
 			get => Parts.TryGetValue(PlayerRig.Base.ToIndex(), out var p) ? p.Velocity : Vector3.zero;
-			set {
-				if (!Parts.TryGetValue(PlayerRig.Base.ToIndex(), out var p))
-					return;
-				p.Velocity = value;
-			}
+			set => GetOrCreatePart(PlayerRig.Base.ToIndex()).Velocity = value;
 		}
 
 		public Vector3 Angular {
 			get => Parts.TryGetValue(PlayerRig.Base.ToIndex(), out var p) ? p.Angular : Vector3.zero;
-			set {
-				if (!Parts.TryGetValue(PlayerRig.Base.ToIndex(), out var p))
-					return;
-				p.Angular = value;
-			}
+			set => GetOrCreatePart(PlayerRig.Base.ToIndex()).Angular = value;
 		}
 
 		public override string ToString() {

@@ -22,6 +22,9 @@ namespace Nox.Relay.Runtime.Players {
 			VoiceProvider = new RemoteVoiceProvider(this);
 		}
 
+		protected override IPart CreatePart(ushort index)
+			=> new RemotePart(this, index);
+
 		public override bool IsLocal
 			=> false;
 

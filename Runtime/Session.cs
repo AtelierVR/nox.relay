@@ -376,6 +376,9 @@ namespace Nox.Relay.Runtime {
 
 			player.OnEntered();
 			OnPlayerJoinedOrEnteredHandler(player);
+
+			if (SessionHelper.IsCurrent(Main.SessionAPI, this))
+				OnControllerChanged(Main.ControllerAPI.Current);
 		}
 
 		internal void OnPlayerLeftHandler(LeaveEvent @event) {
@@ -420,11 +423,22 @@ namespace Nox.Relay.Runtime {
 						part.Velocity = transform.GetVelocity();
 					if (transform.Flags.HasFlag(TransformFlags.Angular))
 						part.Angular = transform.GetAngular();
-				} else if (player is LocalPlayer) {
-					// Local player transforms should be handled by controller, ignore remote updates
-					// Only log if it's not from the local player itself
-					if (@event.SenderId != player.Id)
-						Logger.LogDebug($"Ignoring remote transform update for local player part {@event.PartRig}", tag: Tag);
+				} else if (player is LocalPlayer localPlayer) {
+					// Apply server-directed transform updates (e.g. server teleport/respawn)
+					if (@event.SenderId != player.Id) {
+						var part = localPlayer.GetOrCreatePart(@event.PartRig);
+						var transform = @event.Transform;
+						if (transform.Flags.HasFlag(TransformFlags.Position))
+							part.Position = transform.GetPosition();
+						if (transform.Flags.HasFlag(TransformFlags.Rotation))
+							part.Rotation = transform.GetRotation();
+						if (transform.Flags.HasFlag(TransformFlags.Scale))
+							part.Scale = transform.GetScale();
+						if (transform.Flags.HasFlag(TransformFlags.Velocity))
+							part.Velocity = transform.GetVelocity();
+						if (transform.Flags.HasFlag(TransformFlags.Angular))
+							part.Angular = transform.GetAngular();
+					}
 				}
 			} else if (@event.Type == TransformType.ByPath) {
 				// Handle object transformation by path

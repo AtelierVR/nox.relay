@@ -12,6 +12,8 @@ using Nox.Relay.Core.Types.Avatars;
 using Nox.Relay.Runtime.Voice;
 using Logger = Nox.CCK.Utils.Logger;
 using CorePlayer = Nox.Relay.Core.Players.Player;
+using Nox.CCK.Players;
+using Nox.Entities;
 
 namespace Nox.Relay.Runtime.Players {
 	public class LocalPlayer : Player, ILocalPlayerVoice {
@@ -20,7 +22,11 @@ namespace Nox.Relay.Runtime.Players {
 
 		public LocalPlayer(Entities context, CorePlayer player) : base(context, player) {
 			VoiceProvider = new LocalVoiceProvider(this);
+			GetOrCreatePart(PlayerRig.Base.ToIndex());
 		}
+
+		protected override IPart CreatePart(ushort index)
+			=> new Part(this, index);
 
 		private IRuntimeAvatar _currentAvatar;
 
