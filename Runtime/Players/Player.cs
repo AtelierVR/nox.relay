@@ -103,16 +103,23 @@ namespace Nox.Relay.Runtime.Players {
 			Angular  = Vector3.zero;
 		}
 
+		public bool NeedsRespawn { get; internal set; }
+
 		public void Respawn() {
-			if (Context.Context.Dimensions
-					.GetDescriptor(Dimensions.MainIndex)
-					.GetModules()
-					.FirstOrDefault(e => e is ISpawnModule)
-				is not ISpawnModule module) {
-				Logger.LogWarning("No spawn module found for respawning player.");
+			var descriptor = Context.Context.Dimensions?.GetDescriptor(Dimensions.MainIndex);
+			if (descriptor == null) {
+				NeedsRespawn = true;
 				return;
 			}
 
+			var module = descriptor.GetModules().FirstOrDefault(e => e is ISpawnModule) as ISpawnModule;
+			if (module == null) {
+				Logger.LogWarning("No spawn module found for respawning player.");
+				NeedsRespawn = false;
+				return;
+			}
+
+			NeedsRespawn = false;
 			var spawn = module.ChoiceSpawn();
 			Teleport(spawn.Position, spawn.Rotation);
 			Logger.Log($"Player {Id} respawned to {spawn.Position}.");

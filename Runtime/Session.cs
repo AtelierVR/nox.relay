@@ -210,6 +210,9 @@ namespace Nox.Relay.Runtime {
 			InterDimensions.SetCurrent();
 			Current = this;
 
+			if (InterEntities.LocalPlayer is Player { NeedsRespawn: true } localPlayer)
+				localPlayer.Respawn();
+
 			OnControllerChanged(Main.ControllerAPI.Current);
 
 			foreach (var module in GetAllModules())
@@ -218,6 +221,9 @@ namespace Nox.Relay.Runtime {
 
 		public void OnSceneLoaded(int index, IWorldDescriptor descriptor, GameObject anchor) {
 			Main.CoreAPI.EventAPI.Emit("session_scene_added", this, index, descriptor, anchor);
+
+			if (InterEntities.LocalPlayer is Player { NeedsRespawn: true } localPlayer)
+				localPlayer.Respawn();
 
 			var modules = descriptor.GetModules<ISessionModule>();
 			Logger.LogDebug($"OnDescriptorAdded: {descriptor} with {modules.Length} modules", descriptor as Object, Tag);
@@ -328,6 +334,9 @@ namespace Nox.Relay.Runtime {
 		private void OnPlayerJoinedOrEnteredHandler(Player player) {
 			if (player.Reference.Flags.HasFlag(PlayerFlags.RoomMaster))
 				InterEntities.MasterId = player.Id;
+
+			if (player.IsLocal)
+				player.Respawn();
 
 			Main.CoreAPI.EventAPI.Emit("session_player_joined", this, player);
 			OnPlayerJoined.Invoke(player);
