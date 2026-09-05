@@ -25,41 +25,49 @@
   "relations": [
     {
       "id": "entity",
-      "type": "depends"
+      "type": "depends",
+      "register": "git+https://github.com/AtelierVR/nox.entities.git"
     },
     {
       "id": "controllers",
-      "type": "depends"
+      "type": "depends",
+      "register": "git+https://github.com/AtelierVR/nox.controllers.git"
     },
     {
       "id": "users",
-      "type": "depends"
+      "type": "depends",
+      "register": "git+https://github.com/AtelierVR/nox.users.git"
     },
     {
       "id": "session",
-      "type": "depends"
+      "type": "depends",
+      "register": "git+https://github.com/AtelierVR/nox.sessions.git"
     },
     {
       "id": "worlds",
-      "type": "depends"
+      "type": "depends",
+      "register": "git+https://github.com/AtelierVR/nox.worlds.git"
     },
     {
-      "id": "avatar",
-      "type": "depends"
+      "id": "avatars",
+      "type": "depends",
+      "register": "git+https://github.com/AtelierVR/nox.avatars.git"
     },
     {
       "id": "players",
-      "type": "depends"
+      "type": "depends",
+      "register": "git+https://github.com/AtelierVR/nox.players.git"
     },
     {
       "id": "audio",
-      "type": "depends"
+      "type": "depends",
+      "register": "git+https://github.com/AtelierVR/nox.audio.git"
     }
   ],
   "constraints": [
     {
       "type": "after",
-      "id": "session"
+      "id": "avatars"
     },
     {
       "type": "after",
