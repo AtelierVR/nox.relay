@@ -61,13 +61,17 @@ namespace Nox.Relay.Runtime {
 		}
 
 		private static void OnAvatarOfControllerChanged(EventData context) {
-			if (!context.TryGet(0, out IControllerAvatar controller))
+			// Les émetteurs publient (source, IRuntimeAvatar) — voir AvatarLoaderConnector.
+			// L'index 0 est le connecteur (MonoBehaviour), pas un IControllerAvatar : lire
+			// l'index 0 faisait toujours échouer ce handler, laissant les propriétés de
+			// paramètres avatar liées à un avatar détruit.
+			if (!context.TryGet(1, out IRuntimeAvatar avatar))
 				return;
 			if (!SessionAPI.TryGet(SessionAPI.Current, out var s))
 				return;
 			if (s is not Session session)
 				return;
-			session.OnAvatarOfControllerChanged(controller);
+			session.OnAvatarOfControllerChanged(avatar);
 		}
 
 		public void OnDisposeMain() {

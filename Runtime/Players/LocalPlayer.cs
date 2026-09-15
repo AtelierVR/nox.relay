@@ -96,7 +96,7 @@ namespace Nox.Relay.Runtime.Players {
 
 			// Synchronize avatar parameters as properties
 			if (controller is IControllerAvatar avatarController)
-				UpdateAvatarOfController(avatarController);
+				UpdateAvatar(avatarController.GetAvatar());
 		}
 
 		internal void RemoveController() {
@@ -109,18 +109,25 @@ namespace Nox.Relay.Runtime.Players {
 		/// Synchronizes avatar parameters as properties on the entity.
 		/// Uses the base class SynchronizeAvatarParameters() method.
 		/// </summary>
-		internal void UpdateAvatarOfController(IControllerAvatar controller)
-			=> UpdateAvatarOfControllerAsync(controller).Forget();
+		internal void UpdateAvatar(IRuntimeAvatar avatar)
+			=> UpdateAvatarAsync(avatar).Forget();
 
-		private async UniTask UpdateAvatarOfControllerAsync(IControllerAvatar controller) {
-			var avatar   = controller.GetAvatar();
+		private async UniTask UpdateAvatarAsync(IRuntimeAvatar avatar) {
+			if (avatar == null) {
+				// Plus d'avatar : retirer les paramètres synchronisés pour ne plus
+				// interroger les modules d'un avatar détruit au prochain tick.
+				SynchronizeAvatarParameters(null, isLocal: true);
+				_currentAvatar = null;
+				return;
+			}
+
 			var response = await Context.Context.Room.ChangeAvatar(AvatarChangedRequest.Self(avatar.Identifier));
 			if (response.IsError) {
 				Logger.LogWarning($"Failed to change avatar: {response.Reason}");
 				return;
 			}
 
-			var descriptor = avatar?.Descriptor;
+			var descriptor = avatar.Descriptor;
 			var parameterModule = descriptor
 				?.GetModules<IParameterModule>()
 				.FirstOrDefault();
@@ -131,11 +138,9 @@ namespace Nox.Relay.Runtime.Players {
 
 			SynchronizeAvatarParameters(parameters, isLocal: true);
 
-			if (avatar != null) {
-				_currentAvatar = avatar;
-				// RouteClipToAvatar();
-				OnAvatarLoaded.Invoke(avatar);
-			}
+			_currentAvatar = avatar;
+			// RouteClipToAvatar();
+			OnAvatarLoaded.Invoke(avatar);
 		}
 
 		// private void RouteClipToAvatar() {

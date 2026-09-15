@@ -1,7 +1,7 @@
 using System;
 using System.Linq;
 using Cysharp.Threading.Tasks;
-using Nox.Avatars.Controllers;
+using Nox.Avatars;
 using Nox.CCK.Properties;
 using Nox.CCK.Sessions;
 using Nox.CCK.Utils;
@@ -261,8 +261,8 @@ namespace Nox.Relay.Runtime {
 		public void OnControllerChanged(IController controller)
 			=> InterEntities.LocalPlayer?.UpdateController(controller);
 
-		public void OnAvatarOfControllerChanged(IControllerAvatar controller)
-			=> InterEntities.LocalPlayer?.UpdateAvatarOfController(controller);
+		public void OnAvatarOfControllerChanged(IRuntimeAvatar avatar)
+			=> InterEntities.LocalPlayer?.UpdateAvatar(avatar);
 
 		public async UniTask OnDeselect(ISession @new) {
 			Logger.LogDebug("Deselecting session", tag: Tag);
