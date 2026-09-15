@@ -12,13 +12,14 @@ namespace Nox.Relay.Runtime {
 		private object _cachedValue;
 		private object _refreshedValue;
 		private bool   _isDirty;
+		private bool   _dead;
 
 		public AvatarParameterProperty(Entity context, IParameter parameter, PropertyFlags flags) {
 			_parameter     = parameter ?? throw new ArgumentNullException(nameof(parameter));
 			Key            = parameter.GetKey();
 			Name           = parameter.GetName();
 			Flags          = flags;
-			_cachedValue   = parameter.Get();
+			_cachedValue   = SafeGet();
 			_refreshedValue = _cachedValue;
 			UpdatedAt      = DateTime.UtcNow;
 		}
@@ -28,13 +29,38 @@ namespace Nox.Relay.Runtime {
 		public string Name { get; }
 		public PropertyFlags Flags { get; }
 
+		/// <summary>
+		/// Reads the parameter, marking the property dead when its backing module was
+		/// destroyed (avatar swap/teardown) instead of letting the exception escape.
+		/// </summary>
+		private object SafeGet() {
+			if (_parameter == null || _dead)
+				return _refreshedValue;
+
+			try {
+				return _parameter.Get();
+			} catch (Exception e) when (e is UnityEngine.MissingReferenceException || e is NullReferenceException) {
+				// Le module (MonoBehaviour) qui porte ce paramètre a été détruit — avatar
+				// remplacé/détruit. La propriété est remplacée au prochain
+				// SynchronizeAvatarParameters() ; en attendant on ne l'interroge plus.
+				_dead = true;
+				return _refreshedValue;
+			}
+		}
+
 		public object Value {
 			get => _refreshedValue;
 			set {
-				if (_parameter == null)
+				if (_parameter == null || _dead)
 					return;
 
-				_parameter.Set(value);
+				try {
+					_parameter.Set(value);
+				} catch (Exception e) when (e is UnityEngine.MissingReferenceException || e is NullReferenceException) {
+					_dead = true;
+					return;
+				}
+
 				_cachedValue    = value;
 				_refreshedValue = value;
 				UpdatedAt       = DateTime.UtcNow;
@@ -47,8 +73,12 @@ namespace Nox.Relay.Runtime {
 		/// Must be called before checking IsDirty or Serialize().
 		/// </summary>
 		public void Refresh() {
-			if (_parameter == null) return;
-			_refreshedValue = _parameter.Get();
+			if (_parameter == null || _dead) return;
+
+			var value = SafeGet();
+			if (_dead) return;
+
+			_refreshedValue = value;
 			if (!AreValuesEqual(_refreshedValue, _cachedValue))
 				_isDirty = true;
 		}
