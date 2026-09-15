@@ -9,6 +9,22 @@ namespace Nox.Relay.Runtime.Players {
 		// if the controller is null, the new values are stored but not applied
 		private IController _controller;
 
+		/// <summary>
+		/// The bound controller, or null when none is bound or the bound instance has been
+		/// destroyed.
+		/// Unity's fake-null only applies to <see cref="UnityEngine.Object"/> references: a
+		/// destroyed proxy reached through <see cref="IController"/> still compares unequal to
+		/// null, so every member below would otherwise hit a destroyed object and throw
+		/// MissingReferenceException until the part is rebound.
+		/// </summary>
+		private IController ActiveController {
+			get {
+				if (_controller is UnityEngine.Object o && !o)
+					_controller = null;
+				return _controller;
+			}
+		}
+
 		public DateTime Updated { get; private set; } = DateTime.UtcNow;
 
 		internal void Restore(IController controller) {
@@ -23,7 +39,8 @@ namespace Nox.Relay.Runtime.Players {
 
 		internal void Store() {
 			// store current values
-			if (_controller != null && _controller.TryGetPart(Id, out var part)) {
+			var controller = ActiveController;
+			if (controller != null && controller.TryGetPart(Id, out var part)) {
 				if (!IsSamePosition(part.GetPosition()))
 					SetPosition(part.GetPosition());
 				if (!IsSameRotation(part.GetRotation()))
@@ -56,15 +73,15 @@ namespace Nox.Relay.Runtime.Players {
 
 		public Vector3 Position {
 			get
-				=> _controller != null && _controller.TryGetPart(Id, out var part)
+				=> ActiveController != null && ActiveController.TryGetPart(Id, out var part)
 					? part.GetPosition()
 					: GetPosition();
 			set {
-				if (_controller != null) {
+				if (ActiveController != null) {
 					var part = new TransformObject();
 					part.SetPosition(value);
 					Updated = DateTime.UtcNow;
-					_controller.SetPart(Id, part);
+					ActiveController.SetPart(Id, part);
 				}
 
 				SetPosition(value);
@@ -74,14 +91,15 @@ namespace Nox.Relay.Runtime.Players {
 
 		public Quaternion Rotation {
 			get
-				=> _controller != null && _controller.TryGetPart(Id, out var part)
+				=> ActiveController != null && ActiveController.TryGetPart(Id, out var part)
 					? part.GetRotation()
 					: GetRotation();
 			set {
-				if (_controller != null) {
+				if (ActiveController != null) {
 					var part = new TransformObject();
 					part.SetRotation(value);
-					_controller.SetPart(Id, part);
+					Updated = DateTime.UtcNow;
+					ActiveController.SetPart(Id, part);
 				}
 
 				SetRotation(value);
@@ -91,14 +109,15 @@ namespace Nox.Relay.Runtime.Players {
 
 		public Vector3 Scale {
 			get
-				=> _controller != null && _controller.TryGetPart(Id, out var part)
+				=> ActiveController != null && ActiveController.TryGetPart(Id, out var part)
 					? part.GetScale()
 					: GetScale();
 			set {
-				if (_controller != null) {
+				if (ActiveController != null) {
 					var part = new TransformObject();
 					part.SetScale(value);
-					_controller.SetPart(Id, part);
+					Updated = DateTime.UtcNow;
+					ActiveController.SetPart(Id, part);
 				}
 
 				SetScale(value);
@@ -108,14 +127,15 @@ namespace Nox.Relay.Runtime.Players {
 
 		public Vector3 Velocity {
 			get
-				=> _controller != null && _controller.TryGetPart(Id, out var part)
+				=> ActiveController != null && ActiveController.TryGetPart(Id, out var part)
 					? part.GetVelocity()
 					: GetVelocity();
 			set {
-				if (_controller != null) {
+				if (ActiveController != null) {
 					var part = new TransformObject();
 					part.SetVelocity(value);
-					_controller.SetPart(Id, part);
+					Updated = DateTime.UtcNow;
+					ActiveController.SetPart(Id, part);
 				}
 
 				SetVelocity(value);
@@ -125,14 +145,15 @@ namespace Nox.Relay.Runtime.Players {
 
 		public Vector3 Angular {
 			get
-				=> _controller != null && _controller.TryGetPart(Id, out var part)
+				=> ActiveController != null && ActiveController.TryGetPart(Id, out var part)
 					? part.GetAngular()
 					: GetAngular();
 			set {
-				if (_controller != null) {
+				if (ActiveController != null) {
 					var part = new TransformObject();
 					part.SetAngular(value);
-					_controller.SetPart(Id, part);
+					Updated = DateTime.UtcNow;
+					ActiveController.SetPart(Id, part);
 				}
 
 				SetAngular(value);
