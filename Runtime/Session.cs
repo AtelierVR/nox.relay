@@ -484,6 +484,19 @@ namespace Nox.Relay.Runtime {
 					continue;
 				}
 
+				// La valeur a pu être reçue avant que l'avatar ne soit prêt : elle est alors stockée
+				// dans un placeholder qui ne route rien vers le paramètre (Property.Deserialize
+				// n'écrit que des octets bruts). L'avatar étant chargé à présent, on lie la
+				// propriété au paramètre — c'est ce qui rend le renvoi périodique réellement
+				// réparateur au lieu de réécrire éternellement le même placeholder.
+				if (property is UnassignedProperty && entity is Player player) {
+					var bound = player.TryBindAvatarParameter(param.Key, param.Value);
+					if (bound != null) {
+						property         = bound;
+						table[param.Key] = bound;
+					}
+				}
+
 				if (!property.Flags.HasFlag(fromLocal ? PropertyFlags.RemoteEmit : PropertyFlags.LocalEmit)) {
 					Logger.LogWarning($"Ignoring non-synced property: {sender.Id} -> {entity.Id} ({property.Name ?? property.Key.ToString()}) [{fromLocal}, {property.Flags}]", tag: Tag);
 					continue;

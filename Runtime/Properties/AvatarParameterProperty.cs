@@ -30,6 +30,14 @@ namespace Nox.Relay.Runtime {
 		public PropertyFlags Flags { get; }
 
 		/// <summary>
+		/// Vrai si la propriété est encore liée au paramètre donné.
+		/// Faux après un swap d'avatar : le module a été détruit et le paramètre qui porte
+		/// l'état est une nouvelle instance, la propriété doit être rebindée.
+		/// </summary>
+		internal bool IsBoundTo(IParameter parameter)
+			=> !_dead && ReferenceEquals(_parameter, parameter);
+
+		/// <summary>
 		/// Reads the parameter, marking the property dead when its backing module was
 		/// destroyed (avatar swap/teardown) instead of letting the exception escape.
 		/// </summary>

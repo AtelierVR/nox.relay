@@ -217,6 +217,10 @@ namespace Nox.Relay.Runtime.Players {
 
 		#region Common Avatar Parameter Synchronization
 
+		// Dernier jeu de paramètres synchronisés (ceux de l'avatar courant). Permet de lier une
+		// valeur reçue tardivement sans attendre un nouveau setup d'avatar.
+		private IParameter[] _avatarParameters = System.Array.Empty<IParameter>();
+
 		/// <summary>
 		/// Synchronizes avatar parameters as Entity properties.
 		/// Creates AvatarParameterProperty for each parameter with appropriate flags.
@@ -226,40 +230,36 @@ namespace Nox.Relay.Runtime.Players {
 		protected void SynchronizeAvatarParameters(IParameter[] parameters, bool isLocal) {
 			var paramKeys = new HashSet<int>();
 
+			_avatarParameters = parameters ?? System.Array.Empty<IParameter>();
+
 			if (parameters?.Length > 0) {
 				foreach (var param in parameters) {
 					var flags         = param.GetFlags();
-					var propertyFlags = PropertyFlags.None;
-
-					if (flags.HasFlag(ParameterFlags.OwnerSyncsToViewers))
-						propertyFlags |= isLocal ? PropertyFlags.LocalEmit : PropertyFlags.RemoteEmit;
-					if (flags.HasFlag(ParameterFlags.ViewerSyncsToOwner))
-						propertyFlags |= isLocal ? PropertyFlags.RemoteEmit : PropertyFlags.LocalEmit;
+					var propertyFlags = GetSyncFlags(flags, isLocal);
 
 					var key = param.GetKey();
 					paramKeys.Add(key);
 
-					// Check if property already exists
-					if (Properties.TryGetValue(key, out var existingProp)) {
-						// Update existing property if it's an AvatarParameterProperty
-						if (existingProp is AvatarParameterProperty avatarProp)
-							avatarProp.UpdateCache();
-						else if (existingProp is UnassignedProperty) {
-							// Replace unassigned property with AvatarParameterProperty
-							var newProp = new AvatarParameterProperty(this, param, propertyFlags);
-							if (propertyFlags.HasFlag(PropertyFlags.LocalEmit))
-								newProp.IsDirty = true; // force the initial value to be sent immediately
-							SetProperty(newProp);
-							Logger.LogDebug($"Replaced unassigned property for parameter {param.GetName()} (key={key}, flags={flags}) with propertyFlags={propertyFlags}", tag: GetType().Name);
-						}
-					} else {
-						// Create new AvatarParameterProperty
-						var newProp = new AvatarParameterProperty(this, param, propertyFlags);
-						if (propertyFlags.HasFlag(PropertyFlags.LocalEmit))
-							newProp.IsDirty = true; // force the initial value to be sent immediately
-						SetProperty(newProp);
-						Logger.LogDebug($"Created property for parameter {param.GetName()} (key={key}, flags={flags}) with propertyFlags={propertyFlags}", tag: GetType().Name);
+					// Premier passage sur cette clé : on crée la propriété synchronisée.
+					if (!Properties.TryGetValue(key, out var existingProp)) {
+						BindAvatarParameter(param, key, flags, propertyFlags, null, "Created");
+						continue;
 					}
+
+					// Déjà liée au bon paramètre : il suffit de rafraîchir son cache.
+					if (existingProp is AvatarParameterProperty avatarProp && avatarProp.IsBoundTo(param)) {
+						avatarProp.UpdateCache();
+						continue;
+					}
+
+					// La propriété existe mais ne porte pas (ou plus) ce paramètre : elle est liée à
+					// l'avatar précédent (swap), la valeur a été reçue avant que l'avatar ne soit prêt
+					// (UnassignedProperty), ou la clé est occupée par un autre type. Dans les deux
+					// premiers cas on remplace en rejouant la dernière valeur connue.
+					if (existingProp is AvatarParameterProperty or UnassignedProperty)
+						BindAvatarParameter(param, key, flags, propertyFlags, existingProp.Value, "Rebound");
+					else
+						Logger.LogWarning($"Key {key} is already used by {existingProp.GetType().Name}; parameter '{param.GetName()}' will not be synchronized.", tag: GetType().Name);
 				}
 			}
 
@@ -269,6 +269,64 @@ namespace Nox.Relay.Runtime.Players {
 					Properties.Remove(key);
 					Logger.LogDebug($"Removed avatar parameter property (key={key}) no longer present in avatar.", tag: GetType().Name);
 				}
+		}
+
+		/// <summary>
+		/// Crée (ou recrée) la propriété synchronisée d'un paramètre d'avatar.
+		///
+		/// <paramref name="lastKnownValue"/> est la dernière valeur connue pour cette clé : valeur
+		/// reçue du réseau alors que l'avatar n'était pas encore prêt, ou valeur appliquée à
+		/// l'avatar précédent. Côté récepteur elle est rejouée immédiatement, de sorte que l'avatar
+		/// soit dans l'état annoncé par son propriétaire dès la fin du setup — au lieu d'attendre
+		/// un renvoi qui peut ne jamais venir (PropertyResendInterval à 0, ou propriétaire immobile).
+		/// </summary>
+		private void BindAvatarParameter(IParameter param, int key, ParameterFlags flags, PropertyFlags propertyFlags, object lastKnownValue, string reason) {
+			var newProp = new AvatarParameterProperty(this, param, propertyFlags);
+
+			// Récepteur uniquement : on rejoue la valeur connue avant tout renvoi du propriétaire.
+			// Guard sur LocalEmit : sur une propriété bidirectionnelle, l'état local fait foi.
+			if (propertyFlags.HasFlag(PropertyFlags.RemoteEmit) && !propertyFlags.HasFlag(PropertyFlags.LocalEmit) && lastKnownValue != null)
+				newProp.Deserialize(Nox.CCK.Network.Serializer.ToBytes(lastKnownValue));
+
+			if (propertyFlags.HasFlag(PropertyFlags.LocalEmit))
+				newProp.IsDirty = true; // force the initial value to be sent immediately
+
+			SetProperty(newProp);
+			Logger.LogDebug($"{reason} property for parameter {param.GetName()} (key={key}, flags={flags}) with propertyFlags={propertyFlags}", tag: GetType().Name);
+		}
+
+		/// <summary>
+		/// Traduit les <see cref="ParameterFlags"/> d'un paramètre en <see cref="PropertyFlags"/> de
+		/// synchronisation, selon le côté (propriétaire ou récepteur).
+		/// </summary>
+		private static PropertyFlags GetSyncFlags(ParameterFlags flags, bool isLocal) {
+			var propertyFlags = PropertyFlags.None;
+
+			if (flags.HasFlag(ParameterFlags.OwnerSyncsToViewers))
+				propertyFlags |= isLocal ? PropertyFlags.LocalEmit : PropertyFlags.RemoteEmit;
+			if (flags.HasFlag(ParameterFlags.ViewerSyncsToOwner))
+				propertyFlags |= isLocal ? PropertyFlags.RemoteEmit : PropertyFlags.LocalEmit;
+
+			return propertyFlags;
+		}
+
+		/// <summary>
+		/// Tente de lier une valeur reçue à un paramètre de l'avatar courant dont la clé est encore
+		/// non assignée : la valeur est arrivée avant la fin du setup, elle a donc été stockée dans
+		/// un <see cref="UnassignedProperty"/>, qui ne route rien vers le paramètre. Appelé par le
+		/// handler réseau pour que le renvoi périodique du propriétaire répare réellement l'état.
+		/// </summary>
+		/// <returns>La propriété liée, ou <c>null</c> si l'avatar n'expose pas ce paramètre.</returns>
+		internal IProperty TryBindAvatarParameter(int key, byte[] payload) {
+			for (var i = 0; i < _avatarParameters.Length; i++) {
+				var param = _avatarParameters[i];
+				if (param.GetKey() != key) continue;
+
+				BindAvatarParameter(param, key, param.GetFlags(), GetSyncFlags(param.GetFlags(), IsLocal), payload, "Bound");
+				return Properties.TryGetValue(key, out var bound) ? bound : null;
+			}
+
+			return null;
 		}
 
 		#endregion
