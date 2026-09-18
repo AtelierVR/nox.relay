@@ -31,7 +31,36 @@ namespace Nox.Relay.Runtime {
 			return session;
 		}
 
+		/// <summary>
+		/// Wrapper around <see cref="ConnectInternal"/>.
+		/// The connect task is started with <c>Forget()</c>, so any unhandled exception would
+		/// surface as an UnobservedTaskException (logged by UniTaskScheduler) and would leave the
+		/// session stuck in the "Pending" state forever. Everything is caught here so the session
+		/// is always driven to a terminal state (Error/Ready) instead.
+		/// </summary>
 		private static async UniTask Connect(this Session session, bool doE = false) {
+			try {
+				await ConnectInternal(session, doE);
+			} catch (Exception e) {
+				Logger.LogException(e, session.Tag);
+				try {
+					session.UpdateState(Status.Error, $"Connection failed: {e.Message}", -1f);
+				} catch (Exception stateError) {
+					// The session (or its UI) may already be disposed, never let this bubble up.
+					Logger.LogException(stateError, session.Tag);
+				}
+
+				if (doE) {
+					try {
+						await session.Dispose();
+					} catch (Exception disposeError) {
+						Logger.LogException(disposeError, session.Tag);
+					}
+				}
+			}
+		}
+
+		private static async UniTask ConnectInternal(Session session, bool doE = false) {
 			var world    = session.GetWorld();
 			var instance = session.GetInstance();
 
@@ -154,7 +183,19 @@ namespace Nox.Relay.Runtime {
 			var keys = Crypto.GetKeys();
 			var sign = Crypto.Sign(challenge, keys);
 
-			var user = Main.UserAPI.Current;
+			// The current user can legitimately be null: no server configured, "/users/@me" fetch
+			// failed (offline, TLS/DNS error, expired or missing token) or the user logged out
+			// while the session was being created. Bail out cleanly instead of dereferencing it.
+			var user = Main.UserAPI?.Current;
+			if (user == null) {
+				session.UpdateState(Status.Error, "Not signed in", -1f);
+				Logger.LogError(
+					"Failed to authenticate to relay: no current user (not signed in, token expired or /users/@me fetch failed)",
+					session.Tag);
+				if (doE)
+					await session.Dispose();
+				return;
+			}
 
 			request = AuthenticationRequest.Resolve(
 				Crypto.ExportPublicKeyToDer(keys),
