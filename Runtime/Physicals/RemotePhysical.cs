@@ -53,9 +53,6 @@ namespace Nox.Relay.Runtime.Physicals {
 	private float _tickInterval;
 	private IRigProvider _rigProvider;
 
-	// Dernier rig configuré (voir ApplyTrackingDefaults) : permet de détecter un hot-swap.
-	private IRigging _configuredRig;
-
 	private new Rigidbody rigidbody
 		=> _rigidbody ??= gameObject.GetOrAddComponent<Rigidbody>();
 
@@ -91,15 +88,6 @@ namespace Nox.Relay.Runtime.Physicals {
 		// The rig provider is a stable MonoBehaviour that exposes the current IRigging.
 		// It is resolved once in SetAvatar; the rig itself may be hot-swapped underneath.
 		var activeRig = _rigProvider?.GetRig();
-
-		// Un hot-swap de rig (changement de backend, ex. ik/type) recrée ses layers et ses
-		// paramètres : les valeurs forcées au setup (tracking désactivé, poids à 0) doivent
-		// être réappliquées, sinon l'avatar distant repart sur les défauts du nouveau rig.
-		if (!ReferenceEquals(activeRig, _configuredRig)) {
-			_configuredRig = activeRig;
-			if (activeRig != null)
-				ApplyTrackingDefaults();
-		}
 
 		var dt        = Time.deltaTime;
 		var tps       = Reference.Reference.Room.Tps;
@@ -262,13 +250,7 @@ namespace Nox.Relay.Runtime.Physicals {
 			}
 
 			if (!identifier.IsValid()) {
-				// Left propagating on purpose (the caller keeps it and it is announced as-is), but it is
-				// a real error: the avatar cannot be loaded, so none of its modules run on this client
-				// and its synchronized parameters (e.g. ik/type) are never created.
-				Logger.LogError(
-					$"Invalid avatar identifier: {identifier.ToString()} — avatar not loaded, its synchronized parameters will not be initialized.",
-					nameof(RemotePhysical)
-				);
+				Logger.LogWarning($"Invalid avatar identifier: {identifier.ToString()}");
 				return null;
 			}
 
@@ -395,32 +377,8 @@ namespace Nox.Relay.Runtime.Physicals {
 			_rigProvider = RuntimeAvatar?.Descriptor?.Anchor
 				?.GetComponentInChildren<IRigProvider>(true);
 
-			// Paramètres de tracking : l'avatar distant est piloté par les transforms reçues, pas
-			// par son propre tracking. Voir ApplyTrackingDefaults (réappelé après un hot-swap).
-			ApplyTrackingDefaults();
-			_configuredRig = _rigProvider?.GetRig();
-
-			root.SetActive(true);
-
-			OnAvatarSet.Invoke(runtimeAvatar);
-
-			return true;
-		}
-
-		/// <summary>
-		/// Force les valeurs par défaut des paramètres de tracking de l'avatar distant : le viewer
-		/// ne doit pas laisser l'avatar reproduire son propre tracking, il est piloté par les
-		/// transforms reçues. Réappelé après chaque hot-swap de rig, qui recrée les paramètres.
-		/// </summary>
-		private void ApplyTrackingDefaults() {
-			var parameterModule = RuntimeAvatar?.Descriptor
-				?.GetModules<IParameterModule>()
-				.FirstOrDefault();
-
-			if (parameterModule == null)
-				return;
-
-			foreach (var param in parameterModule.GetParameters()) {
+			var parameters = parameterModule.GetParameters();
+			foreach (var param in parameters) {
 				var n = param.GetName();
 				switch (n) {
 					case "rig/ik/head/target":
@@ -442,6 +400,12 @@ namespace Nox.Relay.Runtime.Physicals {
 						break;
 				}
 			}
+
+			root.SetActive(true);
+
+			OnAvatarSet.Invoke(runtimeAvatar);
+
+			return true;
 		}
 	}
 }

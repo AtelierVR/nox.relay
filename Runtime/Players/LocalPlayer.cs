@@ -121,16 +121,6 @@ namespace Nox.Relay.Runtime.Players {
 				return;
 			}
 
-			if (!avatar.Identifier.IsValid()) {
-				// Announced anyway (the identifier is propagated as-is), but it is a real error: a
-				// viewer receiving it cannot load the avatar, so it never creates the synchronized
-				// parameters (e.g. ik/type) that let it match this player's rigging backend.
-				Logger.LogError(
-					$"Announcing an invalid avatar identifier '{avatar.Identifier}' — viewers will not be able to load this avatar nor synchronize its parameters.",
-					nameof(LocalPlayer)
-				);
-			}
-
 			var response = await Context.Context.Room.ChangeAvatar(AvatarChangedRequest.Self(avatar.Identifier));
 			if (response.IsError) {
 				Logger.LogWarning($"Failed to change avatar: {response.Reason}");
