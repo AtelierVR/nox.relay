@@ -70,6 +70,8 @@ namespace Nox.Relay.Runtime.Physicals {
 		public void OnDestroy() {
 			CancelAvatarLoading();
 			if (RuntimeAvatar == null) return;
+			// Same as an avatar swap: drop the bindings before the avatar's playable graph dies.
+			Reference?.ReleaseAvatarParameters();
 			RuntimeAvatar.Dispose().Forget();
 			RuntimeAvatar = null;
 		}
@@ -350,8 +352,13 @@ namespace Nox.Relay.Runtime.Physicals {
 
 			root.name += $" {runtimeAvatar.Identifier.ToString()} {nameof(RemotePhysical)}";
 
-			if (old != null)
+			if (old != null) {
+				// Detach the parameters *before* the old avatar's playable graph is disposed, so
+				// no property is ever left reading it. The player re-binds to the new avatar's
+				// parameters right after, via InitializeAvatarParameters().
+				Reference?.ReleaseAvatarParameters();
 				await old.Dispose();
+			}
 
 			Logger.LogDebug($"Attaching avatar to {runtimeAvatar.Descriptor}", runtimeAvatar.Descriptor.Anchor);
 			root.transform.SetParent(transform, false);

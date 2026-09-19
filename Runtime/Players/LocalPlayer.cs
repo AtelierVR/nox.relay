@@ -114,9 +114,9 @@ namespace Nox.Relay.Runtime.Players {
 
 		private async UniTask UpdateAvatarAsync(IRuntimeAvatar avatar) {
 			if (avatar == null) {
-				// Plus d'avatar : retirer les paramètres synchronisés pour ne plus
+				// Plus d'avatar : détacher les paramètres synchronisés pour ne plus
 				// interroger les modules d'un avatar détruit au prochain tick.
-				SynchronizeAvatarParameters(null, isLocal: true);
+				ReleaseAvatarParameters();
 				_currentAvatar = null;
 				return;
 			}
@@ -126,6 +126,12 @@ namespace Nox.Relay.Runtime.Players {
 				Logger.LogWarning($"Failed to change avatar: {response.Reason}");
 				return;
 			}
+
+			// The previous avatar has been torn down by the avatar module: detach its parameter
+			// bindings before re-binding to the new avatar's parameters. Same-avatar calls (e.g.
+			// from UpdateController) must not release, or parameters would churn every update.
+			if (!ReferenceEquals(_currentAvatar, avatar))
+				ReleaseAvatarParameters();
 
 			var descriptor = avatar.Descriptor;
 			var parameterModule = descriptor

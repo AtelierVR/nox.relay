@@ -11,17 +11,15 @@ namespace Nox.Relay.Runtime {
 		private readonly IParameter _parameter;
 		private object _cachedValue;
 		private object _refreshedValue;
-		private bool   _isDirty;
-		private bool   _dead;
 
 		public AvatarParameterProperty(Entity context, IParameter parameter, PropertyFlags flags) {
-			_parameter     = parameter ?? throw new ArgumentNullException(nameof(parameter));
-			Key            = parameter.GetKey();
-			Name           = parameter.GetName();
-			Flags          = flags;
-			_cachedValue   = SafeGet();
+			_parameter      = parameter ?? throw new ArgumentNullException(nameof(parameter));
+			Key             = parameter.GetKey();
+			Name            = parameter.GetName();
+			Flags           = flags;
+			_cachedValue    = _parameter.Get();
 			_refreshedValue = _cachedValue;
-			UpdatedAt      = DateTime.UtcNow;
+			UpdatedAt       = DateTime.UtcNow;
 		}
 
 		public int Key { get; }
@@ -29,42 +27,18 @@ namespace Nox.Relay.Runtime {
 		public string Name { get; }
 		public PropertyFlags Flags { get; }
 
-		/// <summary>
-		/// Reads the parameter, marking the property dead when its backing module was
-		/// destroyed (avatar swap/teardown) instead of letting the exception escape.
-		/// </summary>
-		private object SafeGet() {
-			if (_parameter == null || _dead)
-				return _refreshedValue;
-
-			try {
-				return _parameter.Get();
-			} catch (Exception e) when (e is UnityEngine.MissingReferenceException || e is NullReferenceException) {
-				// Le module (MonoBehaviour) qui porte ce paramètre a été détruit — avatar
-				// remplacé/détruit. La propriété est remplacée au prochain
-				// SynchronizeAvatarParameters() ; en attendant on ne l'interroge plus.
-				_dead = true;
-				return _refreshedValue;
-			}
-		}
+		/// <summary>The parameter this property is bound to.</summary>
+		public IParameter Parameter
+			=> _parameter;
 
 		public object Value {
 			get => _refreshedValue;
 			set {
-				if (_parameter == null || _dead)
-					return;
-
-				try {
-					_parameter.Set(value);
-				} catch (Exception e) when (e is UnityEngine.MissingReferenceException || e is NullReferenceException) {
-					_dead = true;
-					return;
-				}
-
+				_parameter.Set(value);
 				_cachedValue    = value;
 				_refreshedValue = value;
 				UpdatedAt       = DateTime.UtcNow;
-				_isDirty        = true;
+				IsDirty         = true;
 			}
 		}
 
@@ -73,37 +47,19 @@ namespace Nox.Relay.Runtime {
 		/// Must be called before checking IsDirty or Serialize().
 		/// </summary>
 		public void Refresh() {
-			if (_parameter == null || _dead) return;
-
-			var value = SafeGet();
-			if (_dead) return;
-
-			_refreshedValue = value;
+			_refreshedValue = _parameter.Get();
 			if (!AreValuesEqual(_refreshedValue, _cachedValue))
-				_isDirty = true;
+				IsDirty = true;
 		}
 
-		public bool IsDirty {
-			get => _isDirty;
-			set => _isDirty = value;
-		}
+		public bool IsDirty { get; set; }
 
 		public byte[] Serialize()
 			=> _refreshedValue.ToBytes();
 
 		public void Deserialize(byte[] data) {
-			try {
-				_parameter.Set(data);
-			} catch	{
-				// ignore
-			}
-
-			object converted;
-			try   { 
-				converted = _parameter.Get(); 
-			} catch { 
-				converted = data;
-			}
+			_parameter.Set(data);
+			var converted = _parameter.Get();
 
 			_cachedValue    = converted;
 			_refreshedValue = converted;

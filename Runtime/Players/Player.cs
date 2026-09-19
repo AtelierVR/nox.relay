@@ -241,10 +241,27 @@ namespace Nox.Relay.Runtime.Players {
 
 					// Check if property already exists
 					if (Properties.TryGetValue(key, out var existingProp)) {
-						// Update existing property if it's an AvatarParameterProperty
-						if (existingProp is AvatarParameterProperty avatarProp)
-							avatarProp.UpdateCache();
-						else if (existingProp is UnassignedProperty) {
+						if (existingProp is AvatarParameterProperty avatarProp) {
+							// Normal path: ReleaseAvatarParameters() already ran when the previous
+							// avatar was disposed, so `existingProp` is an UnassignedProperty and the
+							// branch below re-binds it. Reaching here with a bound property means an
+							// avatar was swapped *without* releasing first.
+							//
+							// The key is derived from the parameter name, so it is stable across
+							// avatars — but the IParameter instance is not. A property still bound to
+							// the previous avatar would keep reading that avatar's disposed playable
+							// graph on every tick. Re-bind instead of trusting the key.
+							if (!ReferenceEquals(avatarProp.Parameter, param)) {
+								var reboundProp = new AvatarParameterProperty(this, param, propertyFlags);
+								if (propertyFlags.HasFlag(PropertyFlags.LocalEmit))
+									reboundProp.IsDirty = true; // push the new avatar's initial value
+								SetProperty(reboundProp);
+								Logger.LogDebug($"Rebound property for parameter {param.GetName()} (key={key}, flags={flags}) to the new avatar's parameter.", tag: GetType().Name);
+							} else if (!avatarProp.IsDirty) {
+								// Same instance reused: just stay in sync with its current value.
+								avatarProp.UpdateCache();
+							}
+						} else if (existingProp is UnassignedProperty) {
 							// Replace unassigned property with AvatarParameterProperty
 							var newProp = new AvatarParameterProperty(this, param, propertyFlags);
 							if (propertyFlags.HasFlag(PropertyFlags.LocalEmit))
@@ -269,6 +286,37 @@ namespace Nox.Relay.Runtime.Players {
 					Properties.Remove(key);
 					Logger.LogDebug($"Removed avatar parameter property (key={key}) no longer present in avatar.", tag: GetType().Name);
 				}
+		}
+
+		/// <summary>
+		/// Detaches every <see cref="AvatarParameterProperty"/> from its avatar parameter,
+		/// converting it into an <see cref="UnassignedProperty"/> that keeps the last known value.
+		/// </summary>
+		/// <remarks>
+		/// The avatar that owned those parameters is being changed, destroyed or disposed, so the
+		/// binding is already invalid: a disposed <c>AnimatorControllerPlayable</c> throws
+		/// <see cref="ArgumentException"/> ("The Playable is invalid…") on every read, and a
+		/// destroyed component throws <c>MissingReferenceException</c>.
+		/// <para>
+		/// Converting rather than removing keeps the property slot alive so that values received
+		/// from the network while the next avatar loads are still stored instead of being dropped
+		/// as "unknown property". The sync direction is preserved unchanged, only the binding to
+		/// the parameter instance is dropped.
+		/// </para>
+		/// <para>
+		/// Must be called <b>before</b> any <see cref="SynchronizeAvatarParameters"/> with the new
+		/// avatar: that method swaps an <see cref="UnassignedProperty"/> for a freshly bound
+		/// <see cref="AvatarParameterProperty"/>.
+		/// </para>
+		/// </remarks>
+		protected internal void ReleaseAvatarParameters() {
+			foreach (var key in Properties.Keys.ToList()) {
+				if (Properties[key] is not AvatarParameterProperty avatarProp)
+					continue;
+
+				Properties[key] = new UnassignedProperty(this, key, avatarProp.Value, avatarProp.Flags);
+				Logger.LogDebug($"Released avatar parameter '{avatarProp.Name}' (key={key}) to an unassigned property; the avatar is gone, its binding is no longer queried.", tag: GetType().Name);
+			}
 		}
 
 		#endregion
@@ -396,7 +444,9 @@ namespace Nox.Relay.Runtime.Players {
 
 		override protected void OnPhysicalDestroyed() {
 			Context.Context.OnPlayerVisibilityChangedHandler(this, false);
-			SynchronizeAvatarParameters(null, IsLocal);
+			// The avatar goes away with the physical: detach the parameter bindings instead of
+			// leaving properties that would query a disposed playable on every tick.
+			ReleaseAvatarParameters();
 		}
 
 		#endregion
