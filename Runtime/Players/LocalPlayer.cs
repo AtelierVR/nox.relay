@@ -113,9 +113,9 @@ namespace Nox.Relay.Runtime.Players {
 			=> UpdateAvatarAsync(avatar).Forget();
 
 		private async UniTask UpdateAvatarAsync(IRuntimeAvatar avatar) {
-			if (avatar == null) {
-				// Plus d'avatar : détacher les paramètres synchronisés pour ne plus
-				// interroger les modules d'un avatar détruit au prochain tick.
+			if (avatar == null || !avatar.Identifier.IsValid()) {
+				if (avatar != null)
+					Logger.LogDebug($"Skipping avatar announcement for {avatar} (invalid identifier {avatar.Identifier.ToString()}).", tag: GetType().Name);
 				ReleaseAvatarParameters();
 				_currentAvatar = null;
 				return;

@@ -208,6 +208,12 @@ namespace Nox.Relay.Runtime.Physicals {
 				return;
 			}
 
+			if (Reference?.Avatar.IsValid() != true) {
+				Logger.LogDebug("No usable announced avatar identifier, showing the error avatar.");
+				await SetErrorAvatar();
+				return;
+			}
+
 			Logger.LogDebug("Creating avatar");
 
 			AvatarLoadingCts?.Cancel();
@@ -252,7 +258,8 @@ namespace Nox.Relay.Runtime.Physicals {
 			}
 
 			if (!identifier.IsValid()) {
-				Logger.LogWarning($"Invalid avatar identifier: {identifier.ToString()}");
+				Logger.LogWarning($"Invalid avatar identifier: {identifier.ToString()}, showing the error avatar.");
+				await SetErrorAvatar();
 				return null;
 			}
 
@@ -281,9 +288,7 @@ namespace Nox.Relay.Runtime.Physicals {
 
 			if (asset == null) {
 				Logger.LogWarning($"Avatar asset not found for identifier {identifier.ToString()}");
-				var err = await Main.AvatarAPI.LoadError(AvatarParameters);
-				err.Identifier = identifier;
-				await SetAvatar(err);
+				await SetErrorAvatar();
 				return null;
 			}
 
@@ -309,9 +314,7 @@ namespace Nox.Relay.Runtime.Physicals {
 
 			if (avatar == null) {
 				Logger.LogError($"Failed to load avatar from cache for identifier {identifier.ToString()}");
-				var err = await Main.AvatarAPI.LoadError(AvatarParameters);
-				err.Identifier = identifier;
-				await SetAvatar(err);
+				await SetErrorAvatar();
 				return null;
 			}
 
@@ -319,6 +322,46 @@ namespace Nox.Relay.Runtime.Physicals {
 			avatar.Identifier = identifier;
 			await SetAvatar(avatar);
 			return avatar;
+		}
+
+		/// <summary>
+		/// Attaches the error avatar to this physical.
+		/// </summary>
+		/// <remarks>
+		/// Used whenever an announced avatar cannot be resolved (invalid identifier, missing asset,
+		/// load failure) so the remote player keeps a visible representation.
+		/// <para>
+		/// The error avatar's <see cref="IRuntimeAvatar.Identifier"/> is deliberately left at
+		/// <see cref="Identifier.Invalid"/>: the announced identifier is not exploitable, and if we
+		/// assigned it, the early-out <c>identifier.Equals(RuntimeAvatar?.Identifier)</c> in
+		/// <see cref="SetAvatar(Identifier)"/> would consider the error avatar to be the real one
+		/// and never retry the actual load.
+		/// </para>
+		/// </remarks>
+		public async UniTask<IRuntimeAvatar> SetErrorAvatar() {
+			if (Reference == null) {
+				Logger.LogWarning("Reference is null, cannot set the error avatar.");
+				return null;
+			}
+
+			if (Main.AvatarAPI == null) {
+				Logger.LogWarning("AvatarAPI not available yet, cannot load the error avatar.");
+				return null;
+			}
+
+			AvatarLoadingCts?.Cancel();
+			AvatarLoadingCts = new CancellationTokenSource();
+
+			var err = await Main.AvatarAPI.LoadError(AvatarParameters, token: AvatarLoadingCts.Token);
+			if (AvatarLoadingCts.IsCancellationRequested || !this || !gameObject)
+				return null;
+
+			if (err == null) {
+				Logger.LogError("Failed to load the error avatar.");
+				return null;
+			}
+
+			return await SetAvatar(err) ? err : null;
 		}
 
 		public async UniTask<bool> SetAvatar(IRuntimeAvatar runtimeAvatar) {

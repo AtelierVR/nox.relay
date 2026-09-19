@@ -62,19 +62,18 @@ namespace Nox.Relay.Runtime.Players {
 
 		/// <summary>
 		/// Called after the physical representation is created.
-		/// If we have an avatar assigned, set it now.
 		/// </summary>
+		/// <remarks>
+		/// The avatar itself is applied by <see cref="Physicals.RemotePhysical.Setup"/>, which runs
+		/// as soon as <c>Reference</c> is assigned in <see cref="InstantiatePhysical"/> (and on
+		/// enable): it shows the error avatar when the announced identifier is unusable, otherwise
+		/// the loading placeholder followed by the announced avatar once it is resolved.
+		/// </remarks>
 		override protected void OnPhysicalCreated() {
 			base.OnPhysicalCreated();
 
 			// Set up voice on the new physical
 			VoiceProvider.Initialize();
-
-			// If we have an avatar assigned, set it now
-			if (Avatar.IsValid()) {
-				Logger.LogDebug($"Physical created for RemotePlayer {Id}, setting avatar {Avatar}", tag: nameof(RemotePlayer));
-				SetAvatar(Avatar).Forget();
-			}
 		}
 
 		override protected void OnPhysicalDestroyed() {
