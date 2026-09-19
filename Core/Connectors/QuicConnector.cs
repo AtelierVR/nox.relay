@@ -182,68 +182,134 @@ namespace Nox.Relay.Core.Connectors {
 		}
 
 		private void AttachStreamHandlers(QuicStream stream) {
-			stream.DataReceived += s => {
-				var available = (int)s.DataAvailable;
+			// Un récepteur par flux, avec son propre buffer de réassemblage. Classe explicite
+			// plutôt qu'une closure : les closures qui capturent des variables ne sont pas
+			// garanties AOT-compilables dans les chemins natifs de MsQuic (IL2CPP).
+			var receiver = new StreamReceiver(OnReceived, _openStreams);
+			stream.DataReceived     += receiver.OnDataReceived;
+			stream.ShutdownComplete += receiver.OnShutdownComplete;
+		}
+
+		/// <summary>
+		/// Lit un flux QUIC et réassemble les messages du relais : chacun est préfixé d'un
+		/// uint16 big-endian donnant sa longueur totale (en-tête de framing inclus).
+		///
+		/// Un flux est une suite d'octets, il ne préserve PAS les frontières des messages : un
+		/// message peut arriver en plusieurs <c>DataReceived</c>, et plusieurs messages peuvent
+		/// arriver dans un seul. Comme <c>Receive</c> retire les octets du flux, tout reliquat
+		/// non consommé doit être conservé — sinon la trame suivante est lue à un offset faux et
+		/// le flux reste désynchronisé définitivement. C'était la cause du flot de
+		/// « Partial message at stream end » : le reliquat était jeté à chaque chunk, ce qui
+		/// perdait des messages et faisait lire des longueurs fantaisistes.
+		/// </summary>
+		private sealed class StreamReceiver {
+			private const int LengthFieldSize = 2;
+			private const int MinMessageSize  = 5; // length(2) + state(2) + type(1)
+			private const int InitialCapacity = 8 * 1024;
+
+			private readonly UnityEvent<Buffer>        _onReceived;
+			private readonly ConcurrentBag<QuicStream> _openStreams;
+
+			private byte[] _buffer = new byte[InitialCapacity];
+			private int    _length;
+			private bool   _desynced;
+
+			public StreamReceiver(UnityEvent<Buffer> onReceived, ConcurrentBag<QuicStream> openStreams) {
+				_onReceived  = onReceived;
+				_openStreams = openStreams;
+			}
+
+			public void OnDataReceived(QuicStream stream) {
+				var available = (int)stream.DataAvailable;
 				if (available <= 0)
 					return;
 
-				var buf  = new byte[ available ];
-				var read = s.Receive(new Span<byte>(buf));
+				var chunk = new byte[available];
+				var read  = stream.Receive(new Span<byte>(chunk));
 				if (read <= 0)
 					return;
 
-				// Split concatenated messages by length prefix.
-				// After a freeze, multiple relay messages may accumulate
-				// on the QUIC stream.  Each message is prefixed with a
-				// 2-byte big-endian uint16 total-length (header + payload).
-				int offset = 0;
-				const int LengthFieldSize = 2;
-				const int MinMessageSize = 5; // length(2) + state(2) + type(1)
+				Append(chunk, read);
 
-				while (offset + LengthFieldSize <= read) {
-					// Big-endian u16 length prefix
-					int msgLen = (buf[offset] << 8) | buf[offset + 1];
+				while (TryTakeFrame(out var frame))
+					Dispatch(frame);
+			}
 
-					if (msgLen < MinMessageSize || offset + msgLen > read) {
-						// Truncated or corrupt — stop processing this chunk.
-						// Remaining bytes will be picked up on the next
-						// DataReceived together with new data.
-						if (msgLen >= MinMessageSize && offset + msgLen > read)
-							Logger.LogWarning(
-							$"Partial message at stream end " +
-							$"(need {msgLen}, have {read - offset} bytes left)",
-							tag: nameof(QuicConnector));
-					else if (msgLen < MinMessageSize && msgLen > 0)
-						Logger.LogWarning(
-							$"Corrupt length prefix {msgLen} " +
-							$"at offset {offset} — skipping {read - offset} bytes",
-							tag: nameof(QuicConnector));
-						break;
-					}
-
-					// Copy this individual message and dispatch
-					var msgBytes = new byte[msgLen];
-					Array.Copy(buf, offset, msgBytes, 0, msgLen);
-					offset += msgLen;
-
-					UniTask.Post(() => {
-						var buff = new Buffer();
-						buff.Write(msgBytes);
-						buff.Start();
-						OnReceived?.Invoke(buff);
-					});
+			/// <summary>Ajoute les octets reçus au reliquat, en agrandissant le buffer au besoin.</summary>
+			private void Append(byte[] chunk, int count) {
+				var required = _length + count;
+				if (required > _buffer.Length) {
+					// Croissance géométrique : une seule réallocation pour un gros message.
+					var capacity = _buffer.Length;
+					while (capacity < required)
+						capacity *= 2;
+					Array.Resize(ref _buffer, capacity);
 				}
-			};
-			// When the relay closes its send side the stream reaches SHUTDOWN_COMPLETE.
-			// Close the stream here so the native handle is returned to MsQuic
-			// before the registration is torn down (prevents the MsQuicClose crash).
-			stream.ShutdownComplete += (s, connectionShutdown, appCloseInProgress) => {
+
+				Array.Copy(chunk, 0, _buffer, _length, count);
+				_length = required;
+			}
+
+			/// <summary>
+			/// Extrait la trame de tête si elle est complète. Renvoie <c>false</c> — sans rien
+			/// jeter — quand elle est incomplète : c'est le cas normal sur un flux, pas une
+			/// anomalie, et le reliquat doit être conservé pour le prochain chunk.
+			/// </summary>
+			private bool TryTakeFrame(out byte[] frame) {
+				frame = null;
+
+				if (_desynced || _length < LengthFieldSize)
+					return false;
+
+				var msgLen = (_buffer[0] << 8) | _buffer[1];
+
+				if (msgLen < MinMessageSize) {
+					// Alignement perdu : impossible de retrouver la frontière des trames. On
+					// désactive la lecture de ce flux (et on le signale une seule fois) plutôt
+					// que de logger à chaque chunk : le relais n'envoie qu'un message par flux
+					// de réponse, il n'y a donc rien à récupérer.
+					_desynced = true;
+					_length   = 0;
+					Logger.LogError($"Invalid message length prefix ({msgLen}) on a stream; the rest of the stream is ignored.", tag: nameof(QuicConnector));
+					return false;
+				}
+
+				if (_length < msgLen)
+					return false; // trame incomplète : on attend le prochain chunk
+
+				frame = new byte[msgLen];
+				Array.Copy(_buffer, 0, frame, 0, msgLen);
+
+				_length -= msgLen;
+				if (_length > 0)
+					Array.Copy(_buffer, msgLen, _buffer, 0, _length);
+
+				return true;
+			}
+
+			/// <summary>
+			/// Les abonnés de <see cref="OnReceived"/> touchent des objets Unity : on repasse
+			/// donc sur le thread principal avant de publier le message.
+			/// </summary>
+			private void Dispatch(byte[] frame)
+				=> UniTask.Post(() => {
+					var buff = new Buffer();
+					buff.Write(frame);
+					buff.Start();
+					_onReceived?.Invoke(buff);
+				});
+
+			public void OnShutdownComplete(QuicPeerConnection sender, bool connectionShutdown, bool appCloseInProgress) {
+				// When the relay closes its send side the stream reaches SHUTDOWN_COMPLETE.
+				// Close the stream here so the native handle is returned to MsQuic
+				// before the registration is torn down (prevents the MsQuicClose crash).
+				// (sender porte le flux : l'évènement est déclaré sur la base QuicPeerConnection.)
 				if (!connectionShutdown) // still alive when conn is being shut down — conn.Dispose handles it
-					try { s.Dispose(); } catch {
+					try { sender.Dispose(); } catch {
 						// ignored
 					}
 				_openStreams.TryTake(out _); // keep the bag small
-			};
+			}
 		}
 
 		// ── Send ─────────────────────────────────────────────────────────────
