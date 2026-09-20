@@ -453,6 +453,15 @@ namespace Nox.Relay.Runtime.Physicals {
 
 			root.SetActive(true);
 
+			// Declare the avatar's parameter properties on the player, so the values synchronized
+			// by its owner (VelocityX/VelocityZ, …) have a bound IParameter to land on instead of
+			// being stored as an UnassignedProperty ("key never declared") that never reaches the
+			// Animator. This is the single attach point, so it also covers the avatars applied
+			// without RemotePlayer.SetAvatar(): the loading placeholder, the error avatar, and an
+			// avatar announced before this physical existed (the "No physical yet" path, e.g. the
+			// server enter-sync of a player already in the instance).
+			Reference?.InitializeAvatarParameters(runtimeAvatar);
+
 			OnAvatarSet.Invoke(runtimeAvatar);
 
 			return true;

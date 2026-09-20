@@ -121,10 +121,15 @@ namespace Nox.Relay.Runtime.Players {
 			if (result == null)
 				return false;
 
-			// Initialize avatar parameter properties to receive updates from network
-			InitializeAvatarParameters(result);
+			// The avatar's parameter properties were declared by RemotePhysical.SetAvatar(IRuntimeAvatar)
+			// when it attached the avatar — binding again here would duplicate the sync pass.
 
-			// Avatar may have brought a new VoiceAvatarModule — retry voice setup
+			// VoiceProvider.Initialize() is a one-shot (it returns immediately once Started), so this
+			// is not an avatar-change hook: it only covers the case where the first attempt — from
+			// OnPhysicalCreated() — bailed out with "Physical not ready". The avatar-driven output
+			// migration is done by the provider itself, which listens to the physical's OnAvatarSet
+			// (RemoteVoiceProvider.OnAvatarSet → CreateOrMigrateOutput), the same attach point that
+			// now declares the avatar parameters.
 			VoiceProvider.Initialize();
 
 			return true;
@@ -134,8 +139,17 @@ namespace Nox.Relay.Runtime.Players {
 		/// Initializes avatar parameter properties for remote player to receive updates.
 		/// Uses the base class SynchronizeAvatarParameters() method.
 		/// </summary>
+		/// <remarks>
+		/// Called by <see cref="RemotePhysical.SetAvatar(IRuntimeAvatar)"/> when it attaches
+		/// an avatar, whatever the path that produced it: an announcement received while this player
+		/// already has a physical, one received before the physical existed (<see cref="SetAvatar(Identifier)"/>
+		/// returns early in that case and the avatar is applied by <see cref="Physicals.RemotePhysical.Setup"/>),
+		/// the loading placeholder or the error avatar. Without it, an avatar can be visible while the
+		/// owner's synchronized values (VelocityX/VelocityZ, …) land in an UnassignedProperty and the
+		/// avatar never animates.
+		/// </remarks>
 		/// <param name="avatar">The runtime avatar instance</param>
-		private void InitializeAvatarParameters(IRuntimeAvatar avatar) {
+		internal void InitializeAvatarParameters(IRuntimeAvatar avatar) {
 			var descriptor = avatar?.Descriptor;
 			var parameterModule = descriptor?.GetModules<IParameterModule>().FirstOrDefault();
 			var parameters = parameterModule?.GetParameters() ?? Array.Empty<IParameter>();
