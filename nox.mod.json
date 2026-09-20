@@ -49,7 +49,7 @@
       "register": "git+https://github.com/AtelierVR/nox.worlds.git"
     },
     {
-      "id": "avatars",
+      "id": "avatar",
       "type": "depends",
       "register": "git+https://github.com/AtelierVR/nox.avatars.git"
     },
@@ -67,7 +67,7 @@
   "constraints": [
     {
       "type": "after",
-      "id": "avatars"
+      "id": "avatar"
     },
     {
       "type": "after",
