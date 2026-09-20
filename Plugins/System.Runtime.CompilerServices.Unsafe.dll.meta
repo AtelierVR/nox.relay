@@ -2,7 +2,7 @@ fileFormatVersion: 2
 guid: c18a4cd96da6afa4bb34661deb8a5bed
 PluginImporter:
   externalObjects: {}
-  serializedVersion: 2
+  serializedVersion: 3
   iconMap: {}
   executionOrder: {}
   defineConstraints: []
@@ -11,17 +11,17 @@ PluginImporter:
   isExplicitlyReferenced: 0
   validateReferences: 0
   platformData:
-  - first:
-      Any: 
-    second:
-      enabled: 0
+    Any:
+      enabled: 1
       settings: {}
-  - first:
-      Editor: Editor
-    second:
+    Editor:
       enabled: 0
       settings:
         DefaultValueInitialized: true
+    WindowsStoreApps:
+      enabled: 0
+      settings:
+        CPU: AnyCPU
   userData: 
   assetBundleName: 
   assetBundleVariant: 
