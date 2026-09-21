@@ -54,7 +54,7 @@ namespace Nox.Relay.Runtime.Voice {
 			_jitter = new VoiceJitter();
 
 			_physical.ActuallyDestroyed.AddListener(OnPhysicalDestroyed);
-			_physical.OnAvatarSet.AddListener(OnAvatarSet);
+			Player.OnAvatarLoaded.AddListener(OnAvatarLoaded);
 
 			CreateOrMigrateOutput();
 			BindPlayerEvents();
@@ -156,7 +156,7 @@ namespace Nox.Relay.Runtime.Voice {
 		private void OnPlayerMuteChanged(bool local, bool effective)
 			=> _isEffectivelyMuted = effective;
 
-		private void OnAvatarSet(IRuntimeAvatar avatar) {
+		private void OnAvatarLoaded(IRuntimeAvatar avatar) {
 			_runtimeAvatar = avatar;
 			CreateOrMigrateOutput();
 		}
@@ -166,6 +166,7 @@ namespace Nox.Relay.Runtime.Voice {
 
 		private void Teardown() {
 			UnbindPlayerEvents();
+			Player.OnAvatarLoaded.RemoveListener(OnAvatarLoaded);
 
 			_decoder?.Dispose();
 			_decoder = null;
@@ -177,11 +178,8 @@ namespace Nox.Relay.Runtime.Voice {
 				_anchor = null;
 			}
 
-			if (_physical != null) {
-				_physical.ActuallyDestroyed.RemoveListener(OnPhysicalDestroyed);
-				_physical.OnAvatarSet.RemoveListener(OnAvatarSet);
-				_physical = null;
-			}
+			_physical?.ActuallyDestroyed.RemoveListener(OnPhysicalDestroyed);
+			_physical = null;
 
 			_output = null;
 
