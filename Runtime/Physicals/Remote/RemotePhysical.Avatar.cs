@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -7,24 +6,17 @@ using Nox.Avatars;
 using Nox.Avatars.Parameters;
 using Nox.Avatars.Rigging;
 using Nox.CCK.Avatars;
-using Nox.CCK.Events;
 using Nox.CCK.Players;
 using Nox.CCK.Utils;
-using Nox.Relay.Runtime.Players;
 using UnityEngine;
 using Logger = Nox.CCK.Utils.Logger;
-namespace Nox.Relay.Runtime.Physicals {
-	public class RemotePhysical : Physical {
-		/// <summary>Fired when a new avatar is fully set up on this physical. Listeners may migrate voice/camera sources.</summary>
-		public readonly NoxEvent<IRuntimeAvatar> OnAvatarSet = new();
 
-		public new RemotePlayer Reference {
-			get => (RemotePlayer)base.Reference;
-			set {
-				base.Reference = value;
-				Setup().Forget();
-			}
-		}
+namespace Nox.Relay.Runtime.Physicals {
+	/// <summary>
+	/// Avatar loading and attaching for this physical: loading placeholder, announced avatar and
+	/// error avatar. The announced identifier is resolved once the owner's properties are known.
+	/// </summary>
+	public partial class RemotePhysical {
 
 		private Dictionary<string, object> AvatarParameters
 			=> new() {
@@ -32,46 +24,15 @@ namespace Nox.Relay.Runtime.Physicals {
 				["desktop"] = true,
 			};
 
-	private Rigidbody _rigidbody;
-	private IRuntimeAvatar RuntimeAvatar;
-	private CancellationTokenSource AvatarLoadingCts;
-
-	// État d'interpolation par part (keyed by partId)
-	private struct PartInterpolationState {
-		public Vector3    StartPosition;
-		public Vector3    TargetPosition;
-		public Quaternion StartRotation;
-		public Quaternion TargetRotation;
-		public Vector3    StartScale;
-		public Vector3    TargetScale;
-		public float      PosTime;
-		public float      RotTime;
-		public float      ScaleTime;
-	}
-
-	private readonly Dictionary<ushort, PartInterpolationState> _partStates = new();
-	private float _tickInterval;
-	private IRigProvider _rigProvider;
-
-	private new Rigidbody rigidbody
-		=> _rigidbody ??= gameObject.GetOrAddComponent<Rigidbody>();
-
-		override protected void OnEnable() {
-			base.OnEnable();
-			Setup().Forget();
-		}
-
-		override protected void OnDisable() {
-			// Cancel any in-progress avatar loading when this physical is hidden/destroying
-			CancelAvatarLoading();
-			base.OnDisable();
-		}
+		private IRuntimeAvatar RuntimeAvatar;
+		private CancellationTokenSource AvatarLoadingCts;
 
 		public void OnDestroy() {
 			CancelAvatarLoading();
 			if (RuntimeAvatar == null) return;
-			// Same as an avatar swap: drop the bindings before the avatar's playable graph dies.
-			Reference?.ReleaseAvatarParameters();
+			// Same as an avatar swap: Unbind() stops listening and drops the bindings, before the
+			// avatar's playable graph dies.
+			Reference?.Unbind();
 			RuntimeAvatar.Dispose().Forget();
 			RuntimeAvatar = null;
 		}
@@ -82,121 +43,17 @@ namespace Nox.Relay.Runtime.Physicals {
 			AvatarLoadingCts = null;
 		}
 
-	private static float Smoothstep(float t) => t * t * (3f - 2f * t);
+		private async UniTask Setup() {
+			_partStates.Clear();
 
-	private void Update() {
-		if (Reference == null) return;
-
-		// The rig provider is a stable MonoBehaviour that exposes the current IRigging.
-		// It is resolved once in SetAvatar; the rig itself may be hot-swapped underneath.
-		var activeRig = _rigProvider?.GetRig();
-
-		var dt        = Time.deltaTime;
-		var tps       = Reference.Reference.Room.Tps;
-		var threshold = Reference.Reference.Room.Threshold;
-		_tickInterval = tps > 0 ? 1f / tps : 0.05f;
-
-		foreach (var (partId, part) in Reference.Parts) {
-			var rig = partId.ToPlayerRig();
-
-			var newTargetPos = part.Position;
-			var newTargetRot = part.Rotation;
-			var newTargetSca = part.Scale;
-
-			if (!_partStates.TryGetValue(partId, out var state)) {
-				// Première fois : snap immédiat sans interpolation
-				state = new PartInterpolationState {
-					StartPosition  = newTargetPos,
-					TargetPosition = newTargetPos,
-					StartRotation  = newTargetRot,
-					TargetRotation = newTargetRot,
-					StartScale     = newTargetSca,
-					TargetScale    = newTargetSca,
-					PosTime        = _tickInterval,
-					RotTime        = _tickInterval,
-					ScaleTime      = _tickInterval,
-				};
-			} else {
-				if (Vector3.Distance(newTargetPos, state.TargetPosition) > threshold) {
-					state.StartPosition  = rig == PlayerRig.Base ? transform.position : state.TargetPosition;
-					state.TargetPosition = newTargetPos;
-					state.PosTime        = 0f;
-				}
-				if (Quaternion.Angle(newTargetRot, state.TargetRotation) > threshold) {
-					state.StartRotation  = rig == PlayerRig.Base ? transform.rotation : state.TargetRotation;
-					state.TargetRotation = newTargetRot;
-					state.RotTime        = 0f;
-				}
-				if (rig == PlayerRig.Base && Vector3.Distance(newTargetSca, state.TargetScale) > threshold) {
-					state.StartScale  = transform.localScale;
-					state.TargetScale = newTargetSca;
-					state.ScaleTime   = 0f;
-				}
+			if (Reference?.Parts.TryGetValue(PlayerRig.Base.ToIndex(), out var part) == true) {
+				transform.position        = part.Position;
+				transform.rotation        = part.Rotation;
+				transform.localScale      = part.Scale;
+				rigidbody.linearVelocity  = part.Velocity;
+				rigidbody.angularVelocity = part.Angular;
+				_tickInterval = Reference.Reference.Room.Tps > 0 ? 1f / Reference.Reference.Room.Tps : 0.05f;
 			}
-
-			state.PosTime   += dt;
-			state.RotTime   += dt;
-			state.ScaleTime += dt;
-
-			var tPos   = Smoothstep(Mathf.Clamp01(state.PosTime   / _tickInterval));
-			var tRot   = Smoothstep(Mathf.Clamp01(state.RotTime   / _tickInterval));
-			var tScale = Smoothstep(Mathf.Clamp01(state.ScaleTime / _tickInterval));
-
-			if (rig == PlayerRig.Base) {
-				// Position
-				if (Vector3.Distance(state.StartPosition, state.TargetPosition) > threshold * 0.1f) {
-					transform.position = Vector3.Lerp(state.StartPosition, state.TargetPosition, tPos);
-					if (dt > 0)
-						rigidbody.linearVelocity = (state.TargetPosition - transform.position) / _tickInterval;
-				} else {
-					transform.position       = state.TargetPosition;
-					rigidbody.linearVelocity = part.Velocity;
-				}
-
-				// Rotation
-				if (Quaternion.Angle(state.StartRotation, state.TargetRotation) > threshold * 0.1f) {
-					transform.rotation = Quaternion.Slerp(state.StartRotation, state.TargetRotation, tRot);
-					var deltaRot = state.TargetRotation * Quaternion.Inverse(transform.rotation);
-						deltaRot.ToAngleAxis(out var angle, out var axis);
-						if (angle > 180f) angle -= 360f;
-					if (_tickInterval > 0)
-						rigidbody.angularVelocity = axis * (angle * Mathf.Deg2Rad / _tickInterval);
-				} else {
-					transform.rotation        = state.TargetRotation;
-					rigidbody.angularVelocity = part.Angular;
-					}
-
-				// Scale
-				transform.localScale = Vector3.Distance(state.StartScale, state.TargetScale) > threshold * 0.1f
-					? Vector3.Lerp(state.StartScale, state.TargetScale, tScale)
-					: state.TargetScale;
-			} else if (activeRig != null && activeRig.TryGetPart(partId, out var rigPart)) {
-				var rigTransform = rigPart.GetTransform();
-				if (rigTransform != null) {
-					var interpolatedPos = Vector3.Distance(state.StartPosition, state.TargetPosition) > threshold * 0.1f
-						? Vector3.Lerp(state.StartPosition, state.TargetPosition, tPos)
-						: state.TargetPosition;
-					var interpolatedRot = Quaternion.Angle(state.StartRotation, state.TargetRotation) > threshold * 0.1f
-						? Quaternion.Slerp(state.StartRotation, state.TargetRotation, tRot)
-						: state.TargetRotation;
-					rigTransform.SetPositionAndRotation(interpolatedPos, interpolatedRot);
-				}			}
-
-			_partStates[partId] = state;
-		}
-	}
-
-	private async UniTask Setup() {
-		_partStates.Clear();
-
-		if (Reference?.Parts.TryGetValue(PlayerRig.Base.ToIndex(), out var part) == true) {
-			transform.position        = part.Position;
-			transform.rotation        = part.Rotation;
-			transform.localScale      = part.Scale;
-			rigidbody.linearVelocity  = part.Velocity;
-			rigidbody.angularVelocity = part.Angular;
-			_tickInterval = Reference.Reference.Room.Tps > 0 ? 1f / Reference.Reference.Room.Tps : 0.05f;
-		}
 
 			if (RuntimeAvatar != null) {
 				Logger.LogDebug("Avatar already set for DesktopController");
@@ -364,19 +221,19 @@ namespace Nox.Relay.Runtime.Physicals {
 			return await SetAvatar(err) ? err : null;
 		}
 
-		public async UniTask<bool> SetAvatar(IRuntimeAvatar runtimeAvatar) {
-			if (runtimeAvatar == RuntimeAvatar)
+		public async UniTask<bool> SetAvatar(IRuntimeAvatar runtime) {
+			if (runtime == RuntimeAvatar)
 				return true;
 
 			// If this physical is being destroyed, refuse to attach and clean up the incoming avatar
 			if (!this || !gameObject || !transform) {
 				Logger.LogWarning("Physical is being destroyed, disposing incoming avatar instead of attaching.");
-				runtimeAvatar?.Dispose().Forget();
+				runtime?.Dispose().Forget();
 				return false;
 			}
 
 			var old = RuntimeAvatar;
-			RuntimeAvatar = runtimeAvatar;
+			RuntimeAvatar = runtime;
 			_partStates.Clear();
 			_rigProvider = null;
 
@@ -393,26 +250,23 @@ namespace Nox.Relay.Runtime.Physicals {
 				return false;
 			}
 
-			root.name += $" {runtimeAvatar.Identifier.ToString()} {nameof(RemotePhysical)}";
+			root.name += $" {runtime.Identifier.ToString()} {nameof(RemotePhysical)}";
 
 			if (old != null) {
-				// Detach the parameters *before* the old avatar's playable graph is disposed, so
-				// no property is ever left reading it. The player re-binds to the new avatar's
-				// parameters right after, via InitializeAvatarParameters().
-				Reference?.ReleaseAvatarParameters();
+				Reference?.Unbind();
 				await old.Dispose();
 			}
 
-			Logger.LogDebug($"Attaching avatar to {runtimeAvatar.Descriptor}", runtimeAvatar.Descriptor.Anchor);
+			Logger.LogDebug($"Attaching avatar to {runtime.Descriptor}", runtime.Descriptor.Anchor);
 			root.transform.SetParent(transform, false);
 			root.transform.localPosition = Vector3.zero;
 			root.transform.localRotation = Quaternion.identity;
 
-			var parameterModule = RuntimeAvatar?.Descriptor
+			var module = RuntimeAvatar?.Descriptor
 				?.GetModules<IParameterModule>()
 				.FirstOrDefault();
 
-			if (parameterModule == null) {
+			if (module == null) {
 				Logger.LogWarning("Avatar has no parameter module, cannot configure tracking parameters.");
 				return true;
 			}
@@ -427,7 +281,7 @@ namespace Nox.Relay.Runtime.Physicals {
 			_rigProvider = RuntimeAvatar?.Descriptor?.Anchor
 				?.GetComponentInChildren<IRigProvider>(true);
 
-			var parameters = parameterModule.GetParameters();
+			var parameters = module.GetParameters();
 			foreach (var param in parameters) {
 				var n = param.GetName();
 				switch (n) {
@@ -452,19 +306,10 @@ namespace Nox.Relay.Runtime.Physicals {
 			}
 
 			root.SetActive(true);
-
-			// Declare the avatar's parameter properties on the player, so the values synchronized
-			// by its owner (VelocityX/VelocityZ, …) have a bound IParameter to land on instead of
-			// being stored as an UnassignedProperty ("key never declared") that never reaches the
-			// Animator. This is the single attach point, so it also covers the avatars applied
-			// without RemotePlayer.SetAvatar(): the loading placeholder, the error avatar, and an
-			// avatar announced before this physical existed (the "No physical yet" path, e.g. the
-			// server enter-sync of a player already in the instance).
-			Reference?.InitializeAvatarParameters(runtimeAvatar);
-
-			OnAvatarSet.Invoke(runtimeAvatar);
+			Reference?.UpdateAvatar(runtime);
 
 			return true;
 		}
+
 	}
 }
