@@ -21,6 +21,7 @@
         "Nox.Avatars.Parameters",
         "Nox.Avatars.Rigging",
         "Nox.CCK.Avatars",
+        "Nox.CCK.Avatars.Rigging",
         "Nox.Audio",
         "Nox.CCK.Audio",
         "Nox.CCK.Avatars.Voice",

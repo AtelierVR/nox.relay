@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using Nox.Avatars.Rigging;
+using Nox.CCK.Avatars.Rigging;
 using Nox.CCK.Players;
 using UnityEngine;
 
@@ -112,17 +114,17 @@ namespace Nox.Relay.Runtime.Physicals {
 					transform.localScale = Vector3.Distance(state.StartScale, state.TargetScale) > threshold * 0.1f
 						? Vector3.Lerp(state.StartScale, state.TargetScale, tScale)
 						: state.TargetScale;
-				} else if (activeRig != null && activeRig.TryGetPart(partId, out var rigPart)) {
-					var rigTransform = rigPart.GetTransform();
-					if (rigTransform != null) {
-						var interpolatedPos = Vector3.Distance(state.StartPosition, state.TargetPosition) > threshold * 0.1f
-							? Vector3.Lerp(state.StartPosition, state.TargetPosition, tPos)
-							: state.TargetPosition;
-						var interpolatedRot = Quaternion.Angle(state.StartRotation, state.TargetRotation) > threshold * 0.1f
-							? Quaternion.Slerp(state.StartRotation, state.TargetRotation, tRot)
-							: state.TargetRotation;
-						rigTransform.SetPositionAndRotation(interpolatedPos, interpolatedRot);
-					}
+				} else if (activeRig != null) {
+					var interpolatedPos = Vector3.Distance(state.StartPosition, state.TargetPosition) > threshold * 0.1f
+						? Vector3.Lerp(state.StartPosition, state.TargetPosition, tPos)
+						: state.TargetPosition;
+					var interpolatedRot = Quaternion.Angle(state.StartRotation, state.TargetRotation) > threshold * 0.1f
+						? Quaternion.Slerp(state.StartRotation, state.TargetRotation, tRot)
+						: state.TargetRotation;
+
+					// Same helper as the local driver (`AvatarSyncConnector.DriveRigParts`): a part lands on
+					// the same rig object on both sides, only the timing differs (interpolated here).
+					RigPartDriver.Write(activeRig, partId, interpolatedPos, interpolatedRot);
 				}
 
 				_partStates[partId] = state;
