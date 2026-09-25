@@ -1,7 +1,5 @@
-using Nox.Avatars;
-using Nox.Avatars.Parameters;
 using Nox.CCK.Avatars.Voice;
-using Nox.CCK.Events;
+using Nox.CCK.Utils;
 using Nox.Audio.Players;
 using Nox.Relay.Runtime.Voice;
 using CorePlayer = Nox.Relay.Core.Players.Player;
@@ -14,6 +12,10 @@ namespace Nox.Relay.Runtime.Players {
 		public LocalPlayer(Entities context, CorePlayer player) : base(context, player) {
 			VoiceProvider = new LocalVoiceProvider(this);
 			GetOrCreatePart(PlayerRig.Base.ToIndex());
+
+			// We are the client: our own platform/engine are the announced ones.
+			Platform = PlatformExtensions.CurrentPlatform;
+			Engine   = EngineExtensions.CurrentEngine;
 		}
 
 		protected override IPart CreatePart(ushort index)

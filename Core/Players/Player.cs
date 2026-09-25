@@ -1,7 +1,6 @@
 using System;
 using Nox.CCK.Utils;
 using Nox.Relay.Core.Rooms;
-using Nox.Users;
 
 namespace Nox.Relay.Core.Players {
 	/// <summary>

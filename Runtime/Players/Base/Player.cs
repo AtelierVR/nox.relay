@@ -72,6 +72,19 @@ namespace Nox.Relay.Runtime.Players {
 			}
 		}
 
+		/// <summary>
+		/// Platform announced by this player, or <see cref="Platform.None"/> when unknown.
+		/// Filled from the join event for a remote player, from the running client for the local one.
+		/// </summary>
+		public Platform Platform { get; internal set; } = Platform.None;
+
+		/// <summary>
+		/// Game engine announced by this player, or <see cref="Engine.None"/> when unknown.
+		/// Filled from the join event for a remote player, from the running client for the local one.
+		/// </summary>
+		public Engine Engine { get; internal set; } = Engine.None;
+
+
 
 		public bool IsMaster
 			=> Context.MasterId == Id;

@@ -322,7 +322,10 @@ namespace Nox.Relay.Runtime {
 
 		internal void OnPlayerJoinedHandler(JoinEvent @event) {
 			Logger.LogDebug($"OnJoin: {@event} {@event.Player.Flags}", tag: Tag);
-			var player = new RemotePlayer(InterEntities, @event.Player);
+			var player = new RemotePlayer(InterEntities, @event.Player) {
+				Platform = @event.Platform.GetPlatformFromName(),
+				Engine   = @event.Engine.GetEngineFromName()
+			};
 
 			if (player.IsLocal)
 				player.Respawn();
