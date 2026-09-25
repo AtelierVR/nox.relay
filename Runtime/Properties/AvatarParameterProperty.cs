@@ -14,10 +14,10 @@ namespace Nox.Relay.Runtime {
 
 		public AvatarParameterProperty(Entity context, IParameter parameter, PropertyFlags flags) {
 			_parameter      = parameter ?? throw new ArgumentNullException(nameof(parameter));
-			Key             = parameter.GetKey();
-			Name            = parameter.GetName();
+			Key             = parameter.Key;
+			Name            = parameter.Name;
 			Flags           = flags;
-			_cachedValue    = _parameter.Get();
+			_cachedValue    = _parameter.Value;
 			_refreshedValue = _cachedValue;
 			UpdatedAt       = DateTime.UtcNow;
 		}
@@ -34,7 +34,7 @@ namespace Nox.Relay.Runtime {
 		public object Value {
 			get => _refreshedValue;
 			set {
-				_parameter.Set(value);
+				_parameter.Value = value;
 				_cachedValue    = value;
 				_refreshedValue = value;
 				UpdatedAt       = DateTime.UtcNow;
@@ -47,7 +47,7 @@ namespace Nox.Relay.Runtime {
 		/// Must be called before checking IsDirty or Serialize().
 		/// </summary>
 		public void Refresh() {
-			_refreshedValue = _parameter.Get();
+			_refreshedValue = _parameter.Value;
 			if (!AreValuesEqual(_refreshedValue, _cachedValue))
 				IsDirty = true;
 		}
@@ -58,8 +58,8 @@ namespace Nox.Relay.Runtime {
 			=> _refreshedValue.ToBytes();
 
 		public void Deserialize(byte[] data) {
-			_parameter.Set(data);
-			var converted = _parameter.Get();
+			_parameter.Value = data;
+			var converted = _parameter.Value;
 
 			_cachedValue    = converted;
 			_refreshedValue = converted;

@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using Cysharp.Threading.Tasks;
+using Nox.Avatars.Parameters;
 using Nox.CCK.Development;
 using Nox.CCK.Events;
 using Nox.CCK.Sessions;
@@ -88,5 +89,7 @@ namespace Nox.Relay.Runtime.Physicals {
 			Gizmos.DrawWireCube(transform.position, Vector3.one * 0.2f);
 			Gizmos.DrawLine(transform.position, transform.position + Vector3.up * 2f);
 		}
-	}
+
+        virtual public void OnParameterChanged(IParameter parameter, bool v) { }
+    }
 }

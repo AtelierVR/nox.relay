@@ -28,6 +28,7 @@ namespace Nox.Relay.Runtime.Physicals {
 		private CancellationTokenSource AvatarLoadingCts;
 
 		public void OnDestroy() {
+			DisposeNameplate();
 			CancelAvatarLoading();
 			if (RuntimeAvatar == null) return;
 			// Same as an avatar swap: Unbind() stops listening and drops the bindings, before the
@@ -237,6 +238,9 @@ namespace Nox.Relay.Runtime.Physicals {
 			_partStates.Clear();
 			_rigProvider = null;
 
+			// The plate reads a parameter of this avatar: its cache must not survive the swap.
+			InvalidateHeight();
+
 			if (RuntimeAvatar == null) {
 				Logger.LogWarning("Setting avatar to null, removing current avatar.");
 				RuntimeAvatar = old;
@@ -282,9 +286,8 @@ namespace Nox.Relay.Runtime.Physicals {
 				?.GetComponentInChildren<IRigProvider>(true);
 
 			var parameters = module.GetParameters();
-			foreach (var param in parameters) {
-				var n = param.GetName();
-				switch (n) {
+			foreach (var param in parameters)
+				switch (param.Name) {
 					case "rig/ik/head/target":
 					case "tracking/left_hand/active":
 					case "tracking/right_hand/active":
@@ -292,18 +295,19 @@ namespace Nox.Relay.Runtime.Physicals {
 					case "tracking/right_foot/active":
 					case "tracking/right_toes/active":
 					case "tracking/left_toes/active":
-						param.Set(false);
+						param.Value = false;
 						break;
+
 					case "rig/ik/spine/position_weight":
 					case "rig/ik/spine/hint_weight":
-						param.Set(0f);
+						param.Value = 0f;
 						break;
+
 					case "tracking/head/active":
 					case "IsLocal":
-						param.Set(true);
+						param.Value = true;
 						break;
 				}
-			}
 
 			root.SetActive(true);
 			Reference?.UpdateAvatar(runtime);

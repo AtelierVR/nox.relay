@@ -37,12 +37,16 @@ namespace Nox.Relay.Runtime.Players {
 			ReleaseAvatarParameters();
 		}
 
-		private void OnParameterRegistered(IParameter parameter)
-			=> SynchronizeAvatarParameter(parameter, IsLocal);
+		private void OnParameterRegistered(IParameter parameter) {
+			SynchronizeAvatarParameter(parameter, IsLocal);
+			Physical?.OnParameterChanged(parameter, true);
+		}
 
 		/// <summary>Keeps the slot: values can still arrive from the network while it is unregistered.</summary>
-		private void OnParameterUnregistered(IParameter parameter)
-			=> ReleaseAvatarParameter(parameter.GetKey());
+		private void OnParameterUnregistered(IParameter parameter) {
+			ReleaseAvatarParameter(parameter.Key);
+			Physical?.OnParameterChanged(parameter, false);
+		}
 
 		#endregion
 
@@ -55,7 +59,7 @@ namespace Nox.Relay.Runtime.Players {
 			if (parameters?.Length > 0)
 				foreach (var param in parameters) {
 					SynchronizeAvatarParameter(param, isLocal);
-					paramKeys.Add(param.GetKey());
+					paramKeys.Add(param.Key);
 				}
 
 			// Remove AvatarParameterProperty entries no longer present in the avatar's parameter list
@@ -69,7 +73,7 @@ namespace Nox.Relay.Runtime.Players {
 		// Creates, re-binds or refreshes the property for a single parameter. Never prunes: this is
 		// also the path taken when a parameter registers on an already bound module.
 		private void SynchronizeAvatarParameter(IParameter param, bool isLocal) {
-			var flags         = param.GetFlags();
+			var flags         = param.Flags;
 			var propertyFlags = PropertyFlags.None;
 
 			if (flags.HasFlag(ParameterFlags.OwnerSyncsToViewers))
@@ -77,7 +81,7 @@ namespace Nox.Relay.Runtime.Players {
 			if (flags.HasFlag(ParameterFlags.ViewerSyncsToOwner))
 				propertyFlags |= isLocal ? PropertyFlags.RemoteEmit : PropertyFlags.LocalEmit;
 
-			var key = param.GetKey();
+			var key = param.Key;
 
 			if (Properties.TryGetValue(key, out var existingProp)) {
 				if (existingProp is AvatarParameterProperty avatarProp) {
@@ -88,7 +92,7 @@ namespace Nox.Relay.Runtime.Players {
 						if (propertyFlags.HasFlag(PropertyFlags.LocalEmit))
 							reboundProp.IsDirty = true; // send the initial value immediately
 						SetProperty(reboundProp);
-						Logger.LogDebug($"Rebound property for parameter {param.GetName()} (key={key}, flags={flags}) to the new avatar's parameter.", tag: GetType().Name);
+						Logger.LogDebug($"Rebound property for parameter {param.Name} (key={key}, flags={flags}) to the new avatar's parameter.", tag: GetType().Name);
 					} else if (!avatarProp.IsDirty) {
 						avatarProp.UpdateCache();
 					}
@@ -97,14 +101,14 @@ namespace Nox.Relay.Runtime.Players {
 					if (propertyFlags.HasFlag(PropertyFlags.LocalEmit))
 						newProp.IsDirty = true; // send the initial value immediately
 					SetProperty(newProp);
-					Logger.LogDebug($"Replaced unassigned property for parameter {param.GetName()} (key={key}, flags={flags}) with propertyFlags={propertyFlags}", tag: GetType().Name);
+					Logger.LogDebug($"Replaced unassigned property for parameter {param.Name} (key={key}, flags={flags}) with propertyFlags={propertyFlags}", tag: GetType().Name);
 				}
 			} else {
 				var newProp = new AvatarParameterProperty(this, param, propertyFlags);
 				if (propertyFlags.HasFlag(PropertyFlags.LocalEmit))
 					newProp.IsDirty = true; // send the initial value immediately
 				SetProperty(newProp);
-				Logger.LogDebug($"Created property for parameter {param.GetName()} (key={key}, flags={flags}) with propertyFlags={propertyFlags}", tag: GetType().Name);
+				Logger.LogDebug($"Created property for parameter {param.Name} (key={key}, flags={flags}) with propertyFlags={propertyFlags}", tag: GetType().Name);
 			}
 		}
 

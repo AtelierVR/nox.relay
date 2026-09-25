@@ -1,4 +1,5 @@
 using Cysharp.Threading.Tasks;
+using Nox.Avatars.Parameters;
 using Nox.Avatars.Rigging;
 using Nox.CCK.Utils;
 using Nox.Relay.Runtime.Players;
@@ -31,5 +32,14 @@ namespace Nox.Relay.Runtime.Physicals {
 			CancelAvatarLoading();
 			base.OnDisable();
 		}
+
+        /// <summary>
+        /// Raised by the bound player when the avatar module registers/unregisters a parameter.
+        /// </summary>
+        override public void OnParameterChanged(IParameter parameter, bool added) {
+            // The nameplate places itself from the avatar Height: react as soon as that parameter
+            // lands, instead of polling for it to appear.
+            OnNameplateParameterChanged(parameter);
+        }
 	}
 }
