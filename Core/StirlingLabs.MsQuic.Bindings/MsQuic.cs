@@ -48,12 +48,28 @@ namespace StirlingLabs.MsQuic.Bindings {
 		}
 
 		/// <summary>Resolves a native export address using the injected resolver (DllImport-free).</summary>
+		/// <exception cref="EntryPointNotFoundException">
+		/// The resolver returned <see cref="IntPtr.Zero"/> — the native library is either not loaded in
+		/// this environment or does not export <paramref name="symbol"/>. Without this guard the failure
+		/// surfaces one frame later as an opaque <c>ArgumentNullException: ptr</c> inside
+		/// <see cref="System.Runtime.InteropServices.Marshal.GetDelegateForFunctionPointer(IntPtr, Type)"/>.
+		/// </exception>
 		public static IntPtr ResolveSymbol(string library, string symbol) {
 			var resolver = SymbolResolver;
 			if (resolver == null)
 				throw new InvalidOperationException(
 					"MsQuic symbol resolver is not initialized. Call MsQuic.Init(loader, resolver) first.");
-			return resolver(library, symbol);
+
+			var address = resolver(library, symbol);
+			if (address == IntPtr.Zero)
+				throw new EntryPointNotFoundException(
+					$"Native export '{symbol}' could not be resolved in '{library}'.\n" +
+					"On Windows, Nox.ModLoader resolves symbols through GetModuleHandle, which only finds a " +
+					"module Unity has already loaded: the plugin must be imported with 'Editor' compatibility " +
+					"(for the host platform) and 'Preloaded' enabled in its .meta. " +
+					"Run Nox ▸ Tools ▸ Validate Mod Plugins to check the plugin settings.");
+
+			return address;
 		}
 
 		/// <summary>Parameterless overload for backwards compatibility with QuicRegistration..cctor.
