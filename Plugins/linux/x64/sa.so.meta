@@ -28,7 +28,7 @@ PluginImporter:
         Exclude Win: 0
         Exclude Win64: 0
     Editor:
-      enabled: 1
+      enabled: 0
       settings:
         CPU: x86_64
         DefaultValueInitialized: true
