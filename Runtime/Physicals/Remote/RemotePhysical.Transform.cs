@@ -29,6 +29,8 @@ namespace Nox.Relay.Runtime.Physicals {
 		private static float Smoothstep(float t) => t * t * (3f - 2f * t);
 
 		private void Update() {
+			UpdateNameplate();
+
 			if (Reference == null) return;
 
 			// The rig provider is a stable MonoBehaviour that exposes the current IRigging.

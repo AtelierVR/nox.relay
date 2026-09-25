@@ -11,6 +11,7 @@ using Nox.Sessions;
 using Nox.Users;
 using Nox.Worlds;
 using StirlingLabs.MsQuic.Bindings;
+using Nox.Nameplate;
 using Nox.Players;
 using Nox.CCK.Language;
 
@@ -120,5 +121,14 @@ namespace Nox.Relay.Runtime {
 			=> CoreAPI.ModAPI
 				.GetMod("players")
 				.GetInstance<IPlayerAPI>();
+
+		/// <summary>
+		/// API of the optional <c>nox.nameplate</c> mod: null when the mod is not loaded,
+		/// in which case no plate is created for the remote physicals.
+		/// </summary>
+		internal static INameplateAPI NameplateAPI
+			=> CoreAPI?.ModAPI?
+				.GetMod("nameplate")?
+				.GetInstance<INameplateAPI>();
 	}
 }

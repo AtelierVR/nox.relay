@@ -18,6 +18,8 @@
         "Nox.Instances",
         "Nox.Mods.UI",
         "Nox.Avatars",
+        "Nox.Nameplate",
+        "Nox.CCK.Nameplate",
         "Nox.Avatars.Parameters",
         "Nox.Avatars.Rigging",
         "Nox.CCK.Avatars",
