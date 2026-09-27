@@ -314,11 +314,8 @@ namespace Nox.Relay.Runtime.Physicals {
 
 		/// <summary>
 		/// Pushes the level of the player's captured audio (<c>Keys.VOICE</c>), driving the alpha of
-		/// the plate's voice image. Called every frame: the plate ignores an unchanged value.
-		/// <para>
-		/// A remote player has no <see cref="IPlayerVoice.Audio"/> (its playback is internal), so the
-		/// level stays <c>0</c> until the voice pipeline exposes one.
-		/// </para>
+		/// the plate's voice image. Called every frame: the plate ignores an unchanged value. A remote
+		/// player's playback is exposed as its <see cref="IPlayerVoice.Audio"/> by the voice provider.
 		/// </summary>
 		private void PushVoice() {
 			var plate = _nameplate;

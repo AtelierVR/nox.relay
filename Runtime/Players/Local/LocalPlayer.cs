@@ -39,6 +39,7 @@ namespace Nox.Relay.Runtime.Players {
 
 		public override void Update() {
 			// Disabled for local player - no interpolation needed
+			UpdateNameplate();
 		}
 
 		// ── Voice (local) ──
