@@ -63,8 +63,19 @@ namespace Nox.Relay.Runtime.Physicals {
 		/// <summary>Fired when the GameObject is actually destroyed (not just hidden).</summary>
 		public readonly NoxEvent ActuallyDestroyed = new();
 
-		private void OnDestroy() {
+		private void OnDestroy()
+			=> NotifyActuallyDestroyed();
+
+		/// <summary>
+		/// Cancels the pending destruction and raises <see cref="ActuallyDestroyed"/>.
+		/// <para>
+		/// A derived class declaring its own <c>OnDestroy</c> hides this one (Unity only calls the most
+		/// derived), so it must call this explicitly for the entity to learn that its physical is gone.
+		/// </para>
+		/// </summary>
+		protected void NotifyActuallyDestroyed() {
 			_destroyCts?.Cancel();
+			_destroyCts = null;
 			ActuallyDestroyed.Invoke();
 		}
 

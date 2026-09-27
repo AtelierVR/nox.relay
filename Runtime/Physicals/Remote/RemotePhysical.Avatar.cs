@@ -28,11 +28,10 @@ namespace Nox.Relay.Runtime.Physicals {
 		private CancellationTokenSource AvatarLoadingCts;
 
 		public void OnDestroy() {
+			NotifyActuallyDestroyed();
 			DisposeNameplate();
 			CancelAvatarLoading();
 			if (RuntimeAvatar == null) return;
-			// Same as an avatar swap: Unbind() stops listening and drops the bindings, before the
-			// avatar's playable graph dies.
 			Reference?.Unbind();
 			RuntimeAvatar.Dispose().Forget();
 			RuntimeAvatar = null;
