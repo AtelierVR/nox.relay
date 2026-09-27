@@ -48,13 +48,11 @@ namespace Nox.Relay.Runtime.Voice {
 
 			_maxDataBytes = Math.Min(MaxDataBytesPerPacket, OpusEncoder.MaxPacketSize);
 
-			// Adapt the target bitrate to the connection MTU: fill the available
-			// packet budget so quality scales with the link and packets never
-			// fragment. Config bitrate is an optional ceiling (0 = auto).
+			// Fit the datagram budget, but cap the bitrate at a sane value for mono voice:
+			// `settings.opus.bitrate` overrides the ceiling (0 = OpusConfig.VoiceBitrate).
 			int mtuBitrate = _maxDataBytes * OpusConfig.FramesPerSecond * 8;
-			int bitrate = Math.Min(mtuBitrate, OpusEncoder.MaxBitrate);
-			if (OpusConfig.Bitrate > 0)
-				bitrate = Math.Min(bitrate, OpusConfig.Bitrate);
+			int ceiling = OpusConfig.Bitrate > 0 ? OpusConfig.Bitrate : OpusConfig.VoiceBitrate;
+			int bitrate = Math.Min(Math.Min(mtuBitrate, ceiling), OpusEncoder.MaxBitrate);
 
 			_encoder = new OpusEncoder.OpusEncoderInstance(
 				OpusConfig.SamplesPerSecond, 1, bitrate,
@@ -104,8 +102,12 @@ namespace Nox.Relay.Runtime.Voice {
 			bool isSpeaking = HasSignal(samples);
 			Player.IsSpeaking = isSpeaking;
 
-			if (!isSpeaking || IsDeafened || IsInputMuted)
+			// VoiceMicInput emits a frame every period even while muted/gated: send an empty
+			// keep-alive so the frame index stays the receiver's timeline instead of a hole.
+			if (!isSpeaking || IsDeafened || IsInputMuted) {
+				RelayFrame(index, Timestamp, ReadOnlySpan<byte>.Empty);
 				return;
+			}
 
 			bool hasEncodedYet = _encoder.IsValid;
 			CodecStopwatch.Start();
@@ -113,7 +115,6 @@ namespace Nox.Relay.Runtime.Voice {
 			CodecStopwatch.Stop(MaxCodecMilliseconds, CodecTimeOverrunMessage,
 				!hasEncodedYet, AllowMultipleCodecWarningsPerFrame);
 
-			// Bandwidth optimization: don't send packets for silence.
 			if (encoded != null && encoded.Length > 0)
 				RelayFrame(index, Timestamp, encoded);
 		}
