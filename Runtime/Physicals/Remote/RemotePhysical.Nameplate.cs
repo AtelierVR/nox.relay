@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Cysharp.Threading.Tasks;
 using Nox.Avatars.Parameters;
@@ -8,6 +9,7 @@ using Nox.CCK.Utils;
 using Nox.CCK.Nameplate;
 using Nox.Entities;
 using Nox.Nameplate;
+using Nox.Users;
 using UnityEngine;
 using Logger = Nox.CCK.Utils.Logger;
 using Keys = Nox.CCK.Nameplate.Constants;
@@ -19,7 +21,10 @@ namespace Nox.Relay.Runtime.Physicals {
 	/// The physical owns a <b>dedicated anchor</b> (<see cref="NameplateAnchor"/>) placed just
 	/// above the player's head, and asks <c>nox.nameplate</c> for an <see cref="INameplate"/>
 	/// through that anchor. It then feeds the plate: the user profile (fetched from
-	/// <c>IUserAPI</c>) and the heartbar (from the player data <c>heart</c>/<c>heart.max</c>).
+	/// <c>IUserAPI</c>), the relation icon (<c>friend</c>, <c>follower</c>, <c>following</c>,
+	/// <c>request_sent</c>, <c>request_received</c>, <c>request_mutual</c>,
+	/// <c>friend_request_sent</c>, <c>friend_request_received</c>)
+	/// and the heartbar (from the player data <c>heart</c>/<c>heart.max</c>).
 	/// </para>
 	/// <para>
 	/// The anchor is a child of the physical, so hiding the physical (relay hides it before
@@ -31,6 +36,9 @@ namespace Nox.Relay.Runtime.Physicals {
 
 		/// <summary>Fallback head height when neither the avatar bone nor the head part is available.</summary>
 		private const float NameplateFallbackHeight = 1.8f;
+
+		/// <summary>Icon folder of the relation sprites, published by the users mod.</summary>
+		private const string RelationsFolder = "icons/relations";
 
 		/// <summary>Dedicated transform handed to the nameplate mod (above the player's head).</summary>
 		public Transform NameplateAnchor { get; private set; }
@@ -204,8 +212,10 @@ namespace Nox.Relay.Runtime.Physicals {
 
 			try {
 				var user = await api.Fetch(player.Identifier);
-				if (user != null && _nameplate.IsAlive())
+				if (user != null && _nameplate.IsAlive()) {
 					_nameplate.Set(Keys.USER, user);
+					PushRelation(user);
+				}
 			} catch (Exception e) {
 				Logger.LogDebug($"Failed to fetch user '{player.Identifier.ToString()}' for the nameplate: {e.Message}", tag: nameof(RemotePhysical));
 			}
@@ -225,6 +235,53 @@ namespace Nox.Relay.Runtime.Physicals {
 
 			_nameplate.SetClientBadges(player.Platform, player.Engine);
 		}
+
+		/// <summary>
+		/// Pushes the relation icon of the user on the plate status row
+		/// (<c>ui:icons/relations/&lt;relation&gt;.png</c>, see <see cref="RelationIcon"/>).
+		/// The row is cleared when there is no relation.
+		/// </summary>
+		private void PushRelation(IUser user) {
+			var plate = _nameplate;
+			if (!plate.IsAlive())
+				return;
+
+			var icon = RelationIcon(user?.Relations);
+			plate.Set(Keys.STATUS, string.IsNullOrEmpty(icon)
+				? new Dictionary<string, string>()
+				: new Dictionary<string, string> { [RelationIconPath(icon)] = icon });
+		}
+
+		/// <summary>
+		/// Icon name of a relation, from the follow state of both sides:
+		/// <list type="bullet">
+		/// <item><c>follower</c> — only the user follows the current user.</item>
+		/// <item><c>following</c> — only the current user follows the user.</item>
+		/// <item><c>friend</c> — the follows are mutual.</item>
+		/// <item><c>request_sent</c> / <c>request_received</c> — a pending request from the current
+		/// user / from the user, without any follow.</item>
+		/// <item><c>request_mutual</c> — pending requests on both sides.</item>
+		/// <item><c>friend_request_sent</c> / <c>friend_request_received</c> — a pending request from
+		/// the current user / from the user, while the other side already follows.</item>
+		/// </list>
+		/// Null without any relation.
+		/// </summary>
+		private static string RelationIcon(IUserRelation relation)
+			=> (relation?.In ?? UserRelationType.NONE, relation?.Out ?? UserRelationType.NONE) switch {
+				(UserRelationType.FOLLOW, UserRelationType.FOLLOW)   => "friend",
+				(UserRelationType.FOLLOW, UserRelationType.NONE)     => "follower",
+				(UserRelationType.NONE, UserRelationType.FOLLOW)     => "following",
+				(UserRelationType.FOLLOW, UserRelationType.REQUEST)  => "friend_request_sent",
+				(UserRelationType.REQUEST, UserRelationType.FOLLOW)  => "friend_request_received",
+				(UserRelationType.NONE, UserRelationType.REQUEST)    => "request_sent",
+				(UserRelationType.REQUEST, UserRelationType.NONE)    => "request_received",
+				(UserRelationType.REQUEST, UserRelationType.REQUEST) => "request_mutual",
+				_                                                    => null
+			};
+
+		/// <summary>Sprite path of a relation icon: <c>ui:icons/relations/&lt;name&gt;.png</c>.</summary>
+		private static string RelationIconPath(string icon)
+			=> new ResourceIdentifier(NameplateExtensions.IconsNamespace, $"{RelationsFolder}/{icon}.png");
 
 		/// <summary>
 		/// Pushes the display name relay computed for this player (its <c>Display</c> is customisable,
