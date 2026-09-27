@@ -1,5 +1,4 @@
 using System;
-using Nox.CCK.Utils;
 using Nox.Relay.Core.Types.Contents.Rooms;
 using Buffer = Nox.CCK.Utils.Buffer;
 
@@ -29,6 +28,30 @@ namespace Nox.Relay.Core.Types.Stream {
 	/// </para>
 	/// </summary>
 	public class StreamRequest : RoomRequest {
+		/// <summary>Bytes <c>Room.Emit</c> prepends to every room packet (the room instance id).</summary>
+		public const int InstancePrefixSize = 1;
+
+		/// <summary>
+		/// Fixed size of a Sample header: sub-type (1) + channel id (4) + level flags (1) + frame
+		/// index (4) + timestamp (8).
+		/// </summary>
+		public const int SampleHeaderSize = 1 + 4 + 1 + 4 + 8;
+
+		/// <summary>Extra bytes a Sample header spends when the optional group id is present.</summary>
+		public const int GroupIdSize = 2;
+
+		/// <summary>
+		/// Bytes a stream datagram spends outside the sample itself: the relay header, the room instance
+		/// prefix and the sample header. Lets a sender size its payload budget against the transport's
+		/// usable payload (<c>IConnector.Mtu</c>, which already excludes the transport's own headers).
+		/// </summary>
+		/// <param name="hasGroup">Whether the sample carries a group id.</param>
+		public static int FramingOverhead(bool hasGroup = false)
+			=> Relay.HeaderSize
+				+ InstancePrefixSize
+				+ SampleHeaderSize
+				+ (hasGroup ? GroupIdSize : 0);
+
 		/// <summary>Sub-type identifying the payload structure.</summary>
 		public StreamSubType SubType;
 

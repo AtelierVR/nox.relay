@@ -15,7 +15,13 @@ namespace Nox.Relay.Core.Connectors {
 		public const string PROTOCOL_NAME = "udp";
 
 		private Socket               _socket;
-		private ushort               _bufferSize = 1024;
+
+		/// <summary>Whole datagram the socket must be able to receive: payload + <see cref="HeaderOverhead"/>.</summary>
+		private ushort               _bufferSize = 1024 + HeaderOverhead;
+
+		/// <summary>IPv4 (20 B) + UDP (8 B) headers the socket adds around every datagram.</summary>
+		private const int            HeaderOverhead = 28;
+
 		private SocketAsyncEventArgs _recArgs;
 		private bool                 _receiving;
 
@@ -29,14 +35,19 @@ namespace Nox.Relay.Core.Connectors {
 		public UnityEvent<string> OnDisconnected { get; } = new();
 
 		public ushort Mtu {
-			get => (ushort)(_socket?.ReceiveBufferSize ?? _bufferSize);
+			get => (ushort)(_bufferSize - HeaderOverhead);
 			set {
-				_bufferSize = value;
-				_recArgs?.SetBuffer(new byte[value], 0, value);
-				if (_socket == null) return;
-				_socket.ReceiveBufferSize = value;
-				_socket.SendBufferSize    = value;
+				_bufferSize = (ushort)(value + HeaderOverhead);
+				ApplyReceiveBuffer();
 			}
+		}
+
+		/// <summary>Sizes the receive buffer and the socket to hold one datagram of <see cref="_bufferSize"/>.</summary>
+		private void ApplyReceiveBuffer() {
+			_recArgs?.SetBuffer(new byte[_bufferSize], 0, _bufferSize);
+			if (_socket == null) return;
+			_socket.ReceiveBufferSize = _bufferSize;
+			_socket.SendBufferSize    = _bufferSize;
 		}
 
 		public string Protocol
@@ -66,7 +77,7 @@ namespace Nox.Relay.Core.Connectors {
 			_recArgs           =  new SocketAsyncEventArgs();
 			_recArgs.Completed += OnReceiveCompleted;
 
-			Mtu = _bufferSize;
+			ApplyReceiveBuffer();
 
 			await _socket.ConnectAsync(ip, port);
 

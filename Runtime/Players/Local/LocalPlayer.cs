@@ -1,7 +1,6 @@
 using Nox.CCK.Avatars.Voice;
 using Nox.CCK.Utils;
 using Nox.Audio.Players;
-using Nox.Relay.Runtime.Voice;
 using CorePlayer = Nox.Relay.Core.Players.Player;
 using Nox.CCK.Players;
 using Nox.Entities;
@@ -10,7 +9,6 @@ namespace Nox.Relay.Runtime.Players {
 	public partial class LocalPlayer : Player, ILocalPlayerVoice {
 
 		public LocalPlayer(Entities context, CorePlayer player) : base(context, player) {
-			VoiceProvider = new LocalVoiceProvider(this);
 			GetOrCreatePart(PlayerRig.Base.ToIndex());
 
 			// We are the client: our own platform/engine are the announced ones.
@@ -40,22 +38,23 @@ namespace Nox.Relay.Runtime.Players {
 		public override void Update() {
 			// Disabled for local player - no interpolation needed
 			UpdateNameplate();
+			TickVoice();
 		}
 
 		// ── Voice (local) ──
 
 		public override void OnEntered() {
 			base.OnEntered();
-			VoiceProvider.Initialize();
+			StartVoice();
 		}
 
 		public override void OnQuit() {
-			VoiceProvider.Dispose();
+			StopVoice();
 			base.OnQuit();
 		}
 
 		public override void OnLeft() {
-			VoiceProvider.Dispose();
+			StopVoice();
 			base.OnLeft();
 		}
 	}

@@ -16,7 +16,6 @@ namespace Nox.Relay.Runtime.Players {
 			Avatar = identifier;
 
 			if (!HasPhysical()) {
-				// No physical yet, but we still need to prepare properties for when avatar loads
 				Logger.LogDebug($"No physical yet for RemotePlayer {Id}, avatar will be set when physical is created", tag: nameof(RemotePlayer));
 				return true;
 			}
@@ -28,16 +27,7 @@ namespace Nox.Relay.Runtime.Players {
 			if (result == null)
 				return false;
 
-			// The avatar's parameter properties were declared by RemotePhysical.SetAvatar(IRuntimeAvatar)
-			// when it attached the avatar — binding again here would duplicate the sync pass.
-
-			// VoiceProvider.Initialize() is a one-shot (it returns immediately once Started), so this
-			// is not an avatar-change hook: it only covers the case where the first attempt — from
-			// OnPhysicalCreated() — bailed out with "Physical not ready". The avatar-driven output
-			// migration is done by the provider itself, which listens to this player's OnAvatarLoaded
-			// (RemoteVoiceProvider.OnAvatarLoaded → CreateOrMigrateOutput), the same attach point that
-			// now declares the avatar parameters.
-			VoiceProvider.Initialize();
+			StartVoice();
 
 			return true;
 		}

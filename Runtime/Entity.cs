@@ -91,6 +91,8 @@ namespace Nox.Relay.Runtime {
 		}
 
 		private void HandlePhysicalActuallyDestroyed() {
+			if (!Physical)
+				return;
 			Physical = null;
 			OnPhysicalDestroyed();
 		}
@@ -117,14 +119,16 @@ namespace Nox.Relay.Runtime {
 		public void DestroyPhysical(bool immediate = false) {
 			if (!Physical)
 				return;
-			Physical.Destroy(immediate);
+
+			var physical = Physical;
+
 			if (immediate) {
-				// Actual destruction: clear state now (HandlePhysicalActuallyDestroyed won't fire)
 				Physical = null;
+				physical.Destroy(true);
 				OnPhysicalDestroyed();
+				return;
 			}
-			// Non-immediate: Physical stays referenced while hidden.
-			// HandlePhysicalActuallyDestroyed() will clear it after the delay.
+			physical.Destroy();
 		}
 
 		public virtual void Dispose() {

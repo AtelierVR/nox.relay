@@ -35,7 +35,9 @@ namespace Nox.Relay.Core.Connectors {
 		UniTask<bool> Connect(string address, ushort port);
 
 		/// <summary>
-		/// Get or set the MTU (Maximum Transmission Unit) of the connector.
+		/// Get or set the largest payload a single datagram may carry, excluding the headers the transport
+		/// adds itself (IP/UDP, QUIC framing, stream chunking). A sender that frames its data can spend
+		/// everything up to this value on it.
 		/// </summary>
 		ushort Mtu { get; set; }
 

@@ -7,12 +7,10 @@ using Nox.CCK.Utils;
 using Nox.Entities;
 using Nox.Audio.Players;
 using Nox.Players;
-using Nox.Relay.Runtime.Voice;
 using Nox.Worlds.Spawns;
 using UnityEngine;
 using Logger = Nox.CCK.Utils.Logger;
 using CorePlayer = Nox.Relay.Core.Players.Player;
-using Nox.CCK.Events;
 
 namespace Nox.Relay.Runtime.Players {
 
@@ -41,12 +39,6 @@ namespace Nox.Relay.Runtime.Players {
 			base.Dispose();
 		}
 
-
-		/// <summary>
-		/// The voice pipeline for this player (local microphone capture or remote playback).
-		/// Assigned by <see cref="LocalPlayer"/> / <see cref="RemotePlayer"/>.
-		/// </summary>
-		public VoiceProvider VoiceProvider { get; protected set; }
 
 		readonly internal Dictionary<ushort, IPart> Parts = new();
 
@@ -163,51 +155,6 @@ namespace Nox.Relay.Runtime.Players {
 			}
 		}
 
-		#region IPlayerVoice — Volume & Mute
-
-		public IPlayerData Data;
-
-		/// <inheritdoc />
-		public float Volume {
-			get => Data.Get("volume", 1f);
-			set => Data.Set("volume", Mathf.Clamp(value, 0f, 2f));
-		}
-
-		public readonly NoxEvent<float, float> OnVolume = new();
-
-		/// <inheritdoc />
-		public bool IsMuted {
-			get => Data.Get("mute", false);
-			set => Data.Set("mute", value);
-		}
-
-		public readonly NoxEvent<bool, bool> OnMute = new();
-
-		/// <inheritdoc />
-		public float EffectiveVolume
-			=> Main.VoiceRegister != null
-				? Volume * Main.VoiceRegister.Channel.EffectiveVolume
-				: Volume;
-
-		/// <inheritdoc />
-		public bool IsEffectivelyMuted
-			=> IsMuted || (Main.VoiceRegister?.Channel.IsEffectivelyMuted ?? false);
-
-		private void OnDataChanged(string[] key, object @new, object @old) {
-			if(key.Length == 1 && key[0] == "volume")
-				OnVolume.Invoke(Volume, EffectiveVolume);
-			else if(key.Length == 1 && key[0] == "mute")
-				OnMute.Invoke(IsMuted, IsEffectivelyMuted);
-		}
-
-        private void OnVolumeChanged(float local, float effective)
-			=> OnVolume.Invoke(Volume, EffectiveVolume);
-
-        private void OnMuteChanged(bool local, bool effective)
-			=> OnMute.Invoke(IsMuted, IsEffectivelyMuted);
-
-		#endregion
-
 		protected internal Identifier Avatar = Identifier.Invalid;
 
 		public virtual Identifier GetAvatar()
@@ -230,38 +177,6 @@ namespace Nox.Relay.Runtime.Players {
 			// The avatar goes away with the physical: Unbind() also detaches the parameter bindings,
 			// instead of leaving properties that would query a disposed playable.
 			Unbind();
-		}
-
-		#endregion
-
-		#region IPlayerVoice Implementation
-
-		/// <summary>Current voice audio source. Set by VoiceReceiver (remote) or MicrophoneConnector (local).</summary>
-		protected ICapturedAudio _audio;
-
-		public ListenMode Listen { get; set; } = ListenMode.Normal;
-
-		public SpeakMode Speak { get; set; } = SpeakMode.Normal;
-
-		public virtual ICapturedAudio Audio {
-			get => _audio;
-			set => _audio = value;
-		}
-
-		/// <summary>
-		/// Speaking indicator for UI. Updated by the player's voice provider.
-		/// </summary>
-		public bool IsSpeaking { get; set; }
-
-		public virtual LevelFlags Level {
-			get {
-				if (!IsSpeaking) return LevelFlags.None;
-				return LevelFlags.Speaking | Speak switch {
-					SpeakMode.Whisper   => LevelFlags.Whisper,
-					SpeakMode.Broadcast => LevelFlags.Broadcast,
-					_                   => LevelFlags.Normal
-				};
-			}
 		}
 
 		#endregion

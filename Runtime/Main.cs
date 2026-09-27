@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using Nox.Avatars;
-using Nox.Avatars.Controllers;
 using Nox.CCK.Mods.Cores;
 using Nox.CCK.Mods.Events;
 using Nox.Controllers;

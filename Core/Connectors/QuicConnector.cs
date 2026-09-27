@@ -55,9 +55,26 @@ namespace Nox.Relay.Core.Connectors {
 		public EndPoint EndPoint
 			=> _endPoint;
 
+		/// <summary>Protocol cap advertised by the server during the handshake; 0 while it did not set one.</summary>
+		private ushort _maxPacketSize;
+
+		/// <summary>
+		/// Usable payload per datagram: the smaller of the server's protocol cap and the QUIC datagram max
+		/// send length. The latter follows path MTU discovery, so it changes **live** while connected —
+		/// consumers must re-read it instead of caching it.
+		/// </summary>
 		public ushort Mtu {
-			get => _connection?.MaxSendLength ?? 0;
-			set { }
+			get {
+				var path = _connection?.MaxSendLength ?? 0;
+				if (path == 0)
+					return 0;
+
+				return _maxPacketSize == 0 || _maxPacketSize > path
+					? path
+					: _maxPacketSize;
+			}
+			// The handshake advertises what the server accepts; the path MTU still bounds it.
+			set => _maxPacketSize = value;
 		}
 
 		public UnityEvent<Buffer> OnReceived { get; } = new();

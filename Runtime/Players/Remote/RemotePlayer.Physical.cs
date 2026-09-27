@@ -16,7 +16,7 @@ namespace Nox.Relay.Runtime.Players {
 			=> Vector3.Distance(Position, Context.LocalPlayer.Position)
 				< Mathf.Min(Context.Context.Room.RenderEntity, Settings.RenderEntityDistance);
 
-		override protected Physicals.Physical InstantiatePhysical() {
+		override protected Physical InstantiatePhysical() {
 			var asset = Main.CoreAPI.AssetAPI.GetAsset<GameObject>("remote_physical.prefab");
 			if (!asset) {
 				Logger.LogError("Failed to load remote physical prefab");
@@ -24,7 +24,7 @@ namespace Nox.Relay.Runtime.Players {
 			}
 
 			var instance = asset.Instantiate();
-			instance.name = $"{typeof(RemotePhysical)}_{Id}";
+			instance.name = $"[{typeof(RemotePhysical).Name}_{Id}]";
 
 			var physical = instance.GetComponent<RemotePhysical>();
 			if (!physical) {
@@ -51,11 +51,11 @@ namespace Nox.Relay.Runtime.Players {
 			base.OnPhysicalCreated();
 
 			// Set up voice on the new physical
-			VoiceProvider.Initialize();
+			StartVoice();
 		}
 
 		override protected void OnPhysicalDestroyed() {
-			VoiceProvider.Dispose();
+			RefreshVoiceOutput();
 			base.OnPhysicalDestroyed();
 		}
 
