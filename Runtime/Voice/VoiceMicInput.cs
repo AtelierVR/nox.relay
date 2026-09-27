@@ -5,9 +5,9 @@ using Nox.CCK.Audio.Opus;
 
 namespace Nox.Relay.Runtime.Voice {
 	/// <summary>
-	/// Microphone-based voice input — reads the shared microphone stream from
-	/// nox.audio's MicrophoneManager, applies the DSP (volume, noise suppression,
-	/// activation gate) via the microphone, then emits processed frames.
+	/// Microphone-based voice input — consumes the DSP-processed frames published by
+	/// nox.audio's microphone (<c>volume</c>, noise suppression and activation gate already
+	/// applied, on the DSP's own frame grid) and hands them to the Opus encoder.
 	/// </summary>
 	public class VoiceMicInput : MonoBehaviour {
 		/// <summary>Fired when a new (processed) audio frame is ready: (frameIndex, pcmSamples).</summary>
@@ -15,16 +15,11 @@ namespace Nox.Relay.Runtime.Voice {
 
 		private IMicrophone _mic;
 
-		private AudioClip _micClip;
-		private int _lastPosition;
-		private int _frameIndex;
-		private float[] _frameBuffer;
+		private int  _frameIndex;
 		private bool _isRecording;
 
 		public void StartLocalPlayer() {
 			if (_isRecording) return;
-
-			_frameBuffer = new float[OpusConfig.SamplesPerFrame];
 
 			if (Main.MicrophoneAPI == null) {
 				Debug.LogError("[VoiceMicInput] nox.audio MicrophoneManager is unavailable.");
@@ -51,12 +46,9 @@ namespace Nox.Relay.Runtime.Voice {
 				return false;
 			}
 
-			_mic         = mic;
-			_micClip     = clip;
-			// Start from the current write position: the clip is a shared ring buffer
-			// that may already be full (e.g. started by MicrophoneManager's "current"
-			// user). Reading from 0 would replay seconds of stale audio.
-			_lastPosition = mic.Position;
+			_mic = mic;
+			// Never send audio the DSP published before this consumer existed.
+			mic.DiscardPendingFrames();
 
 			// Diagnostic: the whole pipeline assumes 48 kHz. If the device records at
 			// a different rate (e.g. 44100), each frame is slightly off → pitch shift +
@@ -67,54 +59,45 @@ namespace Nox.Relay.Runtime.Voice {
 		}
 
 		private void Update() {
-			if (!_isRecording || _mic == null || _micClip == null) return;
+			if (!_isRecording || _mic == null) return;
 
-			int pos = _mic.Position;
-			if (pos < 0) return;
-			pos %= _micClip.samples;
-			if (pos == _lastPosition) return;
+			// Consume the DSP's own frames: re-reading the recording clip with another alignment
+			// mixes processed and still-raw samples inside every frame (50 Hz crackle).
+			while (_mic.TryDequeueProcessedFrame(out var frame)) {
+				if (frame == null || frame.Length == 0)
+					continue;
 
-			int samplesAvailable;
-			if (pos > _lastPosition)
-				samplesAvailable = pos - _lastPosition;
-			else
-				samplesAvailable = (_micClip.samples - _lastPosition) + pos;
+				int frameSize = OpusConfig.SamplesPerFrame;
+				if (frameSize <= 0)
+					continue;
 
-			int frameSize = OpusConfig.SamplesPerFrame;
-			if (frameSize <= 0)
-				return;
+				// Device rates other than 48 kHz: the encoder frame size is a hard requirement.
+				if (frame.Length != frameSize)
+					frame = Resample(frame, frameSize);
 
-			while (samplesAvailable >= frameSize) {
-				int start = _lastPosition % _micClip.samples;
-				if (start + frameSize <= _micClip.samples) {
-					_micClip.GetData(_frameBuffer, start);
-				} else {
-					int first = _micClip.samples - start;
-					int second = frameSize - first;
-					var temp = new float[first];
-					_micClip.GetData(temp, start);
-					Array.Copy(temp, 0, _frameBuffer, 0, first);
-					var tail = new float[second];
-					_micClip.GetData(tail, 0);
-					Array.Copy(tail, 0, _frameBuffer, first, second);
-				}
-
-				_lastPosition = (start + frameSize) % _micClip.samples;
-				samplesAvailable -= frameSize;
-
-				float[] frameCopy = new float[frameSize];
-				Array.Copy(_frameBuffer, frameCopy, frameSize);
-
-				// The microphone's ClipProcessor (in nox.audio) normally mutes the clip
-				// in place, but it runs on a different update (OnUpdateMain vs. this
-				// MonoBehaviour.Update), so it can race with this reader. Enforce mute
-				// here as an authoritative, idempotent boundary check so no sound ever
-				// leaks while muted.
+				// Idempotent mute boundary (the DSP runs on another update).
 				if (_mic.IsMuted)
-					Array.Clear(frameCopy, 0, frameCopy.Length);
+					Array.Clear(frame, 0, frame.Length);
 
-				OnFrameReady?.Invoke(_frameIndex++, frameCopy);
+				OnFrameReady?.Invoke(_frameIndex++, frame);
 			}
+		}
+
+		/// <summary>Linear resample to the Opus frame size (devices not recording at 48 kHz).</summary>
+		private static float[] Resample(float[] input, int length) {
+			var output = new float[length];
+			float step = (float)input.Length / length;
+
+			for (int i = 0; i < length; i++) {
+				float pos   = i * step;
+				int   index = (int)pos;
+				float frac  = pos - index;
+				float a     = input[index];
+				float b     = index + 1 < input.Length ? input[index + 1] : a;
+				output[i]   = a + (b - a) * frac;
+			}
+
+			return output;
 		}
 
 		private void OnDestroy() {
