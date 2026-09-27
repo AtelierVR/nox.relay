@@ -93,6 +93,14 @@ namespace Nox.Relay.Runtime.Voice {
 		private readonly System.Diagnostics.Stopwatch _frameStopwatch = new();
 		private float TimeSincePreviousFrame => (float)_frameStopwatch.Elapsed.TotalSeconds;
 
+		/// <summary>
+		/// Time since the last frame that carried <b>actual samples</b>. A silence frame (the player
+		/// is muted, or the sender only sends keep-alives) refreshes <see cref="TimeSincePreviousFrame"/>
+		/// but must not keep the buffered tail alive.
+		/// </summary>
+		private readonly System.Diagnostics.Stopwatch _signalStopwatch = new();
+		private float TimeSinceLastSignal => (float)_signalStopwatch.Elapsed.TotalSeconds;
+
 		private bool _isInit;
 		private float _targetLatency;
 
@@ -116,6 +124,11 @@ namespace Nox.Relay.Runtime.Voice {
 			PitchProportionalGain = VoiceConfig.PitchProportionalGain;
 			PitchMaxCorrection = VoiceConfig.PitchMaxCorrection;
 
+			// Same for the buffer tuning: without this the serialized defaults are used and
+			// tuning VoiceConfig has no effect on the stale-frame timeout.
+			FrameLifetime = VoiceConfig.FrameLifetime;
+			MaxNegativeLatency = VoiceConfig.MaxNegativeLatency;
+
 			_vcAudioClip = new VoiceAudioClip(AudioSource);
 			_clipFrameIndices = new int[OpusConfig.FramesPerClip];
 			for (int i = 0; i < _clipFrameIndices.Length; i++)
@@ -123,17 +136,11 @@ namespace Nox.Relay.Runtime.Voice {
 		}
 
 		public void Update() {
-			// Clear stale data when no frames received for a while.
-			// Reset init state so playback can restart when frames resume.
-			if (_isInit && TimeSincePreviousFrame > FrameLifetime) {
-				_vcAudioClip.Clear();
-				_isInit = false;
-				_firstFrameIndex = -1;
-				_greatestFrameIndex = -1;
-				Level = 0f;
-				for (int i = 0; i < _clipFrameIndices.Length; i++)
-					_clipFrameIndices[i] = -1;
-			}
+			// No real (non-silent) frame for a while: the sender stopped streaming (it does not send
+			// silence — see LocalVoiceProvider) or the player got muted. The clip loops and already
+			// holds the tail, so without this the last packets would be replayed indefinitely.
+			if (_isInit && TimeSinceLastSignal > FrameLifetime)
+				Silence();
 
 			// Wait until buffer is built up to target latency before starting playback
 			if (!_isInit) {
@@ -141,7 +148,9 @@ namespace Nox.Relay.Runtime.Voice {
 					? 0
 					: _greatestFrameIndex - _firstFrameIndex + 1;
 
-				if (receivedFrames != 0) {
+				// Only prime on frames that carry audio: silence frames must not start a playback
+				// that would be cut again on the next Update.
+				if (receivedFrames != 0 && TimeSinceLastSignal <= FrameLifetime) {
 					float timeSinceFirstFrame = ((float)receivedFrames / _framesPerSecond) + TimeSincePreviousFrame;
 					if (timeSinceFirstFrame >= _targetLatency) {
 						AudioSource.time = GetWrappedTime(_firstFrameIndex);
@@ -153,6 +162,12 @@ namespace Nox.Relay.Runtime.Voice {
 				if (!_isInit) return;
 			}
 
+			// The source can be stopped behind our back: a hidden GameObject (the physical, while the
+			// player is out of range) or a hidden avatar providing the AudioSource (see SetSource)
+			// stops it, and a deactivated AudioSource never resumes on its own.
+			if (!AudioSource.isPlaying)
+				ResumePlayback();
+
 			// ── Pitch compensation P-controller ──
 			float latency = GetLatency();
 			float error = _targetLatency - latency;
@@ -161,6 +176,52 @@ namespace Nox.Relay.Runtime.Voice {
 			AudioSource.pitch = 1f + response;
 
 			ClearOldFrames();
+		}
+
+		/// <summary>
+		/// Restarts the playback after the <see cref="AudioSource"/> was stopped behind our back (the
+		/// physical or the avatar was hidden). The read head is re-synced on the newest buffered frame
+		/// minus the target latency: resuming from the previous position would leave the latency far
+		/// from the target, which the pitch controller only absorbs at ~1%/s — i.e. seconds of
+		/// stretched, crackling audio.
+		/// </summary>
+		/// <summary>
+		/// Drops the buffered audio, resets the read/write state and stops the source.
+		/// <para>
+		/// Called when the input goes silent (<see cref="Update"/>) and when the player is muted
+		/// (<c>RemoteVoiceProvider</c>) so that the looping clip can never keep replaying the last
+		/// received packets. Playback restarts on the next frames carrying audio.
+		/// </para>
+		/// </summary>
+		public void Silence() {
+			_vcAudioClip?.Clear();
+
+			_isInit            = false;
+			_firstFrameIndex   = -1;
+			_greatestFrameIndex = -1;
+			Level              = 0f;
+
+			if (_clipFrameIndices != null) {
+				for (int i = 0; i < _clipFrameIndices.Length; i++)
+					_clipFrameIndices[i] = -1;
+			}
+
+			if (AudioSource != null) {
+				AudioSource.pitch = 1f;
+				if (AudioSource.isPlaying)
+					AudioSource.Stop();
+			}
+		}
+
+		private void ResumePlayback() {
+			if (_greatestFrameIndex >= 0) {
+				float readTime = GetWrappedTime(_greatestFrameIndex) - _targetLatency;
+				AudioSource.time = readTime < 0f 
+					? readTime + _vcAudioClip.Length 
+					: readTime;
+			}
+
+			AudioSource.Play();
 		}
 
 		private void ClearOldFrames() {
@@ -204,6 +265,9 @@ namespace Nox.Relay.Runtime.Voice {
 			_targetLatency = targetLatency;
 			Level = ComputeLevel(samples);
 
+			if (HasSignal(samples))
+				_signalStopwatch.Restart();
+
 			int offsetFrames = _vcAudioClip.GetOffsetFrames(index);
 			_vcAudioClip.WriteFrame(offsetFrames, samples);
 			_clipFrameIndices[offsetFrames] = index;
@@ -219,6 +283,21 @@ namespace Nox.Relay.Runtime.Voice {
 
 		private void OnDestroy() {
 			_vcAudioClip?.Dispose();
+		}
+
+		/// <summary>
+		/// Whether a frame carries actual samples (same gate as the sender's silence optimization):
+		/// a muted/empty frame is not a reason to keep the buffered audio playing.
+		/// </summary>
+		private static bool HasSignal(float[] samples) {
+			if (samples == null || samples.Length == 0)
+				return false;
+
+			float sumSq = 0f;
+			for (int i = 0; i < samples.Length; i++)
+				sumSq += samples[i] * samples[i];
+
+			return sumSq > 1e-6f;
 		}
 
 		/// <summary>

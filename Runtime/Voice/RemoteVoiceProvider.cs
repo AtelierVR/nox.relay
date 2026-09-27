@@ -153,8 +153,14 @@ namespace Nox.Relay.Runtime.Voice {
 				_output.AudioSource.volume = effective;
 		}
 
-		private void OnPlayerMuteChanged(bool local, bool effective)
-			=> _isEffectivelyMuted = effective;
+		private void OnPlayerMuteChanged(bool local, bool effective) {
+			_isEffectivelyMuted = effective;
+
+			// Cut immediately instead of waiting for the output's silence timeout: the buffered
+			// tail would otherwise keep playing (the clip loops) right after muting.
+			if (effective)
+				_output?.Silence();
+		}
 
 		private void OnAvatarLoaded(IRuntimeAvatar avatar) {
 			_runtimeAvatar = avatar;
