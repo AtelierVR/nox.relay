@@ -183,6 +183,8 @@ namespace Nox.Relay.Runtime.Voice {
 
 			_output = null;
 
+			Player.Audio = null;
+
 			Player.Context?.Context.UnregisterVoiceProvider(Player.Id);
 
 			Started = false;
@@ -211,11 +213,9 @@ namespace Nox.Relay.Runtime.Voice {
 				_output = _physical.gameObject.GetOrAddComponent<VoiceAudioSourceOutput>();
 				_output.MixerGroup = mixerGroup;
 				_output.SetSource(avatarSource);
-				return;
 			}
-
-			// No avatar voice source — ensure fallback "Voice" anchor exists at local origin
-			if (_anchor == null) {
+			else if (_anchor == null) {
+				// No avatar voice source — ensure fallback "Voice" anchor exists at local origin
 				_anchor = new GameObject("Voice");
 				_anchor.transform.SetParent(_physical.transform, false);
 				_anchor.transform.localPosition = Vector3.zero;
@@ -228,6 +228,10 @@ namespace Nox.Relay.Runtime.Voice {
 				if (oldOutput != null && oldOutput != _output)
 					oldOutput.Destroy();
 			}
+
+			// Expose the playback as the player's captured audio: consumers (nameplate, UI) read its
+			// level, exactly like they read the local microphone's.
+			Player.Audio = _output != null ? new RemoteCapturedAudio(_output) : null;
 		}
 	}
 }

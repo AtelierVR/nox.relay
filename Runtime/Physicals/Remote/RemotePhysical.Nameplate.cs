@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Cysharp.Threading.Tasks;
+using Nox.Audio.Players;
 using Nox.Avatars.Parameters;
 using Nox.CCK;
 using Nox.CCK.Players;
@@ -23,7 +24,7 @@ namespace Nox.Relay.Runtime.Physicals {
 	/// through that anchor. It then feeds the plate: the user profile (fetched from
 	/// <c>IUserAPI</c>), the relation icon (<c>friend</c>, <c>follower</c>, <c>following</c>,
 	/// <c>request_sent</c>, <c>request_received</c>, <c>request_mutual</c>,
-	/// <c>friend_request_sent</c>, <c>friend_request_received</c>)
+	/// <c>friend_request_sent</c>, <c>friend_request_received</c>), the voice level of the player
 	/// and the heartbar (from the player data <c>heart</c>/<c>heart.max</c>).
 	/// </para>
 	/// <para>
@@ -59,6 +60,7 @@ namespace Nox.Relay.Runtime.Physicals {
 
 			UpdateAnchorPosition(anchor);
 			EnsureNameplate(anchor);
+			PushVoice();
 		}
 
 		private Transform EnsureNameplateAnchor() {
@@ -310,11 +312,25 @@ namespace Nox.Relay.Runtime.Physicals {
 			plate.Set(Keys.HEARTS_VALUE, data.Get("heart", 0f));
 		}
 
+		/// <summary>
+		/// Pushes the level of the player's captured audio (<c>Keys.VOICE</c>), driving the alpha of
+		/// the plate's voice image. Called every frame: the plate ignores an unchanged value.
+		/// <para>
+		/// A remote player has no <see cref="IPlayerVoice.Audio"/> (its playback is internal), so the
+		/// level stays <c>0</c> until the voice pipeline exposes one.
+		/// </para>
+		/// </summary>
+		private void PushVoice() {
+			var plate = _nameplate;
+			if (!plate.IsAlive())
+				return;
+
+			plate.Set(Keys.VOICE, Reference?.Audio?.Level ?? 0f);
+		}
+
 		private void DisposeNameplate() {
-			if (_nameplate.IsAlive()) {
-				// Routes back to the nameplate mod, which destroys the instance.
+			if (_nameplate.IsAlive()) 
 				_nameplate.Dispose();
-			}
 			_nameplate = null;
 
 			Reference?.Data?.OnChanged.RemoveListener(OnPlayerDataChanged);

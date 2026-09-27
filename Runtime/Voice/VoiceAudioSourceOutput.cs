@@ -38,6 +38,18 @@ namespace Nox.Relay.Runtime.Voice {
 		[Tooltip("Current distance mode for this output.")]
 		public VoiceDistanceMode DistanceMode = VoiceDistanceMode.Normal;
 
+		[Header("Level")]
+		[Tooltip("Gain applied to the RMS of the decoded frames to get the 0-1 level exposed to UI " +
+		         "(same convention as the microphone loudness: rms * gain).")]
+		[Range(1f, 50f)]
+		public float LevelGain = 10f;
+
+		/// <summary>
+		/// Level of the received voice in the <c>0-1</c> range (silence to full scale), for UI
+		/// indicators (speaking ring, nameplate voice image, ...). 
+		/// </summary>
+		public float Level { get; private set; }
+
 		/// <summary>
 		/// Apply 3D spatial settings based on the current distance mode.
 		/// Call when the mode changes or after SetSource.
@@ -118,6 +130,7 @@ namespace Nox.Relay.Runtime.Voice {
 				_isInit = false;
 				_firstFrameIndex = -1;
 				_greatestFrameIndex = -1;
+				Level = 0f;
 				for (int i = 0; i < _clipFrameIndices.Length; i++)
 					_clipFrameIndices[i] = -1;
 			}
@@ -189,6 +202,7 @@ namespace Nox.Relay.Runtime.Voice {
 			if (_vcAudioClip == null) return;
 
 			_targetLatency = targetLatency;
+			Level = ComputeLevel(samples);
 
 			int offsetFrames = _vcAudioClip.GetOffsetFrames(index);
 			_vcAudioClip.WriteFrame(offsetFrames, samples);
@@ -205,6 +219,21 @@ namespace Nox.Relay.Runtime.Voice {
 
 		private void OnDestroy() {
 			_vcAudioClip?.Dispose();
+		}
+
+		/// <summary>
+		/// Level of a decoded frame in the <c>0-1</c> range: its RMS scaled by <see cref="LevelGain"/>
+		/// (same convention as <c>IMicrophone.Loudness</c>). A missing or empty frame is silence.
+		/// </summary>
+		private float ComputeLevel(float[] samples) {
+			if (samples == null || samples.Length == 0)
+				return 0f;
+
+			float sumSq = 0f;
+			for (int i = 0; i < samples.Length; i++)
+				sumSq += samples[i] * samples[i];
+
+			return Mathf.Clamp01(Mathf.Sqrt(sumSq / samples.Length) * LevelGain);
 		}
 
 		/// <summary>

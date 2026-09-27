@@ -243,7 +243,10 @@ namespace Nox.Relay.Runtime.Players {
 
 		public SpeakMode Speak { get; set; } = SpeakMode.Normal;
 
-		public virtual ICapturedAudio Audio => _audio;
+		public virtual ICapturedAudio Audio {
+			get => _audio;
+			set => _audio = value;
+		}
 
 		/// <summary>
 		/// Speaking indicator for UI. Updated by the player's voice provider.
