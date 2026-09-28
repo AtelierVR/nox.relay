@@ -14,20 +14,18 @@ namespace Nox.Relay.Runtime.Players {
 	public abstract partial class Player {
 		#region IPlayerVoice — Volume & Mute
 
-		public IPlayerData Data;
-
 		/// <inheritdoc />
 		public float Volume {
-			get => Data.Get("volume", 1f);
-			set => Data.Set("volume", Mathf.Clamp(value, 0f, 2f));
+			get => Persistent.Get("volume", 1f);
+			set => Persistent.Set("volume", Mathf.Clamp(value, 0f, 2f));
 		}
 
 		public readonly NoxEvent<float, float> OnVolume = new();
 
 		/// <inheritdoc />
 		public bool IsMuted {
-			get => Data.Get("mute", false);
-			set => Data.Set("mute", value);
+			get => Persistent.Get("mute", false);
+			set => Persistent.Set("mute", value);
 		}
 
 		public readonly NoxEvent<bool, bool> OnMute = new();
@@ -41,13 +39,6 @@ namespace Nox.Relay.Runtime.Players {
 		/// <inheritdoc />
 		public bool IsEffectivelyMuted
 			=> IsMuted || (Main.VoiceRegister?.Channel.IsEffectivelyMuted ?? false);
-
-		private void OnDataChanged(string[] key, object @new, object @old) {
-			if (key.Length == 1 && key[0] == "volume")
-				OnVolume.Invoke(Volume, EffectiveVolume);
-			else if (key.Length == 1 && key[0] == "mute")
-				OnMute.Invoke(IsMuted, IsEffectivelyMuted);
-		}
 
 		private void OnVolumeChanged(float local, float effective)
 			=> OnVolume.Invoke(Volume, EffectiveVolume);

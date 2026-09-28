@@ -46,6 +46,14 @@ namespace Nox.Relay.Runtime.Players {
 		public override void OnEntered() {
 			base.OnEntered();
 			StartVoice();
+
+			Data.OnChanged.AddListener(OnEntityDataChanged);
+			ApplyToController(Main.ControllerAPI?.Current);
+		}
+
+		public override void Dispose() {
+			Data.OnChanged.RemoveListener(OnEntityDataChanged);
+			base.Dispose();
 		}
 
 		public override void OnQuit() {

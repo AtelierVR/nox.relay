@@ -8,6 +8,7 @@
         "Nox.CCK.Sessions",
         "Nox.CCK",
         "Nox.Entities",
+        "Nox.CCK.Entities",
         "Nox.CCK.Worlds",
         "Nox.Players",
         "Nox.Users",

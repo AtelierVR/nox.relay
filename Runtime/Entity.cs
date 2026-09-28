@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Cysharp.Threading.Tasks;
+using Nox.CCK.Entities;
 using Nox.Entities;
 using Nox.Relay.Core.Types.Properties;
 using Logger = Nox.CCK.Utils.Logger;
@@ -37,7 +38,18 @@ namespace Nox.Relay.Runtime {
 		public void SetProperty(IProperty property)
 			=> Properties[property.Key] = property;
 
-		virtual protected Nox.Relay.Runtime.Physicals.Physical InstantiatePhysical() {
+		#region Data
+
+		// Not stored in Properties on purpose: data must never be picked up by the avatar parameter
+		// synchronization, so an avatar cannot read or write it (anti-cheat).
+		private readonly DataContainer _data = new();
+
+		public IDataContainer Data
+			=> _data;
+
+		#endregion
+
+		virtual protected Physicals.Physical InstantiatePhysical() {
 			Logger.LogWarning($"Entity {Id} does not implement {nameof(InstantiatePhysical)}, cannot create physical representation.", tag: nameof(Entity));
 			return null;
 		}
@@ -133,6 +145,7 @@ namespace Nox.Relay.Runtime {
 
 		public virtual void Dispose() {
 			DestroyPhysical(true);
+			_data.Clear();
 			Context.UnregisterEntity(this);
 		}
 

@@ -6,6 +6,7 @@ using Nox.CCK.Players;
 using Nox.CCK.Utils;
 using Nox.Entities;
 using Nox.Audio.Players;
+using Nox.Nameplate;
 using Nox.Players;
 using Nox.Worlds.Spawns;
 using UnityEngine;
@@ -14,7 +15,7 @@ using CorePlayer = Nox.Relay.Core.Players.Player;
 
 namespace Nox.Relay.Runtime.Players {
 
-	public abstract partial class Player : Entity, IPlayer, IPlayerAvatar, IPlayerVoice {
+	public abstract partial class Player : Entity, IPlayer, IPlayerAvatar, IPlayerVoice, INameplateEntity {
 
 		public readonly CorePlayer Reference;
 
@@ -23,8 +24,8 @@ namespace Nox.Relay.Runtime.Players {
 		protected Player(Entities context, CorePlayer player) : base(context, player.Id) {
 			Reference  = player;
 			Identifier = player.Identifier;
-			Data = Main.PlayerAPI.Get(Identifier);
-			Data.OnChanged.AddListener(OnDataChanged);
+			Persistent = Main.PlayerAPI.Get(Identifier);
+			Persistent.OnChanged.AddListener(OnDataChanged);
 			Main.VoiceRegister?.OnVolume.AddListener(OnVolumeChanged);
 			Main.VoiceRegister?.OnMute.AddListener(OnMuteChanged);
 			OnVolume.Invoke(Volume, EffectiveVolume);
@@ -32,10 +33,10 @@ namespace Nox.Relay.Runtime.Players {
 		}
 
         public override void Dispose() {
-			Data.OnChanged.RemoveListener(OnDataChanged);
+			Persistent.OnChanged.RemoveListener(OnDataChanged);
 			Main.VoiceRegister?.OnVolume.RemoveListener(OnVolumeChanged);
 			Main.VoiceRegister?.OnMute.RemoveListener(OnMuteChanged);
-			Data.Dispose();
+			Persistent.Dispose();
 			base.Dispose();
 		}
 
