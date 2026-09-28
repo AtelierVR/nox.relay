@@ -55,9 +55,9 @@ namespace Nox.Relay.Runtime.Players {
 		/// (<see cref="AbilitiesConstants.MaxMoveSpeed"/>, <see cref="AbilitiesConstants.JumpForce"/>, ...),
 		/// the team colour and the health bar of the plate.
 		/// <para>
-		/// The plate <b>visibility</b> is deliberately not pushed here: it is client-wide and owned by
-		/// the controller itself (its menu provider drives <c>Keys.VISIBLE</c>), so no entity — thus no
-		/// script — can influence it.
+		/// The plate <b>visibility</b> is deliberately not pushed here: the plate of the local client is
+		/// driven by the controller itself (its menu provider pushes <c>Keys.VISIBLE</c> on it), and the
+		/// plates of the remote players by the scripts.
 		/// </para>
 		/// Called when the controller is bound — which is exactly when the session becomes current
 		/// (<c>ISessionAPI.SetCurrent</c> → <c>Session.OnSelect</c> or player entered) or when the
