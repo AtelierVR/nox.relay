@@ -13,7 +13,7 @@ using Logger = Nox.CCK.Utils.Logger;
 using Player = Nox.Relay.Runtime.Players.Player;
 
 namespace Nox.Relay.Runtime {
-	public sealed partial class Session : BaseEditablePropertyObject, INetSession {
+	public sealed partial class Session : BaseEditablePropertyObject, INetSession, ITeamSession {
 		internal Session(string id) {
 			Id            = id;
 			InterEntities = new Entities(this);
