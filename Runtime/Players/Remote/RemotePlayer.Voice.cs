@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using Nox.Avatars;
 using Nox.CCK.Audio.Opus;
 using Nox.Relay.Core.Types.Stream;
@@ -6,10 +5,10 @@ using UnityEngine;
 
 namespace Nox.Relay.Runtime.Players {
 	/// <summary>
-	/// Voice of a remote player: incoming frames go into a jitter buffer that feeds an
-	/// <see cref="OpusAudioReceiver"/> on a steady frame cadence, and the decoded audio is played by a
-	/// spatialized <see cref="AudioSource"/>. The playback is exposed as <see cref="Player.Audio"/> so
-	/// the UI can read its <c>Level</c>.
+	/// Voice of a remote player: incoming frames are handed to an <see cref="OpusAudioReceiver"/>, which
+	/// buffers them in the sender's order and decodes them on a steady frame cadence, and the decoded
+	/// audio is played by a spatialized <see cref="AudioSource"/>. The playback is exposed as
+	/// <see cref="Player.Audio"/> so the UI can read its <c>Level</c>.
 	/// </summary>
 	/// <remarks>
 	/// The clip is played through the <see cref="VoiceProvider"/> matching the current state, which
@@ -27,6 +26,12 @@ namespace Nox.Relay.Runtime.Players {
 	/// late/duplicate packets), so the write is paced here instead of on arrival: without it the write
 	/// head drifts from the <see cref="AudioSource"/> read head and the ring starts replaying/tearing.
 	/// </remarks>
+	/// <remarks>
+	/// Datagrams are reordered, duplicated and lost in transit: the jitter buffer that copes with that is
+	/// <see cref="OpusAudioReceiver"/> itself (see <c>ReceiveFrame</c> / <c>PopFrame</c>), so any consumer
+	/// of the pipeline gets the same behaviour. This partial only paces that playout — one slot per frame
+	/// duration of real time, whatever the arrival pattern is — and routes the clip to an output.
+	/// </remarks>
 	public partial class RemotePlayer {
 		/// <summary>RMS level above which the player is flagged as speaking.</summary>
 		private const float SpeakingThreshold = 0.02f;
@@ -37,16 +42,8 @@ namespace Nox.Relay.Runtime.Players {
 		/// <summary>Jitter cushion kept between the read head and the write head, in seconds.</summary>
 		private const float TargetLatencySeconds = 0.06f;
 
-		/// <summary>Beyond this silence, a hole comes from the sender's voice gate: write real silence.</summary>
-		private const float ConcealMaxSilenceSeconds = 0.15f;
-
-		/// <summary>Bound on the jitter buffer, in frames (500 ms), so a burst cannot grow the latency.</summary>
-		private const int MaxBufferedFrames = 25;
-
 		/// <summary>Cap on the real time a single update may compensate (never flush a burst at once).</summary>
 		private const int MaxCatchUpFrames = 4;
-
-		private readonly Queue<byte[]> _voiceQueue = new();
 
 		private OpusAudioReceiver _voiceReceiver;
 
@@ -63,7 +60,6 @@ namespace Nox.Relay.Runtime.Players {
 		private bool _voiceBroadcast;
 
 		private float _playoutAccumulator;
-		private float _lastArrivalTime;
 		private bool _playing;
 
 		/// <summary>True once the jitter cushion has been buffered (playback may start or resume).</summary>
@@ -170,7 +166,7 @@ namespace Nox.Relay.Runtime.Players {
 			IsSpeaking = _voiceReceiver.Level > SpeakingThreshold;
 		}
 
-		/// <summary>Audio sample sent by this player; buffered, not decoded on arrival.</summary>
+		/// <summary>Audio sample sent by this player; buffered by frame index, not decoded on arrival.</summary>
 		protected override void OnVoiceSample(StreamEvent @event) {
 			if (_voiceReceiver == null) {
 				StartVoice();
@@ -178,17 +174,10 @@ namespace Nox.Relay.Runtime.Players {
 					return;
 			}
 
-			if (@event.Sample == null || @event.Sample.Length == 0)
-				return;
-
 			_voiceBroadcast = (@event.LevelFlags & StreamLevelFlags.DistanceMode_Mask) == StreamLevelFlags.DistanceMode_Broadcast;
 
-			// Burst or backlog beyond the buffer: drop the oldest frames instead of growing the latency.
-			while (_voiceQueue.Count >= MaxBufferedFrames)
-				_voiceQueue.Dequeue();
-
-			_voiceQueue.Enqueue(@event.Sample);
-			_lastArrivalTime = Time.unscaledTime;
+			// Ordering, dedupe and loss handling belong to the receiver: it knows the frame index.
+			_voiceReceiver.ReceiveFrame(@event.FrameIndex, @event.Sample);
 		}
 
 		/// <summary>
@@ -204,17 +193,11 @@ namespace Nox.Relay.Runtime.Players {
 		}
 
 		/// <summary>
-		/// Writes the next frame into the ring: a buffered one, a PLC frame while the stream is merely
-		/// late, or real silence once the sender stopped (so nothing stale keeps looping).
+		/// Writes the slot the sender's timeline expects next into the ring: the buffered frame, a concealed
+		/// (PLC) one while the stream is merely late, or silence once it stopped.
 		/// </summary>
 		private void EmitVoiceFrame() {
-			if (_voiceQueue.Count > 0)
-				_voiceReceiver.ReceivePacket(_voiceQueue.Dequeue());
-			else if (Time.unscaledTime - _lastArrivalTime <= ConcealMaxSilenceSeconds)
-				_voiceReceiver.ReceiveConcealedFrame();
-			else
-				_voiceReceiver.ReceiveSilence();
-
+			_voiceReceiver.PopFrame();
 			TryStartPlayback();
 		}
 
@@ -230,7 +213,7 @@ namespace Nox.Relay.Runtime.Players {
 			// The first start waits for the jitter cushion; after an output swap the ring already
 			// holds it, so playback resumes on the next frame.
 			if (!_primed) {
-				if (_voiceQueue.Count * FrameSeconds < TargetLatencySeconds)
+				if (_voiceReceiver.BufferedFrames * FrameSeconds < TargetLatencySeconds)
 					return;
 
 				_primed = true;
@@ -250,14 +233,15 @@ namespace Nox.Relay.Runtime.Players {
 		}
 
 		private void ResetVoiceTimeline() {
-			_voiceQueue.Clear();
 			_playoutAccumulator = 0f;
-			_lastArrivalTime    = float.NegativeInfinity;
 			_playing            = false;
 			_primed             = false;
 
-			if (_voiceReceiver != null)
-				_voiceReceiver.ReadPosition = -1;
+			if (_voiceReceiver == null)
+				return;
+
+			_voiceReceiver.ReadPosition = -1;
+			_voiceReceiver.ResetTimeline();
 		}
 
 		/// <summary>
