@@ -24,8 +24,10 @@ namespace Nox.Relay.Runtime.Physicals {
 	/// through that anchor. It then feeds the plate: the user profile (fetched from
 	/// <c>IUserAPI</c>), the relation icon (<c>friend</c>, <c>follower</c>, <c>following</c>,
 	/// <c>request_sent</c>, <c>request_received</c>, <c>request_mutual</c>,
-	/// <c>friend_request_sent</c>, <c>friend_request_received</c>), the voice level of the player
-	/// and the heartbar (from the player data <c>heart</c>/<c>heart.max</c>).
+	/// <c>friend_request_sent</c>, <c>friend_request_received</c>), the voice level of the player,
+	/// its visibility (<c>Keys.VISIBLE</c>, from the entity flag so scripts can hide it) and the
+	/// heartbar (from the player data <c>heart</c>/<c>heart.max</c>, shown only while the player's
+	/// <c>INameplateEntity.HealthbarVisible</c> flag is set).
 	/// </para>
 	/// <para>
 	/// The anchor is a child of the physical, so hiding the physical (relay hides it before
@@ -197,7 +199,7 @@ namespace Nox.Relay.Runtime.Physicals {
 				Reference?.Data?.OnChanged.AddListener(OnPlayerDataChanged);
 
 				PushBadges();
-				PushHeart();
+				PushValues();
 				PushDisplay();
 				FetchNameplateUser().Forget();
 			} finally {
@@ -224,7 +226,7 @@ namespace Nox.Relay.Runtime.Physicals {
 		}
 
 		private void OnPlayerDataChanged(string[] key, object @new, object old)
-			=> PushHeart();
+			=> PushValues();
 
 		/// <summary>
 		/// Pushes the player's announced platform and engine as the plate badges
@@ -297,19 +299,20 @@ namespace Nox.Relay.Runtime.Physicals {
 			_nameplate.Set(Keys.DISPLAY, player.Display);
 		}
 
-		private void PushHeart() {
+		/// <summary>
+		/// Pushes the entity values the plate displays straight from the player data container: the
+		/// visibility (<c>Keys.VISIBLE</c>, so a script can show/hide it), the team colour
+		/// (<c>Keys.COLOR</c>) and the health bar (<c>Keys.HEARTS_*</c>). Called when the plate is created
+		/// and again on every data change, so a team picked by the player is reflected live.
+		/// </summary>
+		private void PushValues() {
 			var plate = _nameplate;
-			if (!plate.IsAlive())
+			if (Reference == null || !plate.IsAlive())
 				return;
 
-			var data = Reference?.Data;
-			if (data == null || !data.Has("heart")) {
-				plate.Set(Keys.HEARTS_VISIBLE, false);
-				return;
-			}
-
-			plate.Set(Keys.HEARTS_MAX, data.Get("heart.max", 100f));
-			plate.Set(Keys.HEARTS_VALUE, data.Get("heart", 0f));
+			plate.Set(Keys.VISIBLE, Reference.NameplateVisible);
+			Reference.PushTeam(plate);
+			Reference.PushHealthbar(plate);
 		}
 
 		/// <summary>
