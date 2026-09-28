@@ -1,11 +1,14 @@
 using System.Linq;
 using Nox.Avatars.Controllers;
+using Nox.CCK.Nameplate;
+using Nox.CCK.Sessions;
 using Nox.Controllers;
 
 namespace Nox.Relay.Runtime.Players {
 	/// <summary>
 	/// Controller binding for the local player: mirrors the active controller's parts into the
-	/// player's part cache and forwards the controller's avatar to <see cref="UpdateAvatar"/>.
+	/// player's part cache, forwards the controller's avatar to <see cref="UpdateAvatar"/>, and pushes
+	/// the player state (abilities, nameplate) back onto the controller.
 	/// </summary>
 	public partial class LocalPlayer {
 
@@ -37,6 +40,8 @@ namespace Nox.Relay.Runtime.Players {
 			// Synchronize avatar parameters as properties
 			if (controller is IControllerAvatar ac)
 				UpdateAvatar(ac.GetAvatar());
+
+			ApplyToController(controller);
 		}
 
 		internal void RemoveController() {
@@ -45,5 +50,51 @@ namespace Nox.Relay.Runtime.Players {
 					p.Store();
 		}
 
+		/// <summary>
+		/// Pushes the local player state onto the controller: the movement abilities
+		/// (<see cref="AbilitiesConstants.MaxMoveSpeed"/>, <see cref="AbilitiesConstants.JumpForce"/>, ...),
+		/// the team colour and the health bar of the plate.
+		/// <para>
+		/// The plate <b>visibility</b> is deliberately not pushed here: it is client-wide and owned by
+		/// the controller itself (its menu provider drives <c>Keys.VISIBLE</c>), so no entity — thus no
+		/// script — can influence it.
+		/// </para>
+		/// Called when the controller is bound — which is exactly when the session becomes current
+		/// (<c>ISessionAPI.SetCurrent</c> → <c>Session.OnSelect</c> or player entered) or when the
+		/// controller itself changes — and again on every data change while the session is current.
+		/// </para>
+		/// </summary>
+		internal void ApplyToController(IController controller) {
+			if (controller == null)
+				return;
+
+			controller.SetAbilities(AbilitiesConstants.MaxMoveSpeed, WalkSpeed);
+			controller.SetAbilities(AbilitiesConstants.MoveAcceleration, MoveAcceleration);
+			controller.SetAbilities(AbilitiesConstants.JumpForce, JumpForce);
+			controller.SetAbilities(AbilitiesConstants.SprintMultiplier, SprintMultiplier);
+			controller.SetAbilities(AbilitiesConstants.AirControl, AirControl);
+			controller.SetAbilities(AbilitiesConstants.FlySpeed, FlySpeed);
+			controller.SetAbilities(AbilitiesConstants.MayFly, MayFly);
+			controller.SetAbilities(AbilitiesConstants.Immobilized, IsImmobilized);
+			controller.SetAbilities(AbilitiesConstants.Flying, IsFlying);
+			controller.SetAbilities(AbilitiesConstants.Crouching, IsCrouching);
+			controller.SetAbilities(AbilitiesConstants.Sprinting, IsSprinting);
+
+			if (controller is INameplateHolder holder && holder.Nameplate.IsAlive()) {
+				PushHealthbar(holder.Nameplate);
+				PushTeam(holder.Nameplate);
+			}
+		}
+
+		/// <summary>
+		/// Re-applies the player state to the controller when the entity data changes, but only while
+		/// this session is the current one.
+		/// </summary>
+		private void OnEntityDataChanged(string[] key, object @new, object @old) {
+			if (!SessionHelper.IsCurrent(Main.SessionAPI, Context.Context))
+				return;
+
+			ApplyToController(Main.ControllerAPI?.Current);
+		}
 	}
 }
