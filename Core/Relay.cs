@@ -8,7 +8,6 @@ using Nox.Relay.Core.Connectors;
 using Nox.Relay.Core.Rooms;
 using Nox.Relay.Core.Types;
 using Nox.Relay.Core.Types.Authentication;
-using Nox.Relay.Core.Types.Avatars;
 using Nox.Relay.Core.Types.Contents;
 using Nox.Relay.Core.Types.Latency;
 using Nox.Relay.Core.Types.Rooms;
@@ -390,8 +389,11 @@ namespace Nox.Relay.Core {
 			SendType                                                         send     = SendType.Auto,
 			ushort                                                           timeout  = DefaultTimeout,
 			Func<Buffer, PacketType, ushort, SendType, UniTask<EmitResult>> emitter  = null,
-			Func<ValidateInput<T>, bool>                                     validate = null
+			Func<ValidateInput<T>, bool>                                     validate = null,
+			CancellationToken                                                token    = default
 		) where T : ContentResponse, new() {
+			token.ThrowIfCancellationRequested();
+
 			if (!Connector.IsConnected)
 				return null;
 
@@ -411,30 +413,33 @@ namespace Nox.Relay.Core {
 
 			OnReceivePacket.AddListener(handler);
 
-			var result = await emitter(request.ToBuffer(), @out, state, send);
-			if (!result.Success) {
-				OnReceivePacket.RemoveListener(handler);
-				Logger.LogWarning($"Failed to emit {result.State}:{@out}", tag: nameof(Relay));
+			try {
+				var result = await emitter(request.ToBuffer(), @out, state, send);
+				if (!result.Success) {
+					Logger.LogWarning($"Failed to emit {result.State}:{@out}", tag: nameof(Relay));
+					return null;
+				}
+
+				// Store the actual state returned by emitter
+				stateContainer[0] = result.State;
+
+				// Timeout avec UniTask
+				var task  = tcs.Task;
+				var delay = UniTask.Delay(TimeSpan.FromSeconds(timeout), cancellationToken: token);
+				var (success, response) = await UniTask.WhenAny(task, delay);
+
+				token.ThrowIfCancellationRequested();
+
+				if (success) {
+					response.Time = (initTime, DateTime.UtcNow);
+					return response;
+				}
+
+				Logger.LogWarning($"{stateContainer[0]}:{@out} timeout", tag: nameof(Relay));
 				return null;
+			} finally {
+				OnReceivePacket.RemoveListener(handler);
 			}
-
-			// Store the actual state returned by emitter
-			stateContainer[0] = result.State;
-
-			// Timeout avec UniTask
-			var task  = tcs.Task;
-			var delay = UniTask.Delay(TimeSpan.FromSeconds(timeout));
-			var (success, response) = await UniTask.WhenAny(task, delay);
-
-			OnReceivePacket.RemoveListener(handler);
-
-			if (success) {
-				response.Time = (initTime, DateTime.UtcNow);
-				return response;
-			}
-
-			Logger.LogWarning($"{stateContainer[0]}:{@out} timeout", tag: nameof(Relay));
-			return null;
 
 			void OnPacket(ushort s, PacketType t, Buffer payload) {
 				var expectedState = stateContainer[0];
@@ -466,7 +471,7 @@ namespace Nox.Relay.Core {
 		/// This establishes the initial connection parameters and retrieves server information.
 		/// </summary>
 		/// <returns></returns>
-		public async UniTask<Types.Handshakes.HandshakeResponse> Handshake()
+		public async UniTask<Types.Handshakes.HandshakeResponse> Handshake(CancellationToken token = default)
 			=> await Request<Types.Handshakes.HandshakeResponse>(
 				new Types.Handshakes.HandshakeRequest {
 					ProtocolVersion = ProtocolVersion,
@@ -476,7 +481,8 @@ namespace Nox.Relay.Core {
 				},
 				PacketType.Handshake,
 				PacketType.Handshake,
-				NextState()
+				NextState(),
+				token: token
 			);
 
 		/// <summary>
@@ -525,13 +531,15 @@ namespace Nox.Relay.Core {
 		/// <param name="request"></param>
 		/// <returns></returns>
 		public async UniTask<AuthenticationResponse> Authenticate(
-			AuthenticationRequest request
+			AuthenticationRequest request,
+			CancellationToken     token   = default
 		)
 			=> await Request<AuthenticationResponse>(
 					request,
 					PacketType.Authentication,
 					PacketType.Authentication,
-					NextState()
+					NextState(),
+					token: token
 				)
 				?? AuthenticationResponse
 					.CreateUnknown("The request failed or timed out");
@@ -541,12 +549,13 @@ namespace Nox.Relay.Core {
 		/// </summary>
 		/// <param name="page"></param>
 		/// <returns></returns>
-		public async UniTask<RoomsResponse> List(byte page) {
+		public async UniTask<RoomsResponse> List(byte page, CancellationToken token = default) {
 			var sessions = await Request<RoomsResponse>(
 				new RoomsRequest { Page = page },
 				PacketType.Sessions,
 				PacketType.Sessions,
-				NextState()
+				NextState(),
+				token: token
 			);
 
 			if (sessions == null)
@@ -587,13 +596,15 @@ namespace Nox.Relay.Core {
 		/// </summary>
 		/// <param name="mid"></param>
 		/// <returns></returns>
-		public async UniTask<Room> List(uint mid) {
+		public async UniTask<Room> List(uint mid, CancellationToken token = default) {
+			token.ThrowIfCancellationRequested();
+
 			byte total,
 				page = 0;
 			Room room = null;
 
 			do {
-				var sessions = await List(page++);
+				var sessions = await List(page++, token);
 				if (sessions == null)
 					return null;
 				total = sessions.PageCount;
@@ -608,8 +619,8 @@ namespace Nox.Relay.Core {
 			return room;
 		}
 
-		public async UniTask<bool> Connect(string address, ushort port)
-			=> await Connector.Connect(address, port);
+		public async UniTask<bool> Connect(string address, ushort port, CancellationToken token = default)
+			=> await Connector.Connect(address, port, token);
 
 		private void OnConnected(bool succes) {
 			if (!succes)

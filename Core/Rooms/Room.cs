@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Threading;
 using Cysharp.Threading.Tasks;
 using Nox.CCK.Utils;
 using Nox.Relay.Core.Connectors;
@@ -360,12 +361,13 @@ namespace Nox.Relay.Core.Rooms {
 		/// </summary>
 		/// <param name="request"></param>
 		/// <returns></returns>
-		public async UniTask<EnterResponse> Enter(EnterRequest request) {
+		public async UniTask<EnterResponse> Enter(EnterRequest request, CancellationToken token = default) {
 			var enter = await Request<EnterResponse>(
 				request,
 				PacketType.Enter,
 				PacketType.Enter,
-				Connection.NextState()
+				Connection.NextState(),
+				token: token
 			);
 
 			enter ??= EnterResponse.Unknown(this, "Unknown enter request");
@@ -515,7 +517,8 @@ namespace Nox.Relay.Core.Rooms {
 			PacketType @in,
 			ushort state = Relay.Broadcast,
 			SendType send = SendType.Auto,
-			ushort timeout = Relay.DefaultTimeout)
+			ushort timeout = Relay.DefaultTimeout,
+			CancellationToken token = default)
 			where T : RoomResponse, new() {
 			request.Room = this;
 			return await Connection.Request<T>(
@@ -526,7 +529,8 @@ namespace Nox.Relay.Core.Rooms {
 				send,
 				timeout,
 				Emit,
-				Validate
+				Validate,
+				token
 			);
 		}
 
@@ -542,12 +546,13 @@ namespace Nox.Relay.Core.Rooms {
 		public override string ToString()
 			=> $"{GetType().Name}[Iid={InternalId}, NodeId={NodeId}, Players={PlayerCount}/{MaxPlayerCount}, Flags={Flags}]";
 
-		public async UniTask<TravelingEvent> Traveling(TravelingRequest request)
+		public async UniTask<TravelingEvent> Traveling(TravelingRequest request, CancellationToken token = default)
 			=> (await Request<TravelingEvent>(
 					request,
 					PacketType.Traveling,
 					PacketType.Traveling,
-					Connection.NextState()
+					Connection.NextState(),
+					token: token
 				))
 				?? TravelingEvent.Unknown(this, "Unknown traveling request");
 		

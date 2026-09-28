@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Threading;
 using Cysharp.Threading.Tasks;
 using Nox.CCK.Utils;
 using Nox.CCK.Worlds;
@@ -9,7 +10,9 @@ using Logger = Nox.CCK.Utils.Logger;
 namespace Nox.Relay.Runtime {
 	/// <summary>World traveling: resolving, downloading and loading the destination world.</summary>
 	public sealed partial class Session {
-		public async UniTask<bool> OnTravelingAsync(TravelingEvent @event, bool response = true, Action<float, string> progress = null) {
+		public async UniTask<bool> OnTravelingAsync(TravelingEvent @event, bool response = true, Action<float, string> progress = null, CancellationToken token = default) {
+			token.ThrowIfCancellationRequested();
+
 			string hash;
 			string url;
 
@@ -27,7 +30,7 @@ namespace Nox.Relay.Runtime {
 				Logger.LogDebug($"Searching {identifier}", tag: Tag);
 				var travelVersion = @event.Identifier.GetVersion();
 				if (travelVersion == WorldIdentifierExtensions.DefaultVersion) {
-					var worldData = await Main.WorldAPI.Fetch(Identifier.Parse(identifier));
+					var worldData = await Main.WorldAPI.Fetch(Identifier.Parse(identifier), token);
 					travelVersion = worldData.Release.Value;
 				}
 				var req = new AssetSearchRequest {
@@ -39,7 +42,8 @@ namespace Nox.Relay.Runtime {
 
 				var asset = (await Main.WorldAPI.SearchAssets(
 						Identifier.Parse(identifier),
-						req
+						req,
+						token
 					))?.Items
 					.FirstOrDefault();
 
@@ -66,15 +70,18 @@ namespace Nox.Relay.Runtime {
 				var download = Main.WorldAPI.DownloadToCache(
 					url,
 					hash: hash,
-					progress: f => progress?.Invoke(0.2f + f * 0.45f, "Downloading world...")
+					progress: f => progress?.Invoke(0.2f + f * 0.45f, "Downloading world..."),
+					token: token
 				);
 				await download.Start();
+				token.ThrowIfCancellationRequested();
 			}
 
 			progress?.Invoke(0.65f, "Loading world");
 			var scene = await Main.WorldAPI.LoadFromCache(
 				hash,
-				progress: f => progress?.Invoke(0.65f + f * 0.25f, "Loading world...")
+				progress: f => progress?.Invoke(0.65f + f * 0.25f, "Loading world..."),
+				token: token
 			);
 			if (scene == null) {
 				progress?.Invoke(0.9f, "Failed to load scene for world");

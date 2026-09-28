@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Cysharp.Threading.Tasks;
-using Nox.CCK.Entities;
+using Nox.CCK.Sessions;
 using Nox.Entities;
 using Nox.Relay.Core.Types.Properties;
 using Logger = Nox.CCK.Utils.Logger;

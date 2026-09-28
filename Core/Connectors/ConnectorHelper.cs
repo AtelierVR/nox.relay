@@ -1,5 +1,6 @@
 using System;
 using System.Net;
+using System.Threading;
 using Cysharp.Threading.Tasks;
 
 namespace Nox.Relay.Core.Connectors {
@@ -32,7 +33,9 @@ namespace Nox.Relay.Core.Connectors {
 			return true;
 		}
 
-		public static async UniTask<(string, string, IPEndPoint)> ParseIPEndPoint(string address) {
+		public static async UniTask<(string, string, IPEndPoint)> ParseIPEndPoint(string address, CancellationToken token = default) {
+			token.ThrowIfCancellationRequested();
+
 			var uri     = new Uri(address);
 			var uriType = Uri.CheckHostName(uri.Host);
 
@@ -41,6 +44,7 @@ namespace Nox.Relay.Core.Connectors {
 					return (uri.Scheme, uri.Host, new IPEndPoint(IPAddress.Parse(uri.Host), uri.Port));
 				case UriHostNameType.Dns: {
 					var ip = await Dns.GetHostAddressesAsync(uri.Host);
+					token.ThrowIfCancellationRequested();
 					if (ip.Length > 0)
 						return (uri.Scheme, uri.Host, new IPEndPoint(ip[0], uri.Port));
 					break;

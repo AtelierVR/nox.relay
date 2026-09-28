@@ -42,7 +42,9 @@ namespace Nox.Relay.Core.Connectors {
 		
 		public UnityEvent<string> OnDisconnected { get; } = new ();
 
-		public async UniTask<bool> Connect(string address, ushort port) {
+		public async UniTask<bool> Connect(string address, ushort port, CancellationToken token = default) {
+			token.ThrowIfCancellationRequested();
+
 			if (IsConnected) {
 				Logger.LogWarning($"Already connected to {address}", tag: nameof(TcpConnector));
 				return false;
@@ -65,8 +67,10 @@ namespace Nox.Relay.Core.Connectors {
 				_socket.SendBufferSize = DEFAULT_BUFFER_SIZE;
 
 				var connectTask = _socket.ConnectAsync(ipAddress, port).AsUniTask();
-				var timeoutTask = UniTask.Delay(CONNECT_TIMEOUT_MS);
+				var timeoutTask = UniTask.Delay(CONNECT_TIMEOUT_MS, cancellationToken: token);
 				var winnerIndex = await UniTask.WhenAny(connectTask, timeoutTask);
+
+				token.ThrowIfCancellationRequested();
 
 				if (winnerIndex == 1) {
 					_socket?.Close();
@@ -90,6 +94,11 @@ namespace Nox.Relay.Core.Connectors {
 				OnConnected?.Invoke(true);
 
 				return true;
+			}
+			catch (OperationCanceledException) {
+				_socket?.Close();
+				_socket = null;
+				throw;
 			}
 			catch (SocketException ex) {
 				Logger.LogError(new Exception("Socket exception during connecting", ex), tag: nameof(TcpConnector));

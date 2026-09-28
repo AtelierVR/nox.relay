@@ -1,7 +1,9 @@
 using System;
 using System.Linq;
+using System.Threading;
 using Cysharp.Threading.Tasks;
 using Nox.CCK.Properties;
+using Nox.CCK.Sessions;
 using Nox.CCK.Utils;
 using Nox.Entities;
 using Nox.Players;
@@ -13,11 +15,11 @@ using Logger = Nox.CCK.Utils.Logger;
 using Player = Nox.Relay.Runtime.Players.Player;
 
 namespace Nox.Relay.Runtime {
-	public sealed partial class Session : BaseEditablePropertyObject, INetSession, ITeamSession {
+	public sealed partial class Session : BaseEditablePropertyObject, INetSession, ITeamSession, IPhysicalSession {
 		internal Session(string id) {
 			Id            = id;
 			InterEntities = new Entities(this);
-			InterState    = new State(Status.Pending, "Session is initializing", 0f);
+			InterState    = new State(Status.Pending, "Session is initializing", 0f, cancelable: true);
 		}
 
 		internal IState InterState;
@@ -25,6 +27,20 @@ namespace Nox.Relay.Runtime {
 		readonly internal Entities InterEntities;
 		internal Core.Relay Adapter;
 		internal Room Room;
+
+		/// <summary>Session-scoped key-value data container.</summary>
+		private readonly DataContainer _data = new();
+
+		public IDataContainer Data
+			=> _data;
+
+		/// <summary>
+		/// Cancels the in-flight connection attempt when the session is disposed or cancelled.
+		/// Set by <see cref="Helper.Create"/> before the connect task is started.
+		/// </summary>
+		internal CancellationTokenSource ConnectCts;
+
+		private bool _disposed;
 
 		/// <summary>The currently active relay session (set on connect, cleared on dispose).</summary>
 		internal static Session Current { get; private set; }
@@ -53,8 +69,8 @@ namespace Nox.Relay.Runtime {
 			}
 		}
 
-		internal void UpdateState(Status stt, string msg, float pg)
-			=> UniTask.Post(() => State = new State(stt, msg, pg));
+		internal void UpdateState(Status stt, string msg, float pg, bool cancelable = false)
+			=> UniTask.Post(() => State = new State(stt, msg, pg, cancelable));
 
 		private void SetDimension(IRuntimeWorld scene) {
 			InterDimensions?.Dispose();
@@ -82,7 +98,16 @@ namespace Nox.Relay.Runtime {
 
 
 		public async UniTask Dispose() {
+			if (_disposed)
+				return;
+			_disposed = true;
+
 			Logger.LogDebug("Disposing session", tag: Tag);
+
+			// Abort any in-flight connection attempt.
+			ConnectCts?.Cancel();
+			ConnectCts?.Dispose();
+			ConnectCts = null;
 
 			Current = null;
 
@@ -98,6 +123,7 @@ namespace Nox.Relay.Runtime {
 
 			await UniTask.SwitchToMainThread();
 
+			_data.Dispose();
 			InterEntities?.Dispose();
 			InterDimensions?.Dispose();
 		}

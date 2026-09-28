@@ -83,7 +83,9 @@ namespace Nox.Relay.Core.Connectors {
 
 		// ── Connect ─────────────────────────────────────────────────────────
 
-		public async UniTask<bool> Connect(string address, ushort port) {
+		public async UniTask<bool> Connect(string address, ushort port, CancellationToken token = default) {
+			token.ThrowIfCancellationRequested();
+
 			if (!PlayerLoopHelper.IsMainThread)
 				throw new InvalidOperationException($"Send must be called from the Unity main thread (your current {Thread.CurrentThread.ManagedThreadId} thread is not allowed to call Send).");
 
@@ -108,6 +110,7 @@ namespace Nox.Relay.Core.Connectors {
 			// standalone build timeout.)
 
 			_connectTcs = new TaskCompletionSource<bool>();
+			using var registration = token.Register(() => _connectTcs?.TrySetCanceled(token));
 
 			// Named instance methods instead of lambdas: IL2CPP generates correct AOT
 			// trampolines for method-group delegates, whereas lambda closures that capture
@@ -124,12 +127,16 @@ namespace Nox.Relay.Core.Connectors {
 				var timeout  = Task.Delay(ConnectTimeoutMs);
 				var finished = await Task.WhenAny(_connectTcs.Task, timeout).ConfigureAwait(false);
 
+				token.ThrowIfCancellationRequested();
+
 				if (finished == timeout) {
 					OnConnected?.Invoke(false);
 					return false;
 				}
 
 				return await _connectTcs.Task.ConfigureAwait(false);
+			} catch (OperationCanceledException) {
+				throw;
 			} catch (Exception ex) {
 				Logger.LogError($"[QuicConnector] Exception during Connect to {address}:{port} — {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}");
 				OnConnected?.Invoke(false);

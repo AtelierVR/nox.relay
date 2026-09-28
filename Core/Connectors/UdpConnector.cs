@@ -1,6 +1,7 @@
 using System;
 using System.Net;
 using System.Net.Sockets;
+using System.Threading;
 using Cysharp.Threading.Tasks;
 using UnityEngine.Events;
 using Buffer = Nox.CCK.Utils.Buffer;
@@ -62,7 +63,9 @@ namespace Nox.Relay.Core.Connectors {
 		/// <param name="address">The IP address or hostname to connect to.</param>
 		/// <param name="port">The port number to connect to.</param>
 		/// <returns>True if the connection was successful, false otherwise.</returns>
-		public async UniTask<bool> Connect(string address, ushort port) {
+		public async UniTask<bool> Connect(string address, ushort port, CancellationToken token = default) {
+			token.ThrowIfCancellationRequested();
+
 			await Close();
 
 			if (!IPAddress.TryParse(address, out var ip)) {
@@ -72,6 +75,8 @@ namespace Nox.Relay.Core.Connectors {
 				ip = hostEntry.AddressList[0];
 			}
 
+			token.ThrowIfCancellationRequested();
+
 			_socket = new Socket(ip.AddressFamily, SocketType.Dgram, ProtocolType.Udp);
 
 			_recArgs           =  new SocketAsyncEventArgs();
@@ -80,6 +85,8 @@ namespace Nox.Relay.Core.Connectors {
 			ApplyReceiveBuffer();
 
 			await _socket.ConnectAsync(ip, port);
+
+			token.ThrowIfCancellationRequested();
 
 			if (_socket.Connected) {
 				StartReceiveLoop();

@@ -1,4 +1,5 @@
 using System.Net;
+using System.Threading;
 using Cysharp.Threading.Tasks;
 using UnityEngine.Events;
 using Buffer = Nox.CCK.Utils.Buffer;
@@ -31,8 +32,9 @@ namespace Nox.Relay.Core.Connectors {
 		/// </summary>
 		/// <param name="address"></param>
 		/// <param name="port"></param>
+		/// <param name="token">Cancellation token to abort the connection attempt.</param>
 		/// <returns></returns>
-		UniTask<bool> Connect(string address, ushort port);
+		UniTask<bool> Connect(string address, ushort port, CancellationToken token = default);
 
 		/// <summary>
 		/// Get or set the largest payload a single datagram may carry, excluding the headers the transport

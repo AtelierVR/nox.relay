@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Threading;
 using Cysharp.Threading.Tasks;
 using Nox.CCK.Network;
 using Nox.CCK.Sessions;
@@ -17,7 +18,7 @@ namespace Nox.Relay.Runtime {
 
 		public static ISession Create(Options options) {
 			var session = new Session(string.Format(IdFormat, System.Guid.NewGuid()));
-			session.UpdateState(Status.Pending, "Preparing...", 0f);
+			session.UpdateState(Status.Pending, "Preparing...", 0f, cancelable: true);
 			session.SetTitle(options.Title);
 			session.SetShortName(options.ShortName);
 			session.SetThumbnail(options.Thumbnail);
@@ -26,7 +27,8 @@ namespace Nox.Relay.Runtime {
 			session.SetWorld(options.WorldIdentifier);
 			session.SetProperty("connections".Hash(), options.Connections);
 			session.SetProperty("change_current".Hash(), options.ChangeCurrent);
-			session.Connect(true).Forget();
+			session.ConnectCts = new CancellationTokenSource();
+			session.Connect(true, session.ConnectCts.Token).Forget();
 			session.OnStateChanged.AddListener(e => Logger.LogDebug($"State changed: {e.Status} - {e.Message} ({e.Progress:P1})", session.Tag));
 			return session;
 		}
@@ -38,9 +40,16 @@ namespace Nox.Relay.Runtime {
 		/// session stuck in the "Pending" state forever. Everything is caught here so the session
 		/// is always driven to a terminal state (Error/Ready) instead.
 		/// </summary>
-		private static async UniTask Connect(this Session session, bool doE = false) {
+		private static async UniTask Connect(this Session session, bool doE, CancellationToken token) {
 			try {
-				await ConnectInternal(session, doE);
+				await ConnectInternal(session, doE, token);
+			} catch (OperationCanceledException) {
+				Logger.LogDebug("Connection cancelled", session.Tag);
+				try {
+					await session.Dispose();
+				} catch (Exception disposeError) {
+					Logger.LogException(disposeError, session.Tag);
+				}
 			} catch (Exception e) {
 				Logger.LogException(e, session.Tag);
 				try {
@@ -60,7 +69,9 @@ namespace Nox.Relay.Runtime {
 			}
 		}
 
-		private static async UniTask ConnectInternal(Session session, bool doE = false) {
+		private static async UniTask ConnectInternal(Session session, bool doE, CancellationToken token) {
+			token.ThrowIfCancellationRequested();
+
 			var world    = session.GetWorld();
 			var instance = session.GetInstance();
 
@@ -69,7 +80,7 @@ namespace Nox.Relay.Runtime {
 
 				var version = world.GetVersion();
 				if (version == WorldIdentifierExtensions.DefaultVersion) {
-					var worldData = await Main.WorldAPI.Fetch(world);
+					var worldData = await Main.WorldAPI.Fetch(world, token);
 					version = worldData.Release.Value;
 				}
 
@@ -80,7 +91,7 @@ namespace Nox.Relay.Runtime {
 					Limit     = 1
 				};
 
-				var asset = (await Main.WorldAPI.SearchAssets(world, req))
+				var asset = (await Main.WorldAPI.SearchAssets(world, req, token))
 					.Items.FirstOrDefault();
 
 				if (asset == null) {
@@ -97,7 +108,8 @@ namespace Nox.Relay.Runtime {
 						asset.Url,
 						hash: asset.Hash,
 						progress: arg0 => session.UpdateState(Status.Pending, $"Downloading world '{world}'...",
-							0.15f + arg0 * 0.45f)
+							0.15f + arg0 * 0.45f),
+						token: token
 					);
 					await download.Start();
 				}
@@ -111,15 +123,15 @@ namespace Nox.Relay.Runtime {
 
 			// The relay authenticates via challenge-response (see auth.rs).
 			// No bearer token is required or sent.
-			session.UpdateState(Status.Pending, "Connecting to relay server...", 0.6f);
+			session.UpdateState(Status.Pending, "Connecting to relay server...", 0.6f, cancelable: true);
 
 			IConnector con = null;
 			var connections = session.GetProperty<string[]>("connections".Hash())
 				?? Array.Empty<string>();
 
 			foreach (var addr in connections) {
-				session.UpdateState(Status.Pending, $"Connecting to {addr}...", 0.1f);
-				var (proto, host, endPoint) = await ConnectorHelper.ParseIPEndPoint(addr);
+				session.UpdateState(Status.Pending, $"Connecting to {addr}...", 0.1f, cancelable: true);
+				var (proto, host, endPoint) = await ConnectorHelper.ParseIPEndPoint(addr, token);
 
 				con = ConnectorHelper.From(proto);
 				if (con == null) {
@@ -128,7 +140,7 @@ namespace Nox.Relay.Runtime {
 					continue;
 				}
 
-				if (!await con.Connect(host, (ushort)endPoint.Port)) {
+				if (!await con.Connect(host, (ushort)endPoint.Port, token)) {
 					Logger.LogWarning($"Failed to connect to {addr}", session.Tag);
 					con = null;
 					continue;
@@ -153,10 +165,10 @@ namespace Nox.Relay.Runtime {
 			adapter = new Core.Relay(con);
 			session.SetAdapter(adapter);
 
-			session.UpdateState(Status.Pending, "Handshaking...", 0.2f);
+			session.UpdateState(Status.Pending, "Handshaking...", 0.2f, cancelable: true);
 			await UniTask.SwitchToMainThread();
 
-			var handshake = await adapter.Handshake();
+			var handshake = await adapter.Handshake(token);
 			if (handshake is not { IsValid: true }) {
 				session.UpdateState(Status.Error, "Handshake failed", 1f);
 				Logger.LogError("Handshake with relay server failed", session.Tag);
@@ -166,9 +178,9 @@ namespace Nox.Relay.Runtime {
 			}
 
 
-			session.UpdateState(Status.Pending, "Authenticating...", 0.225f);
+			session.UpdateState(Status.Pending, "Authenticating...", 0.225f, cancelable: true);
 			var request = AuthenticationRequest.Request();
-			var auth    = await adapter.Authenticate(request);
+			var auth    = await adapter.Authenticate(request, token);
 			if (auth.IsError) {
 				session.UpdateState(Status.Error, $"Authentication failed: {auth.Reason}", -1f);
 				Logger.LogError($"Authentication failed: {auth.Result} - {auth.Reason}", session.Tag);
@@ -203,7 +215,7 @@ namespace Nox.Relay.Runtime {
 				user.Identifier
 			);
 
-			auth = await adapter.Authenticate(request);
+			auth = await adapter.Authenticate(request, token);
 			if (auth.IsError) {
 				session.UpdateState(Status.Error, $"Authentication failed: {auth.Reason}", -1f);
 				Logger.LogError($"Authentication failed: {auth.Result} - {auth.Reason}", session.Tag);
@@ -212,8 +224,8 @@ namespace Nox.Relay.Runtime {
 				return;
 			}
 
-			session.UpdateState(Status.Pending, "Fetching room...", 0.25f);
-			var room = await adapter.List(instance.NumericId);
+			session.UpdateState(Status.Pending, "Fetching room...", 0.25f, cancelable: true);
+			var room = await adapter.List(instance.NumericId, token);
 			if (room == null) {
 				session.UpdateState(Status.Error, $"Failed to get room {instance}", -1f);
 				Logger.LogError($"Failed to get room {instance}", session.Tag);
@@ -231,8 +243,8 @@ namespace Nox.Relay.Runtime {
 			room.OnAvatarChanged.AddListener(session.OnAvatarChanged);
 			// adapter.Instance.OnPlayerUpdated.AddListener(adapter.OnPlayerUpdated);
 
-			session.UpdateState(Status.Pending, "Entering room...", 0.3f);
-			var enter = await room.Enter(new EnterRequest());
+			session.UpdateState(Status.Pending, "Entering room...", 0.3f, cancelable: true);
+			var enter = await room.Enter(new EnterRequest(), token);
 			if (enter.IsError) {
 				session.UpdateState(Status.Error, $"Failed to connect to room: {enter.Result} - {enter.Reason}", -1f);
 				Logger.LogError($"Failed to connect to room {instance}: {enter.Result} - {enter.Reason}", session.Tag);
@@ -245,9 +257,9 @@ namespace Nox.Relay.Runtime {
 			room.Threshold    = enter.Threshold;
 			room.RenderEntity = enter.RenderEntity;
 
-			session.UpdateState(Status.Pending, "Traveling to room...", 0.325f);
+			session.UpdateState(Status.Pending, "Traveling to room...", 0.325f, cancelable: true);
 
-			var travelInfos = await room.Traveling(TravelingRequest.Travel());
+			var travelInfos = await room.Traveling(TravelingRequest.Travel(), token);
 			if (!travelInfos.IsSuccess) {
 				session.UpdateState(Status.Error, $"Failed to travel to room: {travelInfos.Reason}", -1f);
 				Logger.LogError($"Failed to travel to room {instance}: {travelInfos.Results} - {travelInfos.Reason}", session.Tag);
@@ -259,7 +271,8 @@ namespace Nox.Relay.Runtime {
 			var traveling = await session.OnTravelingAsync(
 				travelInfos,
 				response: false,
-				progress: (f, s) => session.UpdateState(Status.Pending, s, 0.325f + f * 0.575f)
+				progress: (f, s) => session.UpdateState(Status.Pending, s, 0.325f + f * 0.575f),
+				token: token
 			);
 
 			if (!traveling) {
@@ -271,7 +284,7 @@ namespace Nox.Relay.Runtime {
 
 			session.UpdateState(Status.Pending, $"Making ready in instance {instance}...", 0.9f);
 
-			var travelReady = await room.Traveling(TravelingRequest.Ready());
+			var travelReady = await room.Traveling(TravelingRequest.Ready(), token);
 			if (!travelReady.IsReady) {
 				session.UpdateState(Status.Error, $"Failed to travel to room {travelInfos.Reason}", -1f);
 				Logger.LogError($"Failed to travel to room {instance}: {travelReady.Results} - {travelReady.Reason}", session.Tag);
@@ -288,7 +301,7 @@ namespace Nox.Relay.Runtime {
 
 			if (session.TryGetProperty<bool>("change_current".Hash(), out var current) && current) {
 				session.UpdateState(Status.Pending, "Setting room as current...", 0.95f);
-				await Main.SessionAPI.SetCurrent(session.Id);
+				await Main.SessionAPI.SetCurrent(session.Id, token);
 			}
 
 			session.UpdateState(Status.Ready, "Ready", 1f);
