@@ -27,7 +27,7 @@ namespace Nox.Relay.Runtime.Players {
 			_source.playOnAwake  = false;
 			_source.spatialBlend = 1f;
 
-			UnityEngine.Object.DontDestroyOnLoad(_holder.gameObject);
+			_holder.gameObject.DontDestroyOnLoad();
 		}
 
 		public override AudioSource Source
