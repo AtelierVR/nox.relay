@@ -90,6 +90,9 @@ namespace Nox.Relay.Runtime {
 			Room.RenderEntity           = @event.RenderEntity;
 			Room.PropertyResendInterval = @event.PropertyResendInterval;
 
+			// The room owns part of the session info (player capacity).
+			HookRoomInfo();
+
 			// Initialize room voice routing (idempotent)
 
 			SetupVoiceRouting();

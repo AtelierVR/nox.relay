@@ -8,6 +8,7 @@ using Nox.CCK.Utils;
 using Nox.Entities;
 using Nox.Players;
 using Nox.Relay.Core.Rooms;
+using Nox.Relay.Core.Types.ServerConfig;
 using Nox.Sessions;
 using Nox.Worlds;
 using UnityEngine.Events;
@@ -77,6 +78,34 @@ namespace Nox.Relay.Runtime {
 			InterDimensions = new Dimensions(this, scene);
 		}
 
+		private bool _roomInfoHooked;
+
+		/// <summary>Publishes the room-owned session info (capacity) and signals it with <c>session_updated</c>.</summary>
+		internal void PublishRoomInfo() {
+			if (Room == null)
+				return;
+
+			// Extension method on ISession: the receiver has to be explicit here.
+			this.SetCapacity(Room.MaxPlayerCount);
+			Main.CoreAPI.EventAPI.Emit("session_updated", this);
+		}
+
+		/// <summary>Follows the room information (idempotent: a session can enter several rooms).</summary>
+		internal void HookRoomInfo() {
+			if (Room == null)
+				return;
+
+			if (!_roomInfoHooked) {
+				_roomInfoHooked = true;
+				Room.OnServerConfig.AddListener(OnRoomConfigUpdated);
+			}
+
+			PublishRoomInfo();
+		}
+
+		private void OnRoomConfigUpdated(ServerConfigResponse response)
+			=> PublishRoomInfo();
+
 		public IPlayer MasterPlayer {
 			get => InterEntities.GetEntity<Player>(InterEntities.MasterId);
 			set => Logger.LogWarning("Setting the master player is not supported in relay sessions.", tag: Tag);
@@ -122,6 +151,11 @@ namespace Nox.Relay.Runtime {
 			}
 
 			await UniTask.SwitchToMainThread();
+
+			if (_roomInfoHooked) {
+				_roomInfoHooked = false;
+				Room?.OnServerConfig.RemoveListener(OnRoomConfigUpdated);
+			}
 
 			_data.Dispose();
 			InterEntities?.Dispose();
