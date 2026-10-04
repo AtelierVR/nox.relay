@@ -5,7 +5,7 @@ using Cysharp.Threading.Tasks;
 using Nox.Avatars;
 using Nox.Avatars.Parameters;
 using Nox.Avatars.Rigging;
-using Nox.CCK.Avatars;
+using Nox.CCK.Network.Assets;
 using Nox.CCK.Players;
 using Nox.CCK.Utils;
 using UnityEngine;
@@ -128,17 +128,7 @@ namespace Nox.Relay.Runtime.Physicals {
 			AvatarLoadingCts?.Cancel();
 			AvatarLoadingCts = new CancellationTokenSource();
 
-			var req = new AssetSearchRequest {
-				Engines   = new[] { EngineExtensions.CurrentEngine.GetEngineName() },
-				Platforms = new[] { PlatformExtensions.CurrentPlatform.GetPlatformName() },
-				Versions  = new[] { identifier.GetVersion() },
-				Limit     = 1
-			};
-
-			var asset = (await Main.AvatarAPI.SearchAssets(identifier, req)
-				.AttachExternalCancellation(AvatarLoadingCts.Token))
-				.Items
-				.FirstOrDefault();
+			var asset = await Main.AvatarAPI.ResolveBundle(identifier, AvatarLoadingCts.Token);
 
 			if (AvatarLoadingCts.IsCancellationRequested)
 				return null;
@@ -149,10 +139,12 @@ namespace Nox.Relay.Runtime.Physicals {
 				return null;
 			}
 
-			if (!Main.AvatarAPI.HasInCache(asset.Hash)) {
+			var hash = asset.CacheKey();
+
+			if (!Main.AvatarAPI.HasInCache(hash)) {
 				var download = Main.AvatarAPI.DownloadToCache(
 					asset.Url,
-					hash: asset.Hash,
+					hash: hash,
 					token: AvatarLoadingCts.Token
 				);
 				await download.Start();
@@ -161,7 +153,7 @@ namespace Nox.Relay.Runtime.Physicals {
 			}
 
 			var avatar = await Main.AvatarAPI.LoadFromCache(
-				asset.Hash,
+				hash,
 				AvatarParameters,
 				token: AvatarLoadingCts.Token
 			);

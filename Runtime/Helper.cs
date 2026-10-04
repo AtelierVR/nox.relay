@@ -5,7 +5,7 @@ using Cysharp.Threading.Tasks;
 using Nox.CCK.Network;
 using Nox.CCK.Sessions;
 using Nox.CCK.Utils;
-using Nox.CCK.Worlds;
+using Nox.CCK.Network.Assets;
 using Nox.Relay.Core.Connectors;
 using Nox.Relay.Core.Types.Authentication;
 using Nox.Relay.Core.Types.Enter;
@@ -78,35 +78,23 @@ namespace Nox.Relay.Runtime {
 			if (world.IsValid()) {
 				session.UpdateState(Status.Pending, "Fetching world data...", 0.05f);
 
-				var version = world.GetVersion();
-				if (version == WorldIdentifierExtensions.DefaultVersion) {
-					var worldData = await Main.WorldAPI.Fetch(world, token);
-					version = worldData.Release.Value;
-				}
+				var asset = await Main.WorldAPI.ResolveBundle(world, token);
 
-				var req = new AssetSearchRequest {
-					Engines   = new[] { EngineExtensions.CurrentEngine.GetEngineName() },
-					Platforms = new[] { PlatformExtensions.CurrentPlatform.GetPlatformName() },
-					Versions  = new[] { version },
-					Limit     = 1
-				};
+				var hash = asset?.CacheKey();
 
-				var asset = (await Main.WorldAPI.SearchAssets(world, req, token))
-					.Items.FirstOrDefault();
-
-				if (asset == null) {
-					Logger.LogError($"Failed to find asset for world {world} with version {world.GetVersion()}", session.Tag);
+				if (asset == null || string.IsNullOrEmpty(hash) || string.IsNullOrEmpty(asset.Url)) {
+					Logger.LogError($"Failed to find a compatible bundle for world {world}", session.Tag);
 					session.UpdateState(Status.Error, $"World '{world}' not found", 1f);
 					return;
 				}
 
 				session.UpdateState(Status.Pending, $"Preparing world '{world}'...", 0.1f);
 
-				if (!Main.WorldAPI.HasInCache(asset.Hash)) {
+				if (!Main.WorldAPI.HasInCache(hash)) {
 					session.UpdateState(Status.Pending, $"Downloading world '{world}'...", 0.15f);
 					var download = Main.WorldAPI.DownloadToCache(
 						asset.Url,
-						hash: asset.Hash,
+						hash: hash,
 						progress: arg0 => session.UpdateState(Status.Pending, $"Downloading world '{world}'...",
 							0.15f + arg0 * 0.45f),
 						token: token
@@ -114,8 +102,8 @@ namespace Nox.Relay.Runtime {
 					await download.Start();
 				}
 
-				if (!Main.WorldAPI.HasInCache(asset.Hash)) {
-					Logger.LogError($"Failed to download asset for world {world} with version {world.GetVersion()}", session.Tag);
+				if (!Main.WorldAPI.HasInCache(hash)) {
+					Logger.LogError($"Failed to download the bundle of world {world}", session.Tag);
 					session.UpdateState(Status.Error, $"Failed to download world '{world}'", 1f);
 					return;
 				}

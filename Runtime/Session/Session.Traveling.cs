@@ -1,9 +1,8 @@
 using System;
-using System.Linq;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using Nox.CCK.Utils;
-using Nox.CCK.Worlds;
+using Nox.CCK.Network.Assets;
 using Nox.Relay.Core.Types.Traveling;
 using Logger = Nox.CCK.Utils.Logger;
 
@@ -28,24 +27,8 @@ namespace Nox.Relay.Runtime {
 				var identifier = @event.Identifier.ToString(Adapter.LastHandshake.MasterAddress);
 				progress?.Invoke(0.1f, "Searching for master asset for world travel");
 				Logger.LogDebug($"Searching {identifier}", tag: Tag);
-				var travelVersion = @event.Identifier.GetVersion();
-				if (travelVersion == WorldIdentifierExtensions.DefaultVersion) {
-					var worldData = await Main.WorldAPI.Fetch(Identifier.Parse(identifier), token);
-					travelVersion = worldData.Release.Value;
-				}
-				var req = new AssetSearchRequest {
-					Engines   = new[] { EngineExtensions.CurrentEngine.GetEngineName() },
-					Platforms = new[] { PlatformExtensions.CurrentPlatform.GetPlatformName() },
-					Versions  = new[] { travelVersion },
-					Limit     = 1
-				};
 
-				var asset = (await Main.WorldAPI.SearchAssets(
-						Identifier.Parse(identifier),
-						req,
-						token
-					))?.Items
-					.FirstOrDefault();
+				var asset = await Main.WorldAPI.ResolveBundle(Identifier.Parse(identifier), token);
 
 				if (asset == null) {
 					progress?.Invoke(0.2f, $"No master asset found for world {identifier}");
@@ -55,7 +38,7 @@ namespace Nox.Relay.Runtime {
 					return false;
 				}
 
-				hash = asset.Hash;
+				hash = asset.CacheKey();
 				url  = asset.Url;
 			} else {
 				progress?.Invoke(0.1f, "The traveling does not contain valid URL or master asset information");

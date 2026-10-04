@@ -1,47 +1,57 @@
-{
-    "name": "Nox.Relay.Runtime",
-    "rootNamespace": "",
-    "references": [
-        "UniTask",
-        "Nox.Relay",
-        "Nox.Worlds",
-        "Nox.CCK.Sessions",
-        "Nox.CCK",
-        "Nox.Entities",
-        "Nox.CCK.Entities",
-        "Nox.CCK.Worlds",
-        "Nox.Players",
-        "Nox.Users",
-        "Nox.Controllers",
-        "Nox.Worlds.Spawns",
-        "Nox.Sessions",
-        "Nox.Relay.Core",
-        "Nox.Instances",
-        "Nox.Mods.UI",
-        "Nox.Avatars",
-        "Nox.Nameplate",
-        "Nox.CCK.Nameplate",
-        "Nox.Avatars.Parameters",
-        "Nox.Avatars.Rigging",
-        "Nox.CCK.Avatars",
-        "Nox.CCK.Avatars.Rigging",
-        "Nox.Audio",
-        "Nox.CCK.Audio",
-        "Nox.CCK.Avatars.Voice",
-        "Nox.Avatars.Voice",
-        "Nox.CCK.Scripting",
-        "Nox.Scripting",
-        "StirlingLabs.MsQuic.Bindings"
-    ],
-    "includePlatforms": [],
-    "excludePlatforms": [],
-    "allowUnsafeCode": false,
-    "overrideReferences": true,
-    "precompiledReferences": [
-        "Newtonsoft.Json.dll"
-    ],
-    "autoReferenced": true,
-    "defineConstraints": [],
-    "versionDefines": [],
-    "noEngineReferences": false
+﻿{
+    "name":  "Nox.Relay.Runtime",
+    "rootNamespace":  "",
+    "references":  [
+                       "UniTask",
+                       "Nox.Relay",
+                       "Nox.Worlds",
+                       "Nox.CCK.Sessions",
+                       "Nox.CCK",
+                       "Nox.Entities",
+                       "Nox.CCK.Entities",
+                       "Nox.CCK.Worlds",
+                       "Nox.Players",
+                       "Nox.Users",
+                       "Nox.Controllers",
+                       "Nox.Worlds.Spawns",
+                       "Nox.Sessions",
+                       "Nox.Relay.Core",
+                       "Nox.Instances",
+                       "Nox.Network",
+                       "Nox.Mods.UI",
+                       "Nox.Avatars",
+                       "Nox.Nameplate",
+                       "Nox.CCK.Nameplate",
+                       "Nox.Avatars.Parameters",
+                       "Nox.Avatars.Rigging",
+                       "Nox.CCK.Avatars",
+                       "Nox.CCK.Avatars.Rigging",
+                       "Nox.Audio",
+                       "Nox.CCK.Audio",
+                       "Nox.CCK.Avatars.Voice",
+                       "Nox.Avatars.Voice",
+                       "Nox.CCK.Scripting",
+                       "Nox.Scripting",
+                       "StirlingLabs.MsQuic.Bindings",
+                       "Nox.CCK.Network"
+                   ],
+    "includePlatforms":  [
+
+                         ],
+    "excludePlatforms":  [
+
+                         ],
+    "allowUnsafeCode":  false,
+    "overrideReferences":  true,
+    "precompiledReferences":  [
+                                  "Newtonsoft.Json.dll"
+                              ],
+    "autoReferenced":  true,
+    "defineConstraints":  [
+
+                          ],
+    "versionDefines":  [
+
+                       ],
+    "noEngineReferences":  false
 }
