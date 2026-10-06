@@ -277,7 +277,14 @@ namespace Nox.Relay.Runtime.Physicals {
 				?.GetComponentInChildren<IRigProvider>(true);
 
 			var parameters = module.GetParameters();
-			foreach (var param in parameters)
+			foreach (var param in parameters) {
+				// The sync only sends changes: a value already received from the owner (it may have landed
+				// while this avatar was still loading - the property slot survives the swap) must not be
+				// clobbered by the defaults below, otherwise it stays wrong on this client until the owner's
+				// value happens to change (e.g. hands/feet tracking turned off even though the owner sends it).
+				if (Reference != null && Reference.Properties.ContainsKey(param.Key))
+					continue;
+
 				switch (param.Name) {
 					case "rig/ik/head/target":
 					case "tracking/left_hand/active":
@@ -299,6 +306,7 @@ namespace Nox.Relay.Runtime.Physicals {
 						param.Value = true;
 						break;
 				}
+			}
 
 			root.SetActive(true);
 			Reference?.UpdateAvatar(runtime);
