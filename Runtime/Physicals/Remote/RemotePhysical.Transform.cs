@@ -24,6 +24,13 @@ namespace Nox.Relay.Runtime.Physicals {
 		}
 
 		private readonly Dictionary<ushort, PartInterpolationState> _partStates = new();
+
+		/// <summary>
+		/// Bones already declared as driven on the current rig (controller channel). Reset with the avatar,
+		/// since the incoming rig has to be declared again.
+		/// </summary>
+		private readonly HashSet<HumanBodyBones> _drivenBones = new();
+
 		private float _tickInterval;
 
 		private static float Smoothstep(float t) => t * t * (3f - 2f * t);
@@ -45,12 +52,20 @@ namespace Nox.Relay.Runtime.Physicals {
 			foreach (var (partId, part) in Reference.Parts) {
 				var rig = partId.ToPlayerRig();
 
+				// A part that arrives is a bone the owner drives from a tracker: declaring it here - the controller
+				// channel, exactly what the owner's FullBodyCalibration does before writing its target - is what makes
+				// the backend follow the target written below. Without it the bone keeps its animation: the VRIK pelvis
+				// weight stays 0 until a hips tracker is declared, so the replayed pelvis stayed ~0.5 m away from the
+				// received target while the owner's own was on it.
+				if (activeRig != null && IsTrackerDriven(rig) && _drivenBones.Add(rig.ToHumanBodyBones()))
+					activeRig.SetActive(rig.ToHumanBodyBones(), true);
+
 				var newTargetPos = part.Position;
 				var newTargetRot = part.Rotation;
 				var newTargetSca = part.Scale;
 
 				if (!_partStates.TryGetValue(partId, out var state)) {
-					// Première fois : snap immédiat sans interpolation
+					// First time: immediate snap, no interpolation.
 					state = new PartInterpolationState {
 						StartPosition  = newTargetPos,
 						TargetPosition = newTargetPos,
@@ -131,6 +146,19 @@ namespace Nox.Relay.Runtime.Physicals {
 
 				_partStates[partId] = state;
 			}
+		}
+
+		/// <summary>
+		/// Bones a player drives from trackers, i.e. the ones a controller declares with <c>IRigging.SetActive</c>:
+		/// the body chain (pelvis, spine, chest, neck), the arms with the hands and the legs/feet/toes.
+		/// <c>Head</c> is left out on purpose - it is always driven and the backend already has it active, so
+		/// declaring it would only override the avatar's own choice.
+		/// </summary>
+		private static bool IsTrackerDriven(PlayerRig rig) {
+			var id = (ushort)rig;
+			return (id >= (ushort)PlayerRig.Hips && id <= (ushort)PlayerRig.Neck)
+			       || (id >= (ushort)PlayerRig.LeftShoulder && id <= (ushort)PlayerRig.RightHand)
+			       || (id >= (ushort)PlayerRig.LeftUpperLeg && id <= (ushort)PlayerRig.RightToes);
 		}
 
 	}

@@ -12,6 +12,10 @@ namespace Nox.Relay.Runtime {
 		public async UniTask<bool> OnTravelingAsync(TravelingEvent @event, bool response = true, Action<float, string> progress = null, CancellationToken token = default) {
 			token.ThrowIfCancellationRequested();
 
+			// The dimensions only exist once the destination world is loaded: remember the
+			// requested world so the session can already be matched while it is pending.
+			_targetIdentifier = @event.UseNode ? @event.Identifier : Identifier.Invalid;
+
 			string hash;
 			string url;
 

@@ -227,6 +227,7 @@ namespace Nox.Relay.Runtime.Physicals {
 			var old = RuntimeAvatar;
 			RuntimeAvatar = runtime;
 			_partStates.Clear();
+			_drivenBones.Clear();
 			_rigProvider = null;
 
 			// The plate reads a parameter of this avatar: its cache must not survive the swap.
@@ -285,6 +286,10 @@ namespace Nox.Relay.Runtime.Physicals {
 				if (Reference != null && Reference.Properties.ContainsKey(param.Key))
 					continue;
 
+				// Default to Animation for the tracked bones: the remote client drives them through the parts it
+				// receives (`RemotePhysical.Update` declares each driven bone), and a desktop player only ever sends
+				// Base + Head - leaving them active there pinned the arms to the rig's default (T-pose) targets.
+				// The owner's own value arrives as a change and re-arms the bones it actually drives.
 				switch (param.Name) {
 					case "rig/ik/head/target":
 					case "tracking/left_hand/active":

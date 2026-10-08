@@ -25,6 +25,14 @@ namespace Nox.Relay.Runtime {
 
 		internal IState InterState;
 		internal Dimensions InterDimensions;
+
+		/// <summary>
+		/// World identifier requested by the current travel, kept until the destination scene
+		/// (and therefore the dimensions) is available. <see cref="Identifier.Invalid"/> for a
+		/// travel by URL, which has no world identity.
+		/// </summary>
+		private Identifier _targetIdentifier = Identifier.Invalid;
+
 		readonly internal Entities InterEntities;
 		internal Core.Relay Adapter;
 		internal Room Room;
@@ -50,8 +58,15 @@ namespace Nox.Relay.Runtime {
 
 		public UnityEvent<int> OnTickRateChanged { get; } = new();
 
-		public bool Match(Identifier identifier)
-			=> InterDimensions.Identifier.IsValid() && InterDimensions.Identifier.Equals(identifier);
+		/// <summary>
+		/// Whether this session targets the given world. While the destination world is still
+		/// loading there is no dimension yet, so the requested identifier is used instead: that
+		/// is what lets the UI show the progress (and offer to cancel) of a pending session.
+		/// </summary>
+		public bool Match(Identifier identifier) {
+			var current = InterDimensions != null ? InterDimensions.Identifier : _targetIdentifier;
+			return current.IsValid() && current.Equals(identifier);
+		}
 
 		public string Id { get; }
 
@@ -76,6 +91,7 @@ namespace Nox.Relay.Runtime {
 		private void SetDimension(IRuntimeWorld scene) {
 			InterDimensions?.Dispose();
 			InterDimensions = new Dimensions(this, scene);
+			_targetIdentifier = scene.Identifier;
 		}
 
 		private bool _roomInfoHooked;
