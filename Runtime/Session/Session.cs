@@ -1,5 +1,5 @@
 using System;
-using System.Linq;
+using System.Collections.Generic;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using Nox.CCK.Properties;
@@ -135,11 +135,38 @@ namespace Nox.Relay.Runtime {
 		internal string Tag
 			=> GetType().Name + $"_{Id}";
 
-		private ISessionModule[] GetAllModules()
-			=> InterDimensions?.GetDescriptors()
-				.Where(e => e != null)
-				.SelectMany(d => d.GetModules<ISessionModule>())
-				.ToArray() ?? Array.Empty<ISessionModule>();
+		/// <summary>
+		/// Every session module of the loaded dimensions, flattened.
+		/// <para>
+		/// Flat loop instead of
+		/// <c>GetDescriptors().Where(e =&gt; e != null).SelectMany(d =&gt; d.GetModules&lt;ISessionModule&gt;()).ToArray()</c>:
+		/// that chain allocated a closure and two iterators per call, and the generic
+		/// <c>GetModules&lt;T&gt;()</c> copied the descriptor's array a second time through
+		/// <c>OfType&lt;T&gt;().ToArray()</c>. The non-generic <c>GetModules()</c> hands out the stored array,
+		/// so the type test happens here, in one pass.
+		/// </para>
+		/// </summary>
+		private ISessionModule[] GetAllModules() {
+			var dimensions = InterDimensions;
+			if (dimensions == null)
+				return Array.Empty<ISessionModule>();
+
+			var modules     = new List<ISessionModule>();
+			var descriptors = dimensions.GetDescriptors();
+
+			for (var i = 0; i < descriptors.Length; i++) {
+				var descriptor = descriptors[i];
+				if (descriptor == null)
+					continue;
+
+				var descriptorModules = descriptor.GetModules();
+				for (var j = 0; j < descriptorModules.Length; j++)
+					if (descriptorModules[j] is ISessionModule module)
+						modules.Add(module);
+			}
+
+			return modules.ToArray();
+		}
 
 
 		public async UniTask Dispose() {
