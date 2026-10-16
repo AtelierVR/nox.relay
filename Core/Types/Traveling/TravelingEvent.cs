@@ -26,8 +26,8 @@ namespace Nox.Relay.Core.Types.Traveling {
 		/// <summary>
 		/// Indicates whether the traveling event requires downloading the dimension from a URL.
 		/// </summary>
-		public bool UseUrl
-			=> Results.HasFlag(TravelingResults.UseUrl);
+		public bool UseBundle
+			=> Results.HasFlag(TravelingResults.UseBundle);
 
 		/// <summary>
 		/// Indicates whether the traveling event requires connecting to a master server node.
@@ -51,7 +51,7 @@ namespace Nox.Relay.Core.Types.Traveling {
 		/// Indicates whether the traveling event was successful.
 		/// </summary>
 		public bool IsSuccess
-			=> IsReady || UseUrl || UseNode;
+			=> IsReady || UseBundle || UseNode;
 
 		/// <summary>
 		/// The reason for failure, if applicable.
@@ -61,19 +61,19 @@ namespace Nox.Relay.Core.Types.Traveling {
 
 		/// <summary>
 		/// The URL to download the dimension from, if applicable.
-		/// <remarks>Is filled only if <see cref="UseUrl"/> is true.</remarks>
+		/// <remarks>Is filled only if <see cref="UseBundle"/> is true.</remarks>
 		/// </summary>
 		public string DownloadUrl;
 
 		/// <summary>
 		/// The hash of the dimension data, if applicable.
-		/// <remarks>Is filled only if <see cref="UseUrl"/> or <see cref="UseHash"/> is true.</remarks>
+		/// <remarks>Is filled only if <see cref="UseBundle"/> or <see cref="UseHash"/> is true.</remarks>
 		/// </summary>
 		public byte[] Hash;
 
 		/// <summary>
 		/// The size of the dimension data in bytes, if applicable.
-		/// <remarks>Is filled only if <see cref="UseUrl"/> is true.</remarks>
+		/// <remarks>Is filled only if <see cref="UseBundle"/> is true.</remarks>
 		/// </summary>
 		public uint Size;
 
@@ -115,7 +115,7 @@ namespace Nox.Relay.Core.Types.Traveling {
 				return true;
 			}
 
-			if (UseUrl) {
+			if (UseBundle) {
 				DownloadUrl = buffer.ReadString();
 
 				Hash = buffer.ReadBytes(32);
@@ -162,7 +162,7 @@ namespace Nox.Relay.Core.Types.Traveling {
 		public override string ToString()
 			=> $"{GetType().Name}[Results={Results}"
 				+ (!IsSuccess ? $", Message=\"{Reason}\"" : "")
-				+ (UseUrl ? $", Url=\"{DownloadUrl}\", Hash=\"{Hash}\", Size={Size}" : "")
+				+ (UseBundle ? $", Url=\"{DownloadUrl}\", Hash=\"{Hash}\", Size={Size}" : "")
 				+ (UseNode ? $", World={Identifier.ToString()}" : "")
 				+ "]";
 	}

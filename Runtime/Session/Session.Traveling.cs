@@ -14,14 +14,14 @@ namespace Nox.Relay.Runtime {
 
 			// The dimensions only exist once the destination world is loaded: remember the
 			// requested world so the session can already be matched while it is pending.
-			_targetIdentifier = @event.UseNode ? @event.Identifier : Identifier.Invalid;
+			_identifier = @event.UseNode ? @event.Identifier : Identifier.Invalid;
 
 			string hash;
 			string url;
 
 			var password = @event.Password;
 
-			if (@event.UseUrl) {
+				if (@event.UseBundle) {
 				progress?.Invoke(0.1f, "Using provided URL for world travel");
 				hash = BitConverter.ToString(@event.Hash)
 					.Replace("-", "")

@@ -11,7 +11,7 @@ namespace Nox.Relay.Core.Types.Traveling {
 		/// <summary>
 		/// Use a downloaded URL to travel.
 		/// </summary>
-		UseUrl = 1 << 1,
+		UseBundle = 1 << 1,
 
 		/// <summary>
 		/// Use a <see cref="Nox.Worlds.IWorldIdentifier"/> to travel.
