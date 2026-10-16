@@ -9,6 +9,7 @@ using Nox.CCK.Network.Assets;
 using Nox.Relay.Core.Connectors;
 using Nox.Relay.Core.Types.Authentication;
 using Nox.Relay.Core.Types.Enter;
+using Nox.Relay.Core.Types.Handshakes;
 using Nox.Relay.Core.Types.Traveling;
 using Nox.Sessions;
 
@@ -27,6 +28,8 @@ namespace Nox.Relay.Runtime {
 			session.SetWorld(options.WorldIdentifier);
 			session.SetProperty("connections".Hash(), options.Connections);
 			session.SetProperty("change_current".Hash(), options.ChangeCurrent);
+			session.SetProperty("display".Hash(), options.Display);
+			session.SetProperty("password".Hash(), options.Password);
 			session.ConnectCts = new CancellationTokenSource();
 			session.Connect(true, session.ConnectCts.Token).Forget();
 			session.OnStateChanged.AddListener(e => Logger.LogDebug($"State changed: {e.Status} - {e.Message} ({e.Progress:P1})", session.Tag));
@@ -121,6 +124,13 @@ namespace Nox.Relay.Runtime {
 				session.UpdateState(Status.Pending, $"Connecting to {addr}...", 0.1f, cancelable: true);
 				var (proto, host, endPoint) = await ConnectorHelper.ParseIPEndPoint(addr, token);
 
+				// ParseIPEndPoint returns nulls when the address is malformed (or the host cannot be
+				// resolved) — skip it instead of dereferencing a null endpoint below.
+				if (proto == null || host == null || endPoint == null) {
+					Logger.LogWarning($"Invalid relay address '{addr}', skipping", session.Tag);
+					continue;
+				}
+
 				con = ConnectorHelper.From(proto);
 				if (con == null) {
 					Logger.LogWarning($"No connection for protocol {proto} found, trying to create a new one", session.Tag);
@@ -165,6 +175,9 @@ namespace Nox.Relay.Runtime {
 				return;
 			}
 
+			// The server tells us whether it is backed by a master node (IsOffline when it is not,
+			// e.g. a standalone relay). Adapt the rest of the connect flow to that.
+			var offline = handshake.Flags.HasFlag(HandshakeFlags.IsOffline);
 
 			session.UpdateState(Status.Pending, "Authenticating...", 0.225f, cancelable: true);
 			var request = AuthenticationRequest.Request();
@@ -185,9 +198,15 @@ namespace Nox.Relay.Runtime {
 
 			// The current user can legitimately be null: no server configured, "/users/@me" fetch
 			// failed (offline, TLS/DNS error, expired or missing token) or the user logged out
-			// while the session was being created. Bail out cleanly instead of dereferencing it.
+			// while the session was being created. An offline relay has no node identity to check:
+			// present a local one (the relay trusts the verified key).
 			var user = Main.UserAPI?.Current;
-			if (user == null) {
+			Identifier identity;
+			if (user != null) {
+				identity = user.Identifier;
+			} else if (offline) {
+				identity = Identifier.Invalid;
+			} else {
 				session.UpdateState(Status.Error, "Not signed in", -1f);
 				Logger.LogError(
 					"Failed to authenticate to relay: no current user (not signed in, token expired or /users/@me fetch failed)",
@@ -200,7 +219,7 @@ namespace Nox.Relay.Runtime {
 			request = AuthenticationRequest.Resolve(
 				Crypto.ExportPublicKeyToDer(keys),
 				sign,
-				user.Identifier
+				identity
 			);
 
 			auth = await adapter.Authenticate(request, token);
@@ -229,10 +248,16 @@ namespace Nox.Relay.Runtime {
 			room.OnProperties.AddListener(session.OnPropertiesHandler);
 			room.OnEvent.AddListener(session.OnEventHandler);
 			room.OnAvatarChanged.AddListener(session.OnAvatarChanged);
+			room.OnEntity.AddListener(session.OnEntityHandler);
 			// adapter.Instance.OnPlayerUpdated.AddListener(adapter.OnPlayerUpdated);
 
 			session.UpdateState(Status.Pending, "Entering room...", 0.3f, cancelable: true);
-			var enter = await room.Enter(new EnterRequest(), token);
+			// Optional in-room pseudonym and instance password (see the `relay connect` flags).
+			var enter = await room.Enter(new EnterRequest {
+				Display  = session.GetProperty<string>("display".Hash())
+					?? (handshake.Flags.HasFlag(HandshakeFlags.IsOffline) ? user?.Display : null),
+				Password = session.GetProperty<string>("password".Hash()),
+			}, token);
 			if (enter.IsError) {
 				session.UpdateState(Status.Error, $"Failed to connect to room: {enter.Result} - {enter.Reason}", -1f);
 				Logger.LogError($"Failed to connect to room {instance}: {enter.Result} - {enter.Reason}", session.Tag);
@@ -247,6 +272,8 @@ namespace Nox.Relay.Runtime {
 
 			session.UpdateState(Status.Pending, "Traveling to room...", 0.325f, cancelable: true);
 
+			// The relay tells us where to travel: a master node (UseNode) or a bundle URL
+			// (UseBundle, e.g. a standalone relay with a configured world) — both are handled.
 			var travelInfos = await room.Traveling(TravelingRequest.Travel(), token);
 			if (!travelInfos.IsSuccess) {
 				session.UpdateState(Status.Error, $"Failed to travel to room: {travelInfos.Reason}", -1f);

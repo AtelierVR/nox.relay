@@ -67,6 +67,11 @@
       "id": "nameplate",
       "type": "depends",
       "register": "git+https://github.com/AtelierVR/nox.nameplate.git"
+    },
+    {
+      "id": "terminal",
+      "type": "depends",
+      "register": "git+https://github.com/AtelierVR/nox.terminal.git"
     }
   ],
   "constraints": [
@@ -85,6 +90,10 @@
     {
       "type": "after",
       "id": "nameplate"
+    },
+    {
+      "type": "after",
+      "id": "terminal"
     }
   ],
   "entrypoints": {

@@ -13,6 +13,7 @@ using StirlingLabs.MsQuic.Bindings;
 using Nox.Nameplate;
 using Nox.Players;
 using Nox.CCK.Language;
+using Nox.Relay.Runtime.Commands;
 
 namespace Nox.Relay.Runtime {
 	public class Main : ISessionRegister {
@@ -30,6 +31,7 @@ namespace Nox.Relay.Runtime {
 		static internal ChannelRegister VoiceRegister;
 		private EventSubscription[] _events = Array.Empty<EventSubscription>();
 		private LanguagePack _lang;
+		private TerminalCommands _commands;
 
 		public void OnInitializeMain(IMainModCoreAPI api) {
 			CoreAPI = api;
@@ -47,6 +49,7 @@ namespace Nox.Relay.Runtime {
 				api.EventAPI.Subscribe("controller_changed", OnControllerChanged),
 				api.EventAPI.Subscribe("controller_avatar_changed", OnAvatarOfControllerChanged)
 			};
+			_commands = new TerminalCommands(api);
 			SessionAPI.Register(this);
 		}
 
@@ -77,6 +80,8 @@ namespace Nox.Relay.Runtime {
 		public void OnDisposeMain() {
 			VoiceRegister?.Dispose();
 			VoiceRegister = null;
+			_commands?.Dispose();
+			_commands = null;
 			SessionAPI.Unregister(this);
 			foreach (var ev in _events)
 				CoreAPI.EventAPI.Unsubscribe(ev);

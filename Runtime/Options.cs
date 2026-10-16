@@ -2,8 +2,6 @@ using System;
 using System.Collections.Generic;
 using Newtonsoft.Json.Linq;
 using Nox.CCK.Utils;
-using Nox.CCK.Worlds;
-using Nox.Instances;
 using UnityEngine;
 using Logger = Nox.CCK.Utils.Logger;
 
@@ -24,6 +22,10 @@ namespace Nox.Relay.Runtime {
 				options.ShortName = shortNameStr;
 			if (dict.TryGetValue("change_current", out var changeCurrentObj) && changeCurrentObj is bool changeCurrentBool)
 				options.ChangeCurrent = changeCurrentBool;
+			if (dict.TryGetValue("password", out var passwordObj) && passwordObj is string passwordStr)
+				options.Password = passwordStr;
+			if (dict.TryGetValue("display", out var displayObj) && displayObj is string displayStr)
+				options.Display = displayStr;
 
 			if (dict.TryGetValue("world", out var worldObj))
 				switch (worldObj) {
@@ -73,6 +75,10 @@ namespace Nox.Relay.Runtime {
 		public string Title = "Relay Session";
 		public Identifier InstanceIdentifier = Identifier.Invalid;
 		public Texture2D Thumbnail = null;
+		/// <summary>Optional instance password (sent to the relay when the instance requires one).</summary>
+		public string Password = null;
+		/// <summary>Optional in-room pseudonym (used instead of the account display name).</summary>
+		public string Display = null;
 		public bool DisposeOnChange = true;
 		public string ShortName = null;
 		public bool ChangeCurrent = true;
