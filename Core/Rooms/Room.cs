@@ -10,6 +10,7 @@ using Nox.Relay.Core.Types.Content.Rooms;
 using Nox.Relay.Core.Types.Contents.Rooms;
 using Nox.Relay.Core.Types.Enter;
 using Nox.Relay.Core.Types.Event;
+using Nox.Relay.Core.Types.Entities;
 using Nox.Relay.Core.Types.PlayerUpdate;
 using Nox.Relay.Core.Types.Properties;
 using Nox.Relay.Core.Types.Quit;
@@ -162,6 +163,11 @@ namespace Nox.Relay.Core.Rooms {
 		public UnityEvent<StreamEvent> OnStream { get; } = new();
 
 		/// <summary>
+		/// Event invoked when a networked entity is created, updated, removed or moved in the room.
+		/// </summary>
+		public UnityEvent<EntityEvent> OnEntity { get; } = new();
+
+		/// <summary>
 		/// Handles the reception of data for this relay room.
 		/// Is called by <see cref="Relay.HandleInstance"/>, when data is received for this room.
 		/// </summary>
@@ -205,6 +211,9 @@ namespace Nox.Relay.Core.Rooms {
 					break;
 				case PacketType.Stream:
 					HandleStream(state, buffer);
+					break;
+				case PacketType.Entities:
+					HandleEntity(state, buffer);
 					break;
 				case PacketType.Custom:
 				case PacketType.Traveling:
@@ -353,6 +362,15 @@ namespace Nox.Relay.Core.Rooms {
 			OnStream.Invoke(streamEvent);
 		}
 
+		private void HandleEntity(ushort state, Buffer buffer) {
+			var entityEvent = new EntityEvent { State = state, Connection = Connection, Room = this };
+			if (!entityEvent.FromBuffer(buffer)) {
+				Logger.LogWarning("Failed to parse EntityEvent", tag: Tag);
+				return;
+			}
+
+			OnEntity.Invoke(entityEvent);
+		}
 
 		/// <summary>
 		/// Sends an enter request to join this room.
@@ -483,6 +501,18 @@ namespace Nox.Relay.Core.Rooms {
 			=> (await Emit(
 				request.ToBuffer(),
 				PacketType.Stream,
+				Connection.NextState()
+			)).Success;
+
+		/// <summary>
+		/// Sends an entity operation (create / update / remove) to the room.
+		/// </summary>
+		/// <param name="request"></param>
+		/// <returns></returns>
+		public async UniTask<bool> Entity(EntityRequest request)
+			=> (await Emit(
+				request.ToBuffer(),
+				PacketType.Entities,
 				Connection.NextState()
 			)).Success;
 

@@ -4,6 +4,7 @@
   "references": [
     "UniTask",
     "Nox.CCK",
+    "Nox.CCK.Entities",
     "Nox.Users",
     "Nox.Entities",
     "Nox.Worlds",

@@ -134,6 +134,7 @@ namespace Nox.Relay.Core {
 				case PacketType.Teleport:
 				case PacketType.Stream:
 				case PacketType.Event:
+				case PacketType.Entities:
 					HandleInstance(state, type, buffer.Clone(HeaderSize, length));
 					break;
 				case PacketType.Disconnect:

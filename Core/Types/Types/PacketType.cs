@@ -30,5 +30,6 @@ namespace Nox.Relay.Core.Types {
 		Sessions            = 0x13,
 		Stream              = 0x14,
 		Event               = 0x15,
+		Entities            = 0x16,
 	}
 }
