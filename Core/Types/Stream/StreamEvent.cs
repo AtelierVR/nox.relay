@@ -17,7 +17,7 @@ namespace Nox.Relay.Core.Types.Stream {
 	/// </para>
 	/// <para>
 	/// <b>Control</b> (0x01):
-	/// <c>[sub_type:0x01][listener_id:u16][speaker_id:u16][control_flags:u8]</c>
+	/// <c>[sub_type:0x01][listener_id:u32][speaker_id:u32][control_flags:u8]</c>
 	/// </para>
 	/// </summary>
 	public class StreamEvent : RoomResponse {
@@ -26,7 +26,7 @@ namespace Nox.Relay.Core.Types.Stream {
 
 		// ── Sample fields ──
 
-		public ushort PlayerId;
+		public uint PlayerId;
 		public uint ChannelId;
 		public StreamLevelFlags LevelFlags;
 		public ushort GroupId;
@@ -47,8 +47,8 @@ namespace Nox.Relay.Core.Types.Stream {
 
 		// ── Control fields ──
 
-		public ushort ListenerId;
-		public ushort SpeakerId;
+		public uint ListenerId;
+		public uint SpeakerId;
 		public byte ControlFlags;
 
 		public override bool FromBuffer(Buffer buffer) {
@@ -58,7 +58,7 @@ namespace Nox.Relay.Core.Types.Stream {
 
 			switch (SubType) {
 				case StreamSubType.Sample:
-					PlayerId   = buffer.ReadUShort();
+					PlayerId   = buffer.ReadUInt();
 					ChannelId  = (uint)buffer.ReadInt();
 					LevelFlags = (StreamLevelFlags)buffer.ReadByte();
 					if ((LevelFlags & StreamLevelFlags.HasGroup) != 0)
@@ -72,8 +72,8 @@ namespace Nox.Relay.Core.Types.Stream {
 					break;
 
 				case StreamSubType.Control:
-					ListenerId    = buffer.ReadUShort();
-					SpeakerId     = buffer.ReadUShort();
+					ListenerId    = buffer.ReadUInt();
+					SpeakerId     = buffer.ReadUInt();
 					ControlFlags  = buffer.ReadByte();
 					break;
 			}

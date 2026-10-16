@@ -5,7 +5,7 @@ using Cysharp.Threading.Tasks;
 using Nox.Audio.Players;
 using Nox.Avatars.Parameters;
 using Nox.CCK;
-using Nox.CCK.Players;
+using Nox.CCK.Entities;
 using Nox.CCK.Utils;
 using Nox.CCK.Nameplate;
 using Nox.Entities;
@@ -97,7 +97,7 @@ namespace Nox.Relay.Runtime.Physicals {
 
 			// Networked head part (what the avatar rig is driven with).
 			if (Reference != null
-				&& Reference.TryGetPart(PlayerRig.Head.ToIndex(), out IPart part)
+				&& Reference.TryGetPart(EntityRig.Head.ToIndex(), out IPart part)
 				&& part != null
 				&& part.Updated != default) {
 				anchor.position = part.Position + Vector3.up * NameplateOffset;

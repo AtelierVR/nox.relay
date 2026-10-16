@@ -21,7 +21,7 @@ namespace Nox.Relay.Core.Types.Avatars {
 		/// <summary>
 		/// The ID of the player whose avatar is changing.
 		/// </summary>
-		public ushort PlayerId;
+		public uint PlayerId;
 
 		/// <summary>
 		/// The identifier of the new avatar.
@@ -49,12 +49,12 @@ namespace Nox.Relay.Core.Types.Avatars {
 				case AvatarChangedResult.Success:
 					break;
 				case AvatarChangedResult.Changing: {
-					PlayerId = buffer.ReadUShort();
+					PlayerId    = buffer.ReadUInt();
 					var id      = buffer.ReadUInt();
 					var server  = buffer.ReadString();
 					var version = buffer.ReadUShort();
 					var meta    = new Dictionary<string, string[]> { { "v", new[] { version.ToString() } } };
-					Identifier = new Identifier("a", id, meta, server);
+					Identifier  = new Identifier("a", id, meta, server);
 					break;
 				}
 				case AvatarChangedResult.Unknown:

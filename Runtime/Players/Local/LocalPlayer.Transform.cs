@@ -106,7 +106,7 @@ namespace Nox.Relay.Runtime.Players {
 			var tasks = new List<UniTask<bool>>();
 
 			foreach (var (partId, deltaTransform) in dirtyParts) {
-				var request = TransformRequest.CreateEntity(ushort.MaxValue, partId, deltaTransform);
+				var request = TransformRequest.CreateEntity(TransformRequest.SELF, partId, deltaTransform);
 				tasks.Add(room.Transform(request));
 			}
 

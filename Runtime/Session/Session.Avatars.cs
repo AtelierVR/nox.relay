@@ -11,7 +11,7 @@ namespace Nox.Relay.Runtime {
 		private async UniTask OnAvatarChangedAsync(AvatarChangedEvent @event) {
 			if (@event.Result != AvatarChangedResult.Changing)
 				return;
-			var player = InterEntities.GetEntity<Player>(@event.PlayerId);
+			var player = _entities.GetEntity<Player>(@event.PlayerId);
 			if (player == null)
 				return;
 			await player.SetAvatar(@event.Identifier);

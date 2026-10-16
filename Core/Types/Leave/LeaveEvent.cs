@@ -15,13 +15,13 @@ namespace Nox.Relay.Core.Types.Leave {
 		/// <summary>
 		/// ID of the player who left.
 		/// </summary>
-		public ushort PlayerId;
+		public uint PlayerId;
 
 		/// <summary>
 		/// ID of the moderator or player who initiated the leave, if applicable.
 		/// Is viewable only if you're a moderator.
 		/// </summary>
-		public ushort ByPlayerId;
+		public uint ByPlayerId;
 
 		/// <summary>
 		/// Reason for the leave, if provided.
@@ -33,19 +33,19 @@ namespace Nox.Relay.Core.Types.Leave {
 		/// Indicates if you can view moderation information.
 		/// </summary>
 		public bool HasModerator
-			=> ByPlayerId != ushort.MaxValue;
+			=> ByPlayerId != uint.MaxValue;
 
 		public override bool FromBuffer(Buffer buffer) {
 			buffer.Start();
 
 			Type     = buffer.ReadEnum<QuitType>();
-			PlayerId = buffer.ReadUShort();
+			PlayerId = buffer.ReadUInt();
 
 			// Check if there's additional data for moderation actions
 			if (buffer.Remaining == 0)
 				return true;
 
-			ByPlayerId = buffer.ReadUShort();
+			ByPlayerId = buffer.ReadUInt();
 
 			if (buffer.Remaining > 0)
 				Reason = buffer.ReadString();

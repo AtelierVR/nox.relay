@@ -6,7 +6,7 @@ using Nox.Avatars;
 using Nox.Avatars.Parameters;
 using Nox.Avatars.Rigging;
 using Nox.CCK.Network.Assets;
-using Nox.CCK.Players;
+using Nox.CCK.Entities;
 using Nox.CCK.Utils;
 using UnityEngine;
 using Logger = Nox.CCK.Utils.Logger;
@@ -46,7 +46,7 @@ namespace Nox.Relay.Runtime.Physicals {
 		private async UniTask Setup() {
 			_partStates.Clear();
 
-			if (Reference?.Parts.TryGetValue(PlayerRig.Base.ToIndex(), out var part) == true) {
+			if (Reference?.Parts.TryGetValue(EntityRig.Base.ToIndex(), out var part) == true) {
 				transform.position        = part.Position;
 				transform.rotation        = part.Rotation;
 				transform.localScale      = part.Scale;

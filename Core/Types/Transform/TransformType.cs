@@ -11,9 +11,8 @@ namespace Nox.Relay.Core.Types.Transform {
 		ByPath = 0,
 		
 		/// <summary>
-		/// Transform a specific part of an entity (usually a player).
-		/// Is used to move parts of a player avatar.
-		/// The root of a entity/player is usually part rig <see cref="Nox.CCK.Players.PlayerRig.Base"/> (0).
+		/// Transform a specific part of an entity (a player rig part, a prop sub-element, ...).
+		/// The root of an entity is usually part rig <c>0</c> (see <see cref="Nox.CCK.Entities.EntityRig.Base"/>).
 		/// You need to have the owning permission of the entity to move its parts.
 		/// And the permission to move others' players in the room.
 		/// </summary>

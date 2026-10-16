@@ -185,7 +185,7 @@ namespace Nox.Relay.Runtime.Players {
 		/// gates this player's playback.
 		/// </summary>
 		protected override void OnVoiceControl(StreamEvent @event) {
-			if (Context.Context.InterEntities.LocalId != @event.ListenerId)
+			if (Context.Context._entities.LocalId != @event.ListenerId)
 				return;
 
 			_hearingBlocked = (@event.ControlFlags & 0b_0000_0001) == 0;

@@ -1,39 +1,26 @@
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using Nox.CCK.Properties;
 using Nox.CCK.Sessions;
-using Nox.CCK.Utils;
 using Nox.Entities;
-using Nox.Players;
 using Nox.Relay.Core.Rooms;
 using Nox.Relay.Core.Types.ServerConfig;
 using Nox.Sessions;
-using Nox.Worlds;
 using UnityEngine.Events;
 using Logger = Nox.CCK.Utils.Logger;
-using Player = Nox.Relay.Runtime.Players.Player;
 
 namespace Nox.Relay.Runtime {
 	public sealed partial class Session : BaseEditablePropertyObject, INetSession, ITeamSession, IPhysicalSession {
 		internal Session(string id) {
-			Id            = id;
-			InterEntities = new Entities(this);
-			InterState    = new State(Status.Pending, "Session is initializing", 0f, cancelable: true);
+			Id         = id;
+			_state = new State(Status.Pending, "Session is initializing", 0f, cancelable: true);
+			SetupDimensions();
+			SetupEntities();
 		}
 
-		internal IState InterState;
-		internal Dimensions InterDimensions;
+		internal IState _state;
 
-		/// <summary>
-		/// World identifier requested by the current travel, kept until the destination scene
-		/// (and therefore the dimensions) is available. <see cref="Identifier.Invalid"/> for a
-		/// travel by URL, which has no world identity.
-		/// </summary>
-		private Identifier _targetIdentifier = Identifier.Invalid;
-
-		readonly internal Entities InterEntities;
 		internal Core.Relay Adapter;
 		internal Room Room;
 
@@ -58,28 +45,12 @@ namespace Nox.Relay.Runtime {
 
 		public UnityEvent<int> OnTickRateChanged { get; } = new();
 
-		/// <summary>
-		/// Whether this session targets the given world. While the destination world is still
-		/// loading there is no dimension yet, so the requested identifier is used instead: that
-		/// is what lets the UI show the progress (and offer to cancel) of a pending session.
-		/// </summary>
-		public bool Match(Identifier identifier) {
-			var current = InterDimensions != null ? InterDimensions.Identifier : _targetIdentifier;
-			return current.IsValid() && current.Equals(identifier);
-		}
-
 		public string Id { get; }
 
-		public IDimensions Dimensions
-			=> InterDimensions;
-
-		public IEntities Entities
-			=> InterEntities;
-
 		public IState State {
-			get => InterState;
+			get => _state;
 			private set {
-				InterState = value;
+				_state = value;
 				OnStateChanged.Invoke(value);
 				Main.CoreAPI.EventAPI.Emit("session_state_changed", this, value);
 			}
@@ -87,12 +58,6 @@ namespace Nox.Relay.Runtime {
 
 		internal void UpdateState(Status stt, string msg, float pg, bool cancelable = false)
 			=> UniTask.Post(() => State = new State(stt, msg, pg, cancelable));
-
-		private void SetDimension(IRuntimeWorld scene) {
-			InterDimensions?.Dispose();
-			InterDimensions = new Dimensions(this, scene);
-			_targetIdentifier = scene.Identifier;
-		}
 
 		private bool _roomInfoHooked;
 
@@ -122,52 +87,8 @@ namespace Nox.Relay.Runtime {
 		private void OnRoomConfigUpdated(ServerConfigResponse response)
 			=> PublishRoomInfo();
 
-		public IPlayer MasterPlayer {
-			get => InterEntities.GetEntity<Player>(InterEntities.MasterId);
-			set => Logger.LogWarning("Setting the master player is not supported in relay sessions.", tag: Tag);
-		}
-
-		public IPlayer LocalPlayer {
-			get => InterEntities.GetEntity<Player>(InterEntities.LocalId);
-			set => Logger.LogWarning("Setting the local player is not supported in relay sessions.", tag: Tag);
-		}
-
 		internal string Tag
 			=> GetType().Name + $"_{Id}";
-
-		/// <summary>
-		/// Every session module of the loaded dimensions, flattened.
-		/// <para>
-		/// Flat loop instead of
-		/// <c>GetDescriptors().Where(e =&gt; e != null).SelectMany(d =&gt; d.GetModules&lt;ISessionModule&gt;()).ToArray()</c>:
-		/// that chain allocated a closure and two iterators per call, and the generic
-		/// <c>GetModules&lt;T&gt;()</c> copied the descriptor's array a second time through
-		/// <c>OfType&lt;T&gt;().ToArray()</c>. The non-generic <c>GetModules()</c> hands out the stored array,
-		/// so the type test happens here, in one pass.
-		/// </para>
-		/// </summary>
-		private ISessionModule[] GetAllModules() {
-			var dimensions = InterDimensions;
-			if (dimensions == null)
-				return Array.Empty<ISessionModule>();
-
-			var modules     = new List<ISessionModule>();
-			var descriptors = dimensions.GetDescriptors();
-
-			for (var i = 0; i < descriptors.Length; i++) {
-				var descriptor = descriptors[i];
-				if (descriptor == null)
-					continue;
-
-				var descriptorModules = descriptor.GetModules();
-				for (var j = 0; j < descriptorModules.Length; j++)
-					if (descriptorModules[j] is ISessionModule module)
-						modules.Add(module);
-			}
-
-			return modules.ToArray();
-		}
-
 
 		public async UniTask Dispose() {
 			if (_disposed)
@@ -201,8 +122,8 @@ namespace Nox.Relay.Runtime {
 			}
 
 			_data.Dispose();
-			InterEntities?.Dispose();
-			InterDimensions?.Dispose();
+			_entities?.Dispose();
+			_dimensions?.Dispose();
 		}
 
 		private DateTime _lastTick = DateTime.MinValue;
@@ -210,7 +131,7 @@ namespace Nox.Relay.Runtime {
 		private int _lastKnownTps;
 
 		public void Update() {
-			var entities = InterEntities.GetEntities<Entity>();
+			var entities = _entities.GetEntities<Entity>();
 
 			foreach (var player in entities)
 				player.Update();
@@ -219,7 +140,7 @@ namespace Nox.Relay.Runtime {
 			if (tps != _lastKnownTps) {
 				_lastKnownTps = tps;
 				OnTickRateChanged.Invoke(tps);
-				foreach (var module in GetAllModules())
+				foreach (var module in GetModules())
 					module.OnTickRateChanged(tps);
 			}
 
@@ -236,7 +157,7 @@ namespace Nox.Relay.Runtime {
 				player.Tick();
 
 			var tick = ++_tickCounter;
-			foreach (var module in GetAllModules())
+			foreach (var module in GetModules())
 				module.OnTick(tick);
 		}
 

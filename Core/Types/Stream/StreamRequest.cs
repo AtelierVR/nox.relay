@@ -58,7 +58,7 @@ namespace Nox.Relay.Core.Types.Stream {
 		// ── Sample fields ──
 
 		/// <summary>Local player ID (sent as hint; server uses authenticated ID).</summary>
-		public ushort PlayerId;
+		public uint PlayerId;
 
 		/// <summary>Voice channel identifier (CRC32, e.g. <see cref="ChannelId.Proximity"/>).</summary>
 		public uint ChannelId = Stream.ChannelId.Voice;
@@ -95,10 +95,10 @@ namespace Nox.Relay.Core.Types.Stream {
 		// ── Control fields ──
 
 		/// <summary>The player who should (or should not) hear (Control sub-type).</summary>
-		public ushort ListenerId;
+		public uint ListenerId;
 
 		/// <summary>The player being heard (Control sub-type).</summary>
-		public ushort SpeakerId;
+		public uint SpeakerId;
 
 		/// <summary>
 		/// Control flags. Bit 0: can_hear (1=allow, 0=deny).
@@ -140,14 +140,13 @@ namespace Nox.Relay.Core.Types.Stream {
 		/// <summary>
 		/// Create a Control sub-type request.
 		/// </summary>
-		public static StreamRequest MakeControl(ushort listenerId, ushort speakerId, bool canHear) {
-			return new StreamRequest {
+		public static StreamRequest MakeControl(uint listenerId, uint speakerId, bool canHear)
+			=> new StreamRequest {
 				SubType    = StreamSubType.Control,
 				ListenerId = listenerId,
 				SpeakerId  = speakerId,
 				CanHear    = canHear,
 			};
-		}
 
 		public override Buffer ToBuffer() {
 			var buffer = new Buffer();

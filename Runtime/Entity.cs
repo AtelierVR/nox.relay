@@ -1,26 +1,28 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using Cysharp.Threading.Tasks;
+using Nox.CCK.Network;
 using Nox.CCK.Sessions;
 using Nox.Entities;
 using Nox.Relay.Core.Types.Properties;
 using Logger = Nox.CCK.Utils.Logger;
 
 namespace Nox.Relay.Runtime {
-	public class Entity : IEntity {
+	public class Entity : IEntity, IMultiPartEntity<IPart> {
 		readonly internal Entities Context;
 		protected Physicals.Physical Physical;
 
 		readonly internal Dictionary<int, IProperty> Properties = new();
 
-		protected Entity(Entities context, int id) {
+		protected Entity(Entities context, uint id) {
 			Id      = id;
 			Context = context;
 			context.RegisterEntity(this);
 		}
 
-		public int Id { get; }
+		public uint Id { get; }
 
 		public IProperty[] GetProperties()
 			=> Properties.Values.ToArray();
@@ -38,6 +40,45 @@ namespace Nox.Relay.Runtime {
 		public void SetProperty(IProperty property)
 			=> Properties[property.Key] = property;
 
+		/// <summary>
+		/// Declare a string property of this entity (no-op when it already exists). Its value travels
+		/// as UTF-8 bytes, like any other property value.
+		/// </summary>
+		public bool DefineProperty(string name, string value = null, PropertyFlags flags = PropertyFlags.Synced) {
+			if (string.IsNullOrEmpty(name) || Properties.ContainsKey(name.Hash()))
+				return false;
+
+			SetProperty(new Property(this, name, value, flags));
+			return true;
+		}
+
+		/// <summary>Read a string property, or <c>null</c> when it was never set.</summary>
+		public string GetPropertyString(string name) {
+			if (string.IsNullOrEmpty(name) || !TryGetProperty(name.Hash(), out var property) || property == null)
+				return null;
+
+			return property.Value switch {
+				string str                 => str,
+				byte[] { Length: > 0 } raw => Encoding.UTF8.GetString(raw),
+				_                          => null,
+			};
+		}
+
+		/// <summary>Set a string property and mark it dirty so it is synced on the next tick.</summary>
+		public void SetPropertyString(string name, string value) {
+			if (string.IsNullOrEmpty(name))
+				return;
+
+			if (!TryGetProperty(name.Hash(), out var property) || property == null) {
+				property = new Property(this, name, value, PropertyFlags.Synced);
+				SetProperty(property);
+			} else {
+				property.Value = value;
+			}
+
+			property.IsDirty = true;
+		}
+
 		#region Data
 
 		// Not stored in Properties on purpose: data must never be picked up by the avatar parameter
@@ -49,10 +90,57 @@ namespace Nox.Relay.Runtime {
 
 		#endregion
 
+		#region Parts
+
+		/// <summary>
+		/// Parts of the entity: a rig part of a player, a sub-element of a prop (preview mesh, label,
+		/// icon, ...). The entity only stores them: what a part is and how it is created belongs to the
+		/// concrete entity (<see cref="CreatePart"/>).
+		/// </summary>
+		readonly internal Dictionary<ushort, IPart> Parts = new();
+
+		public IPart[] GetParts()
+			=> Parts.Values.ToArray();
+
+		public bool TryGetPart(ushort id, out IPart part)
+			=> Parts.TryGetValue(id, out part);
+
+		/// <summary>Create the part of the given rig index, or <c>null</c> when the entity has none.</summary>
+		protected virtual IPart CreatePart(ushort index)
+			=> null;
+
+		/// <summary>Get the part of the given rig index, creating it if needed.</summary>
+		public IPart GetOrCreatePart(ushort index) {
+			if (!Parts.TryGetValue(index, out var part)) {
+				part = CreatePart(index);
+				if (part == null)
+					return null;
+				Parts[index] = part;
+			}
+
+			return part;
+		}
+
+		/// <summary>
+		/// Whether a transform sent by <paramref name="senderId"/> must be ignored because the parts
+		/// of this entity are authoritative locally (the local player drives its own rig).
+		/// </summary>
+		public virtual bool IgnoresTransformEcho(uint senderId)
+			=> false;
+
+		#endregion
+
 		virtual protected Physicals.Physical InstantiatePhysical() {
 			Logger.LogWarning($"Entity {Id} does not implement {nameof(InstantiatePhysical)}, cannot create physical representation.", tag: nameof(Entity));
 			return null;
 		}
+
+		/// <summary>
+		/// Whether this entity is replicated by the relay (its id and lifecycle are relay-owned).
+		/// A networked prop returns true; local-only entities return false.
+		/// </summary>
+		public virtual bool IsNetworked
+			=> false;
 
 		virtual protected bool IsVisible
 			=> false;
@@ -71,6 +159,11 @@ namespace Nox.Relay.Runtime {
 		}
 
 		public virtual void Tick() {
+			// Only a relay-replicated entity has properties to push (a local-only entity never leaves
+			// the client).
+			if (!IsNetworked)
+				return;
+
 			// Check if any properties need to be sent and send them
 			// Note: Tick() is already rate-limited by the Room's TPS via Session.Update()
 			if (!_startProperties)
@@ -145,6 +238,7 @@ namespace Nox.Relay.Runtime {
 
 		public virtual void Dispose() {
 			DestroyPhysical(true);
+			Parts.Clear();
 			_data.Clear();
 			Context.UnregisterEntity(this);
 		}
@@ -209,7 +303,8 @@ namespace Nox.Relay.Runtime {
 
 			for (var i = 0; i < dirtyProperties.Count; i += PropertiesRequest.MaxParameters) {
 				var count   = Math.Min(PropertiesRequest.MaxParameters, dirtyProperties.Count - i);
-				var request = PropertiesRequest.Create(ushort.MaxValue, dirtyProperties, i, count);
+				// Target this entity itself: a player targets itself, a prop targets the prop id.
+				var request = PropertiesRequest.Create(Id, dirtyProperties, i, count);
 				_taskBuffer.Add(room.Properties(request));
 			}
 

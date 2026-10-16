@@ -10,14 +10,14 @@ namespace Nox.Relay.Core.Types.PlayerUpdate {
 	/// the current state of the target player.
 	/// </para>
 	/// Wire format (after the outer <c>[iid:u8]</c> prefix added by <c>Room.Emit</c>):
-	/// <code>[player_id:u16][flags:u8][display_name:string?]</code>
+	/// <code>[player_id:u32][flags:u8][display_name:string?]</code>
 	/// </summary>
 	public class PlayerUpdateRequest : RoomRequest {
 		/// <summary>
 		/// The player to update.
-		/// Use <c>ushort.MaxValue</c> or your own player ID to update yourself.
+		/// Use <c>uint.MaxValue</c> or your own player ID to update yourself.
 		/// </summary>
-		public ushort PlayerId = ushort.MaxValue;
+		public uint PlayerId = uint.MaxValue;
 
 		/// <summary>Which fields to update. Set to <see cref="PlayerUpdateFlags.None"/> to request a read-back.</summary>
 		public PlayerUpdateFlags Flags = PlayerUpdateFlags.None;

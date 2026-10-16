@@ -105,7 +105,7 @@ namespace Nox.Relay.Core.Types.Enter {
 					Player = new Player {
 						Room       = Room,
 						Flags      = buffer.ReadEnum<PlayerFlags>(),
-						Id         = buffer.ReadUShort(),
+						Id         = buffer.ReadUInt(),
 						Identifier = new Identifier("u", buffer.ReadUInt(), null, buffer.ReadString()),
 						Display    = buffer.ReadString(),
 						JoinedAt   = buffer.ReadDateTime(),

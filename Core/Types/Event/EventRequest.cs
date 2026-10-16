@@ -32,7 +32,7 @@ namespace Nox.Relay.Core.Types.Event {
 		/// Target IDs of players to receive the event.
 		/// If null or empty, the event is broadcast to all players in the room.
 		/// </summary>
-		public ushort[] TargetIds = Array.Empty<ushort>();
+		public uint[] TargetIds = Array.Empty<uint>();
 
 		/// <summary>
 		/// Creates a broadcast event request.
@@ -58,7 +58,7 @@ namespace Nox.Relay.Core.Types.Event {
 			return new EventRequest {
 				Name      = name,
 				Payload   = payload,
-				TargetIds = Array.Empty<ushort>()
+				TargetIds = Array.Empty<uint>()
 			};
 		}
 
@@ -70,7 +70,7 @@ namespace Nox.Relay.Core.Types.Event {
 		/// <param name="targetIds"></param>
 		/// <returns></returns>
 		/// <exception cref="ArgumentException">If the payload size exceeds <see cref="MaxPayloadSize"/> or if the number of target IDs exceeds <see cref="MaxTargetCount"/> or if no target IDs are provided.</exception>
-		public static EventRequest CreateTargeted(string name, byte[] payload, ushort[] targetIds)
+		public static EventRequest CreateTargeted(string name, byte[] payload, uint[] targetIds)
 			=> CreateTargeted(name.Hash(), payload, targetIds);
 
 		/// <summary>
@@ -82,10 +82,10 @@ namespace Nox.Relay.Core.Types.Event {
 		/// <param name="targetIds"></param>
 		/// <returns></returns>
 		/// <exception cref="ArgumentException">If the payload size exceeds <see cref="MaxPayloadSize"/> or if the number of target IDs exceeds <see cref="MaxTargetCount"/> or if no target IDs are provided.</exception>
-		public static EventRequest CreateTargeted(long name, byte[] payload, ushort[] targetIds) {
+		public static EventRequest CreateTargeted(long name, byte[] payload, uint[] targetIds) {
 			if (payload.Length > MaxPayloadSize)
 				throw new ArgumentException($"Payload size cannot exceed {MaxPayloadSize} bytes.", nameof(payload));
-			targetIds = new HashSet<ushort>(targetIds).ToArray();
+			targetIds = new HashSet<uint>(targetIds).ToArray();
 			return targetIds.Length switch {
 				0                => throw new ArgumentException("Target IDs cannot be empty.", nameof(targetIds)),
 				> MaxTargetCount => throw new ArgumentException($"Target IDs cannot exceed {MaxTargetCount} bytes (got {targetIds.Length} bytes)", nameof(targetIds)),

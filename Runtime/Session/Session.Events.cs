@@ -17,7 +17,7 @@ namespace Nox.Relay.Runtime {
 			=> Room.Event(EventRequest.Broadcast(@event, raw));
 
 		internal void OnEventHandler(EventEvent @event) {
-			var player = InterEntities.GetEntity<Player>(@event.SenderId);
+			var player = _entities.GetEntity<Player>(@event.SenderId);
 			if (player == null) {
 				Logger.LogWarning($"Player with ID {@event.SenderId} not found for Event event", tag: Tag);
 				return;
@@ -26,7 +26,7 @@ namespace Nox.Relay.Runtime {
 			Main.CoreAPI.EventAPI.Emit("session_event_triggered", this, @event.Name, @event.Payload, player);
 			OnEventReceived.Invoke(@event.Name, @event.Payload, player);
 
-			foreach (var module in GetAllModules())
+			foreach (var module in GetModules())
 				module.OnEvent(@event.Name, @event.Payload, player);
 		}
 	}

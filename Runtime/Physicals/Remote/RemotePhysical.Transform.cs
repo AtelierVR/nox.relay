@@ -1,7 +1,6 @@
 using System.Collections.Generic;
-using Nox.Avatars.Rigging;
 using Nox.CCK.Avatars.Rigging;
-using Nox.CCK.Players;
+using Nox.CCK.Entities;
 using UnityEngine;
 
 namespace Nox.Relay.Runtime.Physicals {
@@ -50,7 +49,7 @@ namespace Nox.Relay.Runtime.Physicals {
 			_tickInterval = tps > 0 ? 1f / tps : 0.05f;
 
 			foreach (var (partId, part) in Reference.Parts) {
-				var rig = partId.ToPlayerRig();
+				var rig = partId.ToEntityRig();
 
 				// A part that arrives is a bone the owner drives from a tracker: declaring it here - the controller
 				// channel, exactly what the owner's FullBodyCalibration does before writing its target - is what makes
@@ -79,16 +78,16 @@ namespace Nox.Relay.Runtime.Physicals {
 					};
 				} else {
 					if (Vector3.Distance(newTargetPos, state.TargetPosition) > threshold) {
-						state.StartPosition  = rig == PlayerRig.Base ? transform.position : state.TargetPosition;
+						state.StartPosition  = rig == EntityRig.Base ? transform.position : state.TargetPosition;
 						state.TargetPosition = newTargetPos;
 						state.PosTime        = 0f;
 					}
 					if (Quaternion.Angle(newTargetRot, state.TargetRotation) > threshold) {
-						state.StartRotation  = rig == PlayerRig.Base ? transform.rotation : state.TargetRotation;
+						state.StartRotation  = rig == EntityRig.Base ? transform.rotation : state.TargetRotation;
 						state.TargetRotation = newTargetRot;
 						state.RotTime        = 0f;
 					}
-					if (rig == PlayerRig.Base && Vector3.Distance(newTargetSca, state.TargetScale) > threshold) {
+					if (rig == EntityRig.Base && Vector3.Distance(newTargetSca, state.TargetScale) > threshold) {
 						state.StartScale  = transform.localScale;
 						state.TargetScale = newTargetSca;
 						state.ScaleTime   = 0f;
@@ -103,7 +102,7 @@ namespace Nox.Relay.Runtime.Physicals {
 				var tRot   = Smoothstep(Mathf.Clamp01(state.RotTime   / _tickInterval));
 				var tScale = Smoothstep(Mathf.Clamp01(state.ScaleTime / _tickInterval));
 
-				if (rig == PlayerRig.Base) {
+				if (rig == EntityRig.Base) {
 					// Position
 					if (Vector3.Distance(state.StartPosition, state.TargetPosition) > threshold * 0.1f) {
 						transform.position = Vector3.Lerp(state.StartPosition, state.TargetPosition, tPos);
@@ -154,11 +153,11 @@ namespace Nox.Relay.Runtime.Physicals {
 		/// <c>Head</c> is left out on purpose - it is always driven and the backend already has it active, so
 		/// declaring it would only override the avatar's own choice.
 		/// </summary>
-		private static bool IsTrackerDriven(PlayerRig rig) {
-			var id = (ushort)rig;
-			return (id >= (ushort)PlayerRig.Hips && id <= (ushort)PlayerRig.Neck)
-			       || (id >= (ushort)PlayerRig.LeftShoulder && id <= (ushort)PlayerRig.RightHand)
-			       || (id >= (ushort)PlayerRig.LeftUpperLeg && id <= (ushort)PlayerRig.RightToes);
+		private static bool IsTrackerDriven(EntityRig rig) {
+			var id = rig.ToIndex();
+			return (id >= EntityRig.Hips.ToIndex() && id <= EntityRig.Neck.ToIndex())
+			       || (id >= EntityRig.LeftShoulder.ToIndex() && id <= EntityRig.RightHand.ToIndex())
+			       || (id >= EntityRig.LeftUpperLeg.ToIndex() && id <= EntityRig.RightToes.ToIndex());
 		}
 
 	}

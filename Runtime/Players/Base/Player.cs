@@ -1,10 +1,8 @@
-using System.Collections.Generic;
 using System.Linq;
 using Cysharp.Threading.Tasks;
 using Nox.Avatars.Players;
-using Nox.CCK.Players;
+using Nox.CCK.Entities;
 using Nox.CCK.Utils;
-using Nox.Entities;
 using Nox.Audio.Players;
 using Nox.Nameplate;
 using Nox.Players;
@@ -41,21 +39,6 @@ namespace Nox.Relay.Runtime.Players {
 		}
 
 
-		readonly internal Dictionary<ushort, IPart> Parts = new();
-
-		public IPart[] GetParts()
-			=> Parts.Values.ToArray();
-
-		public bool TryGetPart(ushort name, out IPart part) {
-			if (Parts.TryGetValue(name, out var p)) {
-				part = p;
-				return true;
-			}
-
-			part = null;
-			return false;
-		}
-
 		public string Display {
 			get => Reference?.Display ?? $"Player #{Id}";
 			set {
@@ -82,17 +65,17 @@ namespace Nox.Relay.Runtime.Players {
 		public bool IsMaster
 			=> Context.MasterId == Id;
 
+		/// <summary>A player is replicated by the relay (it owns its id and lifecycle).</summary>
+		public override bool IsNetworked
+			=> true;
+
 		public abstract bool IsLocal { get; }
 
-		protected abstract IPart CreatePart(ushort index);
-
-		public IPart GetOrCreatePart(ushort index) {
-			if (!Parts.TryGetValue(index, out var p)) {
-				p = CreatePart(index);
-				Parts[index] = p;
-			}
-			return p;
-		}
+		/// <summary>
+		/// The local player drives its own parts: a transform echoed back by the relay is ignored.
+		/// </summary>
+		public override bool IgnoresTransformEcho(uint senderId)
+			=> IsLocal && senderId == Id;
 
 		public void Teleport(Vector3 position, Quaternion rotation) {
 			Position = position;
@@ -123,28 +106,28 @@ namespace Nox.Relay.Runtime.Players {
 		}
 
 		public Vector3 Position {
-			get => Parts.TryGetValue(PlayerRig.Base.ToIndex(), out var p) ? p.Position : Vector3.zero;
-			set => GetOrCreatePart(PlayerRig.Base.ToIndex()).Position = value;
+			get => Parts.TryGetValue(EntityRig.Base.ToIndex(), out var p) ? p.Position : Vector3.zero;
+			set => GetOrCreatePart(EntityRig.Base.ToIndex()).Position = value;
 		}
 
 		public Quaternion Rotation {
-			get => Parts.TryGetValue(PlayerRig.Base.ToIndex(), out var p) ? p.Rotation : Quaternion.identity;
-			set => GetOrCreatePart(PlayerRig.Base.ToIndex()).Rotation = value;
+			get => Parts.TryGetValue(EntityRig.Base.ToIndex(), out var p) ? p.Rotation : Quaternion.identity;
+			set => GetOrCreatePart(EntityRig.Base.ToIndex()).Rotation = value;
 		}
 
 		public Vector3 Scale {
-			get => Parts.TryGetValue(PlayerRig.Base.ToIndex(), out var p) ? p.Scale : Vector3.one;
-			set => GetOrCreatePart(PlayerRig.Base.ToIndex()).Scale = value;
+			get => Parts.TryGetValue(EntityRig.Base.ToIndex(), out var p) ? p.Scale : Vector3.one;
+			set => GetOrCreatePart(EntityRig.Base.ToIndex()).Scale = value;
 		}
 
 		public Vector3 Velocity {
-			get => Parts.TryGetValue(PlayerRig.Base.ToIndex(), out var p) ? p.Velocity : Vector3.zero;
-			set => GetOrCreatePart(PlayerRig.Base.ToIndex()).Velocity = value;
+			get => Parts.TryGetValue(EntityRig.Base.ToIndex(), out var p) ? p.Velocity : Vector3.zero;
+			set => GetOrCreatePart(EntityRig.Base.ToIndex()).Velocity = value;
 		}
 
 		public Vector3 Angular {
-			get => Parts.TryGetValue(PlayerRig.Base.ToIndex(), out var p) ? p.Angular : Vector3.zero;
-			set => GetOrCreatePart(PlayerRig.Base.ToIndex()).Angular = value;
+			get => Parts.TryGetValue(EntityRig.Base.ToIndex(), out var p) ? p.Angular : Vector3.zero;
+			set => GetOrCreatePart(EntityRig.Base.ToIndex()).Angular = value;
 		}
 
 		public override string ToString() {

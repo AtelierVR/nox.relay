@@ -7,16 +7,17 @@ using UnityEngine.Events;
 
 namespace Nox.Relay.Runtime {
 	public class Entities : IEntities {
-		public const int InvalidEntityId = -1;
+		/// <summary>Id used when an entity has none (local-only before creation, no master, ...).</summary>
+		public const uint InvalidEntityId = uint.MaxValue;
 
 		internal Entities(Session context)
 			=> Context = context;
 
 		readonly internal Session Context;
 
-		private int _masterId = InvalidEntityId;
+		private uint _masterId = InvalidEntityId;
 
-		public int MasterId {
+		public uint MasterId {
 			get => _masterId;
 			set {
 				if (_masterId == value)
@@ -28,7 +29,7 @@ namespace Nox.Relay.Runtime {
 			}
 		}
 
-		public int LocalId { get; set; } = InvalidEntityId;
+		public uint LocalId { get; set; } = InvalidEntityId;
 
 		public LocalPlayer LocalPlayer
 			=> GetEntity<LocalPlayer>(LocalId);
@@ -36,7 +37,7 @@ namespace Nox.Relay.Runtime {
 		public Player MasterPlayer
 			=> GetEntity<Player>(MasterId);
 
-		private readonly Dictionary<int, Entity> _entities = new();
+		private readonly Dictionary<uint, Entity> _entities = new();
 
 		internal void RegisterEntity(Entity entity) {
 			if (!_entities.TryAdd(entity.Id, entity)) {
@@ -58,10 +59,10 @@ namespace Nox.Relay.Runtime {
 			OnEntityRemoved.Invoke(entity);
 		}
 
-		public IEntity GetEntity(int id)
+		public IEntity GetEntity(uint id)
 			=> _entities.GetValueOrDefault(id);
 
-		public T GetEntity<T>(int id) where T : IEntity
+		public T GetEntity<T>(uint id) where T : IEntity
 			=> GetEntity(id) is T e ? e : default;
 
 		public IEntity[] GetEntities()
@@ -70,10 +71,10 @@ namespace Nox.Relay.Runtime {
 		public T[] GetEntities<T>() where T : IEntity
 			=> _entities.Values.OfType<T>().ToArray();
 
-		public bool HasEntity(int id)
+		public bool HasEntity(uint id)
 			=> _entities.ContainsKey(id);
 
-		public bool HasEntity<T>(int id) where T : IEntity
+		public bool HasEntity<T>(uint id) where T : IEntity
 			=> GetEntity(id) is T;
 
 		public int GetCount()

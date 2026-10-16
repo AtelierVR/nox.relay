@@ -10,7 +10,7 @@ namespace Nox.Relay.Core.Types.Event {
 		/// <summary>
 		/// Id of <see cref="Nox.Relay.Core.Players.Player"/> who sent the event.
 		/// </summary>
-		public ushort SenderId;
+		public uint SenderId;
 		
 		/// <summary>
 		/// Name of the event.
@@ -26,10 +26,10 @@ namespace Nox.Relay.Core.Types.Event {
 		public override bool FromBuffer(Buffer buffer) {
 			buffer.Start();
 
-			SenderId = buffer.ReadUShort();
-			Name     = buffer.ReadLong();
+			SenderId   = buffer.ReadUInt();
+			Name       = buffer.ReadLong();
 			var length = buffer.ReadUShort();
-			Payload = buffer.ReadBytes(length);
+			Payload    = buffer.ReadBytes(length);
 
 			return true;
 		}

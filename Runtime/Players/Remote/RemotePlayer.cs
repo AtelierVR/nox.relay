@@ -1,4 +1,4 @@
-using Nox.CCK.Players;
+using Nox.CCK.Entities;
 using Nox.Entities;
 using CorePlayer = Nox.Relay.Core.Players.Player;
 
@@ -22,8 +22,8 @@ namespace Nox.Relay.Runtime.Players {
 
 		private void InitializeDefaultParts() {
 			// Create base part at minimum
-			if (!Parts.ContainsKey(PlayerRig.Base.ToIndex()))
-				Parts[PlayerRig.Base.ToIndex()] = new RemotePart(this, PlayerRig.Base.ToIndex());
+			if (!Parts.ContainsKey(EntityRig.Base.ToIndex()))
+				Parts[EntityRig.Base.ToIndex()] = new RemotePart(this, EntityRig.Base.ToIndex());
 		}
 
 		/// <summary>

@@ -16,6 +16,16 @@ using Player = Nox.Relay.Runtime.Players.Player;
 namespace Nox.Relay.Runtime {
 	/// <summary>Player join/enter/leave/quit handling, authority transfer and visibility.</summary>
 	public sealed partial class Session {
+		public IPlayer MasterPlayer {
+			get => _entities.GetEntity<Player>(_entities.MasterId);
+			set => Logger.LogWarning("Setting the master player is not supported in relay sessions.", tag: Tag);
+		}
+
+		public IPlayer LocalPlayer {
+			get => _entities.GetEntity<Player>(_entities.LocalId);
+			set => Logger.LogWarning("Setting the local player is not supported in relay sessions.", tag: Tag);
+		}
+
 		public UnityEvent<IPlayer> OnPlayerJoined { get; } = new();
 		public UnityEvent<IPlayer> OnPlayerLeft { get; } = new();
 		public UnityEvent<IPlayer, IPlayer> OnAuthorityTransferred { get; } = new();
@@ -24,7 +34,7 @@ namespace Nox.Relay.Runtime {
 
 		internal void OnPlayerQuitedHandler(QuitEvent @event) {
 			Logger.LogDebug($"OnQuit: {@event}", tag: Tag);
-			var player = InterEntities.LocalPlayer;
+			var player = _entities.LocalPlayer;
 			if (player == null) {
 				Logger.LogWarning("Local player not found for Quit event", tag: Tag);
 				return;
@@ -36,7 +46,7 @@ namespace Nox.Relay.Runtime {
 
 		internal void OnPlayerJoinedHandler(JoinEvent @event) {
 			Logger.LogDebug($"OnJoin: {@event} {@event.Player.Flags}", tag: Tag);
-			var player = new RemotePlayer(InterEntities, @event.Player) {
+			var player = new RemotePlayer(_entities, @event.Player) {
 				Platform = @event.Platform.GetPlatformFromName(),
 				Engine   = @event.Engine.GetEngineFromName()
 			};
@@ -50,7 +60,7 @@ namespace Nox.Relay.Runtime {
 
 		private void OnPlayerJoinedOrEnteredHandler(Player player) {
 			if (player.Reference.Flags.HasFlag(PlayerFlags.RoomMaster))
-				InterEntities.MasterId = player.Id;
+				_entities.MasterId = player.Id;
 
 			if (player.IsLocal)
 				player.Respawn();
@@ -58,18 +68,18 @@ namespace Nox.Relay.Runtime {
 			Main.CoreAPI.EventAPI.Emit("session_player_joined", this, player);
 			OnPlayerJoined.Invoke(player);
 
-			foreach (var module in GetAllModules())
+			foreach (var module in GetModules())
 				module.OnPlayerJoined(player);
 		}
 
 		private void OnPlayerLeftOrQuitedHandler(Player player) {
-			if (InterEntities.MasterId == player.Id)
-				InterEntities.MasterId = Nox.Relay.Runtime.Entities.InvalidEntityId;
+			if (_entities.MasterId == player.Id)
+				_entities.MasterId = Runtime.Entities.InvalidEntityId;
 
 			Main.CoreAPI.EventAPI.Emit("session_player_left", this, player);
 			OnPlayerLeft.Invoke(player);
 
-			foreach (var module in GetAllModules())
+			foreach (var module in GetModules())
 				module.OnPlayerLeft(player);
 
 			player.Dispose();
@@ -80,8 +90,8 @@ namespace Nox.Relay.Runtime {
 
 		internal void OnPlayerEnteredHandler(EnterResponse @event, bool travel) {
 			Logger.LogDebug($"OnEnter: {@event}", tag: Tag);
-			var player = new LocalPlayer(InterEntities, @event.Player);
-			InterEntities.LocalId = player.Id;
+			var player = new LocalPlayer(_entities, @event.Player);
+			_entities.LocalId = player.Id;
 
 			Room                        = @event.Room;
 			Room.Tps                    = @event.Tps;
@@ -109,7 +119,7 @@ namespace Nox.Relay.Runtime {
 
 		internal void OnPlayerLeftHandler(LeaveEvent @event) {
 			Logger.LogDebug($"OnLeave: {@event}", tag: Tag);
-			var player = InterEntities.GetEntity<RemotePlayer>(@event.PlayerId);
+			var player = _entities.GetEntity<RemotePlayer>(@event.PlayerId);
 			if (player == null) {
 				Logger.LogWarning($"Player with ID {@event.PlayerId} not found for Leave event");
 				return;
@@ -125,7 +135,7 @@ namespace Nox.Relay.Runtime {
 			Main.CoreAPI.EventAPI.Emit("session_authority_transferred", this, @new, old);
 			OnAuthorityTransferred.Invoke(@new, old);
 
-			foreach (var module in GetAllModules())
+			foreach (var module in GetModules())
 				module.OnAuthorityTransferred(@new, old);
 		}
 
@@ -135,7 +145,7 @@ namespace Nox.Relay.Runtime {
 			Main.CoreAPI.EventAPI.Emit("session_player_visibility_changed", this, player, isVisible);
 			OnPlayerVisibility.Invoke(player, isVisible);
 
-			foreach (var module in GetAllModules())
+			foreach (var module in GetModules())
 				module.OnPlayerVisibilityChanged(player, isVisible);
 		}
 	}

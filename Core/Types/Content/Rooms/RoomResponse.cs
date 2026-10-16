@@ -1,6 +1,5 @@
 using Nox.Relay.Core.Rooms;
 using Nox.Relay.Core.Types.Contents;
-using Buffer = Nox.CCK.Utils.Buffer;
 
 namespace Nox.Relay.Core.Types.Content.Rooms {
     /// <summary>

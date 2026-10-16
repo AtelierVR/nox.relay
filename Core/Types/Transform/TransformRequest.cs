@@ -1,5 +1,5 @@
 using System;
-using Nox.CCK.Players;
+using Nox.CCK.Entities;
 using Nox.CCK.Utils;
 using Nox.Entities;
 using Nox.Relay.Core.Types.Contents.Rooms;
@@ -23,9 +23,9 @@ namespace Nox.Relay.Core.Types.Transform {
 		/// <summary>
 		/// Id of the entity to apply the transform to.
 		/// <remarks>Is filled when <see cref="Type"/> is <see cref="TransformType.EntityPart"/>.</remarks>
-		/// If the Id is <see cref="ushort.MaxValue"/>, the transform applies to self player.
+		/// If the Id is <see cref="uint.MaxValue"/>, the transform applies to self player.
 		/// </summary>
-		public ushort EntityId;
+		public uint EntityId;
 
 		/// <summary>
 		/// Rig index of the part to apply the transform to.
@@ -41,17 +41,18 @@ namespace Nox.Relay.Core.Types.Transform {
 		/// And the first segment (before the first slash) is usually the index of the dimension.
 		/// </summary>
 		public string Path;
+        public static readonly uint SELF = uint.MaxValue;
 
-		/// <summary>
-		/// Creates a <see cref="TransformRequest"/> for a specific part of a player.
-		/// </summary>
-		/// <param name="playerId"></param>
-		/// <param name="part"></param>
-		/// <returns></returns>
-		public static TransformRequest CreatePart(ushort playerId, IPart part)
+        /// <summary>
+        /// Creates a <see cref="TransformRequest"/> for a specific part of an entity.
+        /// </summary>
+        /// <param name="entityId">Id of the entity (a player, a prop, ...).</param>
+        /// <param name="part">Part of the entity to move.</param>
+        /// <returns></returns>
+        public static TransformRequest CreatePart(uint entityId, IPart part)
 			=> new() {
 				Type      = TransformType.EntityPart,
-				EntityId  = playerId,
+				EntityId  = entityId,
 				PartRig   = part.Id,
 				Transform = ToTransform(part)
 			};
@@ -91,7 +92,7 @@ namespace Nox.Relay.Core.Types.Transform {
 		/// <param name="rig"></param>
 		/// <param name="transform"></param>
 		/// <returns></returns>
-		public static TransformRequest CreateEntity(ushort entityId, ushort rig, TransformObject transform)
+		public static TransformRequest CreateEntity(uint entityId, ushort rig, TransformObject transform)
 			=> new() {
 				Type      = TransformType.EntityPart,
 				PartRig   = rig,
@@ -100,13 +101,14 @@ namespace Nox.Relay.Core.Types.Transform {
 			};
 
 		/// <summary>
-		/// Creates a <see cref="TransformRequest"/> for a specific part of the player entity.
+		/// Creates a <see cref="TransformRequest"/> for the base part of an entity
+		/// (the part carrying the entity transform itself).
 		/// </summary>
 		/// <param name="entityId"></param>
 		/// <param name="transform"></param>
 		/// <returns></returns>
-		public static TransformRequest CreateEntity(ushort entityId, TransformObject transform)
-			=> CreateEntity(entityId, PlayerRig.Base.ToIndex(), transform);
+		public static TransformRequest CreateEntity(uint entityId, TransformObject transform)
+			=> CreateEntity(entityId, EntityRig.Base.ToIndex(), transform);
 
 		public override Buffer ToBuffer() {
 			var buffer = new Buffer();

@@ -1,5 +1,3 @@
-using Nox.CCK.Utils;
-using Nox.Relay.Core.Players;
 using Nox.Relay.Core.Types.Content.Rooms;
 using Buffer = Nox.CCK.Utils.Buffer;
 
@@ -9,7 +7,7 @@ namespace Nox.Relay.Core.Types.PlayerUpdate {
 	/// player-update broadcast packets (<see cref="PlayerUpdateResult.Change"/>).
 	/// <para>
 	/// Wire format (after outer <c>[iid:u8]</c> is stripped):
-	/// <code>[result:u8][player_id:u16][flags:u8][display_name:string?][player_flags:u32?]</code>
+	/// <code>[result:u8][player_id:u32][flags:u8][display_name:string?][player_flags:u32?]</code>
 	/// </para>
 	/// </summary>
 	public class PlayerUpdateResponse : RoomResponse {
@@ -17,7 +15,7 @@ namespace Nox.Relay.Core.Types.PlayerUpdate {
 		public PlayerUpdateResult Result;
 
 		/// <summary>The player whose data was updated.</summary>
-		public ushort PlayerId;
+		public uint PlayerId;
 
 		/// <summary>Which fields are present in this packet.</summary>
 		public PlayerUpdateFlags Flags;
@@ -35,7 +33,7 @@ namespace Nox.Relay.Core.Types.PlayerUpdate {
 			buffer.Start();
 
 			Result   = buffer.ReadEnum<PlayerUpdateResult>();
-			PlayerId = buffer.ReadUShort();
+			PlayerId = buffer.ReadUInt();
 			Flags    = buffer.ReadEnum<PlayerUpdateFlags>();
 
 			if (Flags.HasFlag(PlayerUpdateFlags.DisplayName))

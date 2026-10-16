@@ -16,9 +16,9 @@ namespace Nox.Relay.Core.Types.Properties {
 
 		/// <summary>
 		/// The ID of the entity whose properties are being modified.
-		/// If the Id is <see cref="ushort.MaxValue"/>, the properties apply to self player.
+		/// If the Id is <see cref="uint.MaxValue"/>, the properties apply to self player.
 		/// </summary>
-		public ushort EntityId;
+		public uint EntityId;
 
 		/// <summary>
 		/// The parameters to set or clear, where the key is the property key
@@ -31,57 +31,57 @@ namespace Nox.Relay.Core.Types.Properties {
 		/// <summary>
 		/// Creates a <see cref="PropertiesRequest"/> to set properties for a specific entity.
 		/// </summary>
-		/// <param name="playerId"></param>
+		/// <param name="entityId"></param>
 		/// <param name="parameters"></param>
 		/// <returns></returns>
 		/// <exception cref="ArgumentException"></exception>
-		public static PropertiesRequest Create(ushort playerId, IProperty[] parameters) {
+		public static PropertiesRequest Create(uint entityId, IProperty[] parameters) {
 			if (parameters.Length > MaxParameters)
 				throw new ArgumentException($"Cannot have more than {MaxParameters} parameters in an property request.", nameof(parameters));
 			var dict = new Dictionary<int, byte[]>(parameters.Length);
 			foreach (var p in parameters)
 				dict[p.Key] = p.Serialize();
-			return new PropertiesRequest { EntityId = playerId, Parameters = dict };
+			return new PropertiesRequest { EntityId = entityId, Parameters = dict };
 		}
 
 		/// <summary>
 		/// Creates a <see cref="PropertiesRequest"/> from a slice of a list, avoiding LINQ allocations.
 		/// </summary>
-		public static PropertiesRequest Create(ushort playerId, List<IProperty> parameters, int offset, int count) {
+		public static PropertiesRequest Create(uint entityId, List<IProperty> parameters, int offset, int count) {
 			var dict = new Dictionary<int, byte[]>(count);
 			var end  = offset + count;
 			for (var i = offset; i < end; i++) {
 				var p = parameters[i];
 				dict[p.Key] = p.Serialize();
 			}
-			return new PropertiesRequest { EntityId = playerId, Parameters = dict };
+			return new PropertiesRequest { EntityId = entityId, Parameters = dict };
 		}
 
 		/// <summary>
 		/// Creates a <see cref="PropertiesRequest"/> to clear all properties for a specific entity.
 		/// </summary>
-		/// <param name="playerId"></param>
+		/// <param name="entityId"></param>
 		/// <returns></returns>
-		public static PropertiesRequest ClearAll(ushort playerId)
+		public static PropertiesRequest ClearAll(uint entityId)
 			=> new() {
-				EntityId   = playerId,
+				EntityId   = entityId,
 				Parameters = new Dictionary<int, byte[]>()
 			};
 
 		/// <summary>
 		/// Creates a <see cref="PropertiesRequest"/> to clear specific properties for a specific entity.
 		/// </summary>
-		/// <param name="playerId"></param>
+		/// <param name="entityId"></param>
 		/// <param name="parameters"></param>
 		/// <returns></returns>
 		/// <exception cref="ArgumentException"></exception>
-		public static PropertiesRequest Clear(ushort playerId, IProperty[] parameters) {
+		public static PropertiesRequest Clear(uint entityId, IProperty[] parameters) {
 			if (parameters.Length > MaxParameters)
 				throw new ArgumentException($"Cannot have more than {MaxParameters} parameters in an property clear request.", nameof(parameters));
 			var dict = new Dictionary<int, byte[]>(parameters.Length);
 			foreach (var p in parameters)
 				dict[p.Key] = Array.Empty<byte>();
-			return new PropertiesRequest { EntityId = playerId, Parameters = dict };
+			return new PropertiesRequest { EntityId = entityId, Parameters = dict };
 		}
 
 		public override Buffer ToBuffer() {

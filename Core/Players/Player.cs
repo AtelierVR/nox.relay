@@ -20,7 +20,7 @@ namespace Nox.Relay.Core.Players {
 		/// <summary>
 		/// The unique identifier of the player within the room.
 		/// </summary>
-		public ushort Id;
+		public uint Id;
 
 		/// <summary>
 		/// The user identifier of the player.

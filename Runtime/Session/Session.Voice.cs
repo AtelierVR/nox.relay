@@ -29,8 +29,8 @@ namespace Nox.Relay.Runtime {
 		/// </summary>
 		private void OnStreamReceived(StreamEvent @event) {
 			var target = @event.SubType switch {
-				StreamSubType.Sample  => InterEntities.GetEntity<Player>(@event.PlayerId),
-				StreamSubType.Control => InterEntities.GetEntity<Player>(@event.SpeakerId),
+				StreamSubType.Sample  => _entities.GetEntity<Player>(@event.PlayerId),
+				StreamSubType.Control => _entities.GetEntity<Player>(@event.SpeakerId),
 				_                     => null
 			};
 

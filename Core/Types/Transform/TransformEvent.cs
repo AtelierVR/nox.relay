@@ -19,10 +19,10 @@ namespace Nox.Relay.Core.Types.Transform {
 		public TransformObject Transform;
 
 		/// <summary>
-		/// The ID of the entity (usually a player) whose part is being transformed.
+		/// The ID of the entity (a player, a prop, ...) whose part is being transformed.
 		/// <remarks>Is filled when <see cref="Type"/> is <see cref="TransformType.EntityPart"/>.</remarks>
 		/// </summary>
-		public ushort EntityId;
+		public uint EntityId;
 
 		/// <summary>
 		/// The rig index of the part being transformed.
@@ -42,7 +42,7 @@ namespace Nox.Relay.Core.Types.Transform {
 		/// <summary>
 		/// Id of <see cref="Nox.Relay.Core.Players.Player"/> who sent the transform event.
 		/// </summary>
-		public ushort SenderId;
+		public uint SenderId;
 
 		public override bool FromBuffer(Buffer buffer) {
 			buffer.Start();
@@ -51,7 +51,7 @@ namespace Nox.Relay.Core.Types.Transform {
 
 			switch (Type) {
 				case TransformType.EntityPart:
-					EntityId = buffer.ReadUShort();
+					EntityId = buffer.ReadUInt();
 					PartRig  = buffer.ReadUShort();
 					break;
 				case TransformType.ByPath:
@@ -74,7 +74,7 @@ namespace Nox.Relay.Core.Types.Transform {
 			if (flags.HasFlag(TransformFlags.Angular))
 				Transform.SetAngular(buffer.ReadVector3());
 
-			SenderId = buffer.ReadUShort();
+			SenderId = buffer.ReadUInt();
 			return true;
 		}
 

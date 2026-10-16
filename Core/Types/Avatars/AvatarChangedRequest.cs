@@ -10,14 +10,14 @@ namespace Nox.Relay.Core.Types.Avatars {
 	/// </summary>
 	/// <remarks>
 	/// Wire format (after the iid byte prepended by Room.Emit):
-	/// [pid: u16][avatar_id: u32][server: string][version: u16]
+	/// [pid: u32][avatar_id: u32][server: string][version: u16]
 	/// </remarks>
 	public class AvatarChangedRequest : RoomRequest {
 		/// <summary>
 		/// The ID of the player whose avatar should be changed.
-		/// Use <see cref="ushort.MaxValue"/> to change the local player's own avatar.
+		/// Use <see cref="uint.MaxValue"/> to change the local player's own avatar.
 		/// </summary>
-		public ushort PlayerId = ushort.MaxValue;
+		public uint PlayerId = uint.MaxValue;
 
 		/// <summary>
 		/// The identifier of the new avatar to apply.
@@ -31,7 +31,7 @@ namespace Nox.Relay.Core.Types.Avatars {
 		/// <returns></returns>
 		public static AvatarChangedRequest Self(Identifier avatar)
 			=> new() {
-				PlayerId   = ushort.MaxValue,
+				PlayerId   = uint.MaxValue,
 				Identifier = avatar
 			};
 
@@ -41,7 +41,7 @@ namespace Nox.Relay.Core.Types.Avatars {
 		/// <param name="playerId">The target player's ID.</param>
 		/// <param name="avatar">The new avatar identifier.</param>
 		/// <returns></returns>
-		public static AvatarChangedRequest For(ushort playerId, Identifier avatar)
+		public static AvatarChangedRequest For(uint playerId, Identifier avatar)
 			=> new() {
 				PlayerId   = playerId,
 				Identifier = avatar
@@ -50,7 +50,7 @@ namespace Nox.Relay.Core.Types.Avatars {
 		public override Buffer ToBuffer() {
 			var buffer = new Buffer();
 
-			// pid — ushort.MaxValue means "self" on the server side
+			// pid — uint.MaxValue means "self" on the server side
 			buffer.Write(PlayerId);
 
 			// avatar_id, server, version
