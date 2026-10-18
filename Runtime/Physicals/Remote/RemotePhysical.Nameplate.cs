@@ -50,6 +50,9 @@ namespace Nox.Relay.Runtime.Physicals {
 		private Transform   _headBone;
 		private bool        _creatingNameplate;
 
+		/// <summary>Relation icon currently shown on the status row (null when none).</summary>
+		private string _relationIcon;
+
 		// Avatar Height parameter, cached until invalidated: Physical.OnParameterChanged (raised by the
 		// player once the avatar module registered its parameters) and any avatar change reset it.
 		private IParameter _heightParameter;
@@ -250,10 +253,8 @@ namespace Nox.Relay.Runtime.Physicals {
 			if (!plate.IsAlive())
 				return;
 
-			var icon = RelationIcon(user?.Relations);
-			plate.Set(Keys.STATUS, string.IsNullOrEmpty(icon)
-				? new Dictionary<string, string>()
-				: new Dictionary<string, string> { [RelationIconPath(icon)] = icon });
+			_relationIcon = RelationIcon(user?.Relations);
+			PushVoice();
 		}
 
 		/// <summary>
@@ -317,15 +318,28 @@ namespace Nox.Relay.Runtime.Physicals {
 
 		/// <summary>
 		/// Pushes the level of the player's captured audio (<c>Keys.VOICE</c>), driving the alpha of
-		/// the plate's voice image. Called every frame: the plate ignores an unchanged value. A remote
-		/// player's playback is exposed as its <see cref="IPlayerVoice.Audio"/> by the voice provider.
+		/// the plate's voice image, then the status icon row (<c>Keys.STATUS</c>): the relation icon,
+		/// then the voice flags. A player is shown muted when its owner self-muted or when <b>we</b>
+		/// muted it (the listener mute is local, so other clients do not see it), and deafened when its
+		/// owner announced it. Called every frame: the plate ignores an unchanged value.
 		/// </summary>
 		private void PushVoice() {
 			var plate = _nameplate;
-			if (!plate.IsAlive())
+			var player = Reference;
+			if (!plate.IsAlive() || player == null)
 				return;
 
-			plate.Set(Keys.VOICE, Reference?.Audio?.Level ?? 0f);
+			plate.Set(Keys.VOICE, player.Audio?.Level ?? 0f);
+
+			var status = new Dictionary<string, string>();
+			if (!string.IsNullOrEmpty(_relationIcon))
+				status[RelationIconPath(_relationIcon)] = _relationIcon;
+			if (player.IsMutedForView)
+				status[NameplateExtensions.StatusIcon("mute")] = "mute";
+			if (player.IsDeafened)
+				status[NameplateExtensions.StatusIcon("deaf")] = "deaf";
+
+			plate.Set(Keys.STATUS, status);
 		}
 
 		private void DisposeNameplate() {

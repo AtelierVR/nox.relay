@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Nox.CCK.Nameplate;
 using Keys = Nox.CCK.Nameplate.Constants;
 
@@ -12,10 +13,11 @@ namespace Nox.Relay.Runtime.Players {
 	/// </summary>
 	public partial class LocalPlayer {
 		/// <summary>
-		/// Pushes the level of the captured audio (<see cref="Audio"/>, the microphone bound by the
-		/// controller's connector) onto the controller's plate (<c>Keys.VOICE</c>), driving the alpha
-		/// of the plate's voice image. Called every frame by <see cref="Update"/>: the plate ignores
-		/// an unchanged value.
+		/// Pushes the level of the captured audio (<see cref="Audio"/>, the microphone bound by
+		/// <see cref="StartVoice"/>) onto the controller's plate (<c>Keys.VOICE</c>), driving the alpha
+		/// of the plate's voice image, then its voice status (<c>Keys.STATUS</c>: muted while
+		/// self-muted, deafened while the voice channel is muted). Called every frame by
+		/// <see cref="Update"/>: the plate ignores an unchanged value.
 		/// </summary>
 		internal void UpdateNameplate() {
 			if (Main.ControllerAPI?.Current is not INameplateHolder holder)
@@ -26,6 +28,14 @@ namespace Nox.Relay.Runtime.Players {
 				return;
 
 			plate.Set(Keys.VOICE, Audio?.Level ?? 0f);
+
+			var status = new Dictionary<string, string>();
+			if (IsSelfMuted)
+				status[NameplateExtensions.StatusIcon("mute")] = "mute";
+			if (IsDeafened)
+				status[NameplateExtensions.StatusIcon("deaf")] = "deaf";
+
+			plate.Set(Keys.STATUS, status);
 		}
 	}
 }
