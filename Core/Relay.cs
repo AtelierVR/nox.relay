@@ -26,7 +26,7 @@ namespace Nox.Relay.Core {
 		/// <summary>
 		/// Current protocol version used by the relay system.
 		/// </summary>
-		public const ushort ProtocolVersion = 2;
+		public const ushort ProtocolVersion = 3;
 
 		/// <summary>
 		/// Size of the relay packet header in bytes.
@@ -149,6 +149,9 @@ namespace Nox.Relay.Core {
 				case PacketType.Message:
 					HandleMessage(state, buffer.Clone(HeaderSize, length));
 					break;
+				case PacketType.Transfer:
+					HandleTransfer(state, buffer.Clone(HeaderSize, length));
+					break;
 				case PacketType.Reliable:
 				case PacketType.Authentication:
 				case PacketType.Sessions:
@@ -169,6 +172,18 @@ namespace Nox.Relay.Core {
 			Logger.Log($"Received message from server: {message}", tag: nameof(Relay));
 		}
 
+		private void HandleTransfer(ushort state, Buffer buffer) {
+			buffer.Start();
+			var @event = new Types.Transfer.TransferEvent { State = state, Connection = this };
+			if (!@event.FromBuffer(buffer))
+				return;
+			Logger.Log(
+				@event.IsRelayChange
+					? $"Server requested transfer to {@event.Address} ({@event.Reason})"
+					: $"Server requested move to room {@event.Room} ({@event.Reason})",
+				tag: nameof(Relay));
+			OnTransfer.Invoke(@event);
+		}
 		private void HandleHandshake(ushort state, Buffer buffer) {
 			buffer.Start();
 			var @event = new Types.Handshakes.HandshakeResponse { State = state, Connection = this };
@@ -218,6 +233,12 @@ namespace Nox.Relay.Core {
 		public LatencyResponse LastLatency;
 
 		public UnityEvent<LatencyResponse> OnLatency { get; } = new();
+
+		/// <summary>
+		/// Raised when the relay asks this client to move to another relay.
+		/// The session layer handles the reconnection, but the event lets mods react (UI, logs, metrics).
+		/// </summary>
+		public UnityEvent<Types.Transfer.TransferEvent> OnTransfer { get; } = new();
 
 		/// <summary>
 		/// Gets the client identifier assigned by the server during the last handshake.
@@ -471,14 +492,24 @@ namespace Nox.Relay.Core {
 		/// Performs a handshake with the relay server.
 		/// This establishes the initial connection parameters and retrieves server information.
 		/// </summary>
+		/// <param name="transferToken">
+		/// Optional opaque, client-unique transfer token received from a
+		/// <see cref="Types.Transfer.TransferEvent"/>. When the relay can resolve it the client is
+		/// authenticated immediately and the response carries
+		/// <see cref="Types.Handshakes.HandshakeFlags.Transferred"/>, so no challenge-response is needed.
+		/// </param>
 		/// <returns></returns>
-		public async UniTask<Types.Handshakes.HandshakeResponse> Handshake(CancellationToken token = default)
+		public async UniTask<Types.Handshakes.HandshakeResponse> Handshake(
+			CancellationToken token = default,
+			byte[] transferToken = null
+		)
 			=> await Request<Types.Handshakes.HandshakeResponse>(
 				new Types.Handshakes.HandshakeRequest {
 					ProtocolVersion = ProtocolVersion,
 					Endpoint        = Connector.EndPoint,
 					Engine          = EngineExtensions.CurrentEngine,
-					Platform        = PlatformExtensions.CurrentPlatform
+					Platform        = PlatformExtensions.CurrentPlatform,
+					TransferToken   = transferToken
 				},
 				PacketType.Handshake,
 				PacketType.Handshake,
@@ -611,6 +642,34 @@ namespace Nox.Relay.Core {
 				total = sessions.PageCount;
 				foreach (var inst in sessions.Rooms) {
 					if (inst.NodeId != mid)
+						continue;
+					room = inst;
+					break;
+				}
+			} while (room == null && page < total);
+
+			return room;
+		}
+
+		/// <summary>
+		/// Finds a room by its relay-local id (<see cref="Room.InternalId"/>), paging through the room
+		/// list. Used for server-initiated moves and auto-enter.
+		/// </summary>
+		/// <param name="roomId">Room id, as listed by the relay.</param>
+		public async UniTask<Room> Find(byte roomId, CancellationToken token = default) {
+			token.ThrowIfCancellationRequested();
+
+			byte total,
+				page = 0;
+			Room room = null;
+
+			do {
+				var sessions = await List(page++, token);
+				if (sessions == null)
+					return null;
+				total = sessions.PageCount;
+				foreach (var inst in sessions.Rooms) {
+					if (inst.InternalId != roomId)
 						continue;
 					room = inst;
 					break;

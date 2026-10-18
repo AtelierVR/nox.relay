@@ -52,6 +52,22 @@ namespace Nox.Relay.Core.Types.Handshakes {
         public ushort KeepAliveInterval;
 
         /// <summary>
+        /// Room to join when the session has no valid target of its own. Only valid when
+        /// <see cref="HandshakeFlags.AutoRoom"/> is set, <see cref="NoAutoRoom"/> otherwise.
+        /// </summary>
+        public byte AutoRoom = NoAutoRoom;
+
+        /// <summary>Value of <see cref="AutoRoom"/> when the relay does not pick one.</summary>
+        public const byte NoAutoRoom = byte.MaxValue;
+
+        /// <summary>
+        /// True when the relay authenticated the client from a transfer token: the client can skip
+        /// the challenge-response exchange. Its identity comes from the enter response as usual.
+        /// </summary>
+        public bool IsTransferred 
+            => Flags.HasFlag(HandshakeFlags.Transferred);
+
+        /// <summary>
         /// Segmentation timeout in milliseconds.
 		/// <remarks>Deprecated — the relay server no longer sends this field. The value is fixed at 15 s.</remarks>
 		/// </summary>
@@ -87,6 +103,9 @@ namespace Nox.Relay.Core.Types.Handshakes {
             ConnectionTimeout = buffer.ReadUShort();
             KeepAliveInterval = buffer.ReadUShort();
             // NOTE: SegmentationTimeout is NOT sent by the relay server — do not read here.
+
+            if (Flags.HasFlag(HandshakeFlags.AutoRoom))
+                AutoRoom = buffer.ReadByte();
 
             return true;
         }

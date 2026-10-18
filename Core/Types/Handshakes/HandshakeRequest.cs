@@ -30,6 +30,12 @@ namespace Nox.Relay.Core.Types.Handshakes {
 		/// </summary>
 		public Platform Platform;
 
+		/// <summary>
+		/// Opaque, client-unique transfer token issued elsewhere (the node). When the target relay can
+		/// resolve it, the client is authenticated immediately (see <see cref="HandshakeFlags.Transferred"/>).
+		/// </summary>
+		public byte[] TransferToken;
+
 		public override Buffer ToBuffer() {
 			var buffer = new Buffer();
 			buffer.Write(ProtocolVersion);
@@ -46,6 +52,11 @@ namespace Nox.Relay.Core.Types.Handshakes {
 			}
 			buffer.Write(Engine.GetEngineName());
 			buffer.Write(Platform.GetPlatformName());
+
+			// Opaque token: `[u16 length][bytes]`, empty (0) for a normal connection.
+			var transferToken = TransferToken ?? System.Array.Empty<byte>();
+			buffer.Write((ushort)transferToken.Length);
+			buffer.Write(transferToken);
 			return buffer;
 		}
 	}

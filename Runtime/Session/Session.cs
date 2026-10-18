@@ -102,6 +102,8 @@ namespace Nox.Relay.Runtime {
 			ConnectCts?.Dispose();
 			ConnectCts = null;
 
+			StopReconnect();
+
 			Current = null;
 
 			DisposeVoiceRouting();
@@ -110,6 +112,7 @@ namespace Nox.Relay.Runtime {
 				Adapter.Connector.OnDisconnected.RemoveListener(OnDisconnectedHandler);
 				Adapter.Connector.OnConnected.RemoveListener(OnConnectedHandler);
 				Adapter.OnLatency.RemoveListener(OnLatencyUpdated);
+				Adapter.OnTransfer.RemoveListener(OnTransferHandler);
 				await Adapter.Dispose();
 				Adapter = null;
 			}

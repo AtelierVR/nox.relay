@@ -31,5 +31,11 @@ namespace Nox.Relay.Core.Types {
 		Stream              = 0x14,
 		Event               = 0x15,
 		Entities            = 0x16,
+
+		/// <summary>
+		/// Server asks the client to go somewhere: another relay (with a transfer token) when the
+		/// address is set, or another instance of the same relay otherwise.
+		/// </summary>
+		Transfer = 0x17,
 	}
 }

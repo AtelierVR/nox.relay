@@ -125,6 +125,10 @@ namespace Nox.Relay.Runtime {
 			foreach (var module in modules)
 				module.OnLoaded(this);
 
+			if (IsConnected)
+				foreach (var module in modules)
+					TryNotifyConnected(module);
+
 			foreach (var player in _entities.GetEntities<IPlayer>()) {
 				if (player == null)
 					continue;

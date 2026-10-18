@@ -26,6 +26,14 @@ namespace Nox.Relay.Runtime {
 				options.Password = passwordStr;
 			if (dict.TryGetValue("display", out var displayObj) && displayObj is string displayStr)
 				options.Display = displayStr;
+			if (dict.TryGetValue("reconnect", out var reconnectObj))
+				options.Reconnect = ToBool(reconnectObj, options.Reconnect);
+			if (dict.TryGetValue("reconnect_attempts", out var reconnectAttemptsObj))
+				options.ReconnectAttempts = ToInt(reconnectAttemptsObj, options.ReconnectAttempts);
+			if (dict.TryGetValue("reconnect_delay", out var reconnectDelayObj))
+				options.ReconnectDelay = ToFloat(reconnectDelayObj, options.ReconnectDelay);
+			if (dict.TryGetValue("reconnect_max_delay", out var reconnectMaxDelayObj))
+				options.ReconnectMaxDelay = ToFloat(reconnectMaxDelayObj, options.ReconnectMaxDelay);
 
 			if (dict.TryGetValue("world", out var worldObj))
 				switch (worldObj) {
@@ -66,6 +74,30 @@ namespace Nox.Relay.Runtime {
 			return options;
 		}
 
+		private static bool ToBool(object value, bool fallback) {
+			try {
+				return value != null && Convert.ToBoolean(value);
+			} catch {
+				return fallback;
+			}
+		}
+
+		private static int ToInt(object value, int fallback) {
+			try {
+				return value != null ? Convert.ToInt32(value) : fallback;
+			} catch {
+				return fallback;
+			}
+		}
+
+		private static float ToFloat(object value, float fallback) {
+			try {
+				return value != null ? Convert.ToSingle(value) : fallback;
+			} catch {
+				return fallback;
+			}
+		}
+
 		public int WorldType = 0;
 
 		public Identifier WorldIdentifier = Identifier.Invalid;
@@ -83,5 +115,14 @@ namespace Nox.Relay.Runtime {
 		public string ShortName = null;
 		public bool ChangeCurrent = true;
 		public string[] Connections = Array.Empty<string>();
+
+		/// <summary>Automatically reconnect after an unexpected disconnection.</summary>
+		public bool Reconnect = true;
+		/// <summary>Maximum number of reconnection attempts; 0 means unlimited.</summary>
+		public int ReconnectAttempts = 0;
+		/// <summary>Delay in seconds before the first retry; doubles after each failure.</summary>
+		public float ReconnectDelay = 1f;
+		/// <summary>Upper bound in seconds of the reconnect backoff delay.</summary>
+		public float ReconnectMaxDelay = 30f;
 	}
 }

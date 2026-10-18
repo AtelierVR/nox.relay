@@ -19,7 +19,8 @@ namespace Nox.Relay.Runtime.Players {
 
 		/// <summary>
 		/// Sends transform updates for parts that have moved beyond the threshold.
-		/// Called from Tick() which is already rate-limited by the Room's TPS.
+		/// Called from Tick(), which is already paced by the Room's TPS (or by the frame rate when it
+		/// is lower): that is the only limit, there is no per-tick cap here.
 		/// </summary>
 		async protected UniTask SendTransformsIfNeeded() {
 			_startTransform = true;

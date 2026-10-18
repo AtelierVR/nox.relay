@@ -49,6 +49,7 @@ namespace Nox.Relay.Runtime {
 				api.EventAPI.Subscribe("controller_changed", OnControllerChanged),
 				api.EventAPI.Subscribe("controller_avatar_changed", OnAvatarOfControllerChanged)
 			};
+
 			_commands = new TerminalCommands(api);
 			SessionAPI.Register(this);
 		}
@@ -95,6 +96,13 @@ namespace Nox.Relay.Runtime {
 			=> CoreAPI.ModAPI
 				.GetMod("worlds")
 				.GetInstance<IWorldAPI>();
+
+
+		/// <summary>Audio API of the audio mod (channels, deafen state).</summary>
+		internal static IAudioAPI AudioAPI
+			=> CoreAPI?.ModAPI?
+				.GetMod("audio")
+				?.GetInstance<IAudioAPI>();
 
 		internal static ISessionAPI SessionAPI
 			=> CoreAPI.ModAPI
