@@ -1,5 +1,6 @@
 using Nox.Avatars;
 using Nox.CCK.Audio.Opus;
+using Nox.CCK.Events;
 using Nox.Relay.Core.Types.Stream;
 using UnityEngine;
 
@@ -68,6 +69,51 @@ namespace Nox.Relay.Runtime.Players {
 		/// <summary>Hearing gate from the room: true while the local listener may not hear this speaker.</summary>
 		private bool _hearingBlocked;
 
+		/// <summary>Self-mute announced by the owner of this player.</summary>
+		private bool _selfMuted;
+
+		/// <summary>Deafen announced by the owner of this player.</summary>
+		private bool _deafened;
+
+		/// <summary>Announced self-mute of this player (its owner muted its own microphone).</summary>
+		public override bool IsSelfMuted
+			=> _selfMuted;
+
+		/// <summary>Announced deafen of this player.</summary>
+		public override bool IsDeafened
+			=> _deafened;
+
+		/// <summary>True when this remote player muted the local user (private relation).</summary>
+		public bool MutesLocalPlayer { get; private set; }
+
+		/// <summary>Raised when <see cref="MutesLocalPlayer"/> changes.</summary>
+		public readonly NoxEvent<bool> OnMutesLocalPlayerChanged = new();
+
+		/// <summary>Applies the private "I muted you" relation sent by this player.</summary>
+		internal void SetMutesLocalPlayer(bool muted) {
+			if (MutesLocalPlayer == muted)
+				return;
+
+			MutesLocalPlayer = muted;
+
+			// The session aggregates the relations of every remote player for the local HUD.
+			OnMutesLocalPlayerChanged.Invoke(muted);
+		}
+
+		public override void OnJoined() {
+			base.OnJoined();
+
+			// A player joining after us must learn immediately that we muted it.
+			if (IsMuted)
+				NotifyMuted(true);
+		}
+
+		public override void OnLeft() {
+			// Do not keep a stale "muted by" relation in the local HUD.
+			SetMutesLocalPlayer(false);
+			base.OnLeft();
+		}
+
 		/// <summary>True while a live physical can place the source in the world.</summary>
 		internal bool VoiceAnchored
 			=> Physical != null && !Physical.IsDestroying;
@@ -123,6 +169,7 @@ namespace Nox.Relay.Runtime.Players {
 
 		/// <summary>Releases the voice pipeline when the player is disposed (culling only detaches it).</summary>
 		public override void Dispose() {
+			SetMutesLocalPlayer(false);
 			StopVoice();
 			base.Dispose();
 		}
@@ -288,8 +335,16 @@ namespace Nox.Relay.Runtime.Players {
 		}
 
 		/// <summary>Avatar (re)loaded: its voice module publishes the new output, so rebuild on it.</summary>
-		private void OnVoiceAvatarLoaded(IRuntimeAvatar avatar)
-			=> RefreshVoiceOutput(force: true);
+		private void OnVoiceAvatarLoaded(IRuntimeAvatar avatar) {
+			RefreshVoiceOutput(force: true);
+			ApplyVoiceStatusToAvatar();
+		}
+
+		/// <inheritdoc />
+		protected override void SetRemoteVoiceStatus(bool selfMuted, bool deafened) {
+			_selfMuted = selfMuted;
+			_deafened  = deafened;
+		}
 
 		private void OnVoiceVolumeChanged(float local, float effective)
 			=> ApplyVoiceOutput();

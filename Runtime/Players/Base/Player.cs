@@ -26,6 +26,7 @@ namespace Nox.Relay.Runtime.Players {
 			Persistent.OnChanged.AddListener(OnDataChanged);
 			Main.VoiceRegister?.OnVolume.AddListener(OnVolumeChanged);
 			Main.VoiceRegister?.OnMute.AddListener(OnMuteChanged);
+			SetupVoiceStatus();
 			OnVolume.Invoke(Volume, EffectiveVolume);
 			OnMute.Invoke(IsMuted, IsEffectivelyMuted);
 		}

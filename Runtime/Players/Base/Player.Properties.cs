@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Nox.Avatars.Parameters;
+using Nox.CCK.Events;
 using Nox.Entities;
 using Logger = Nox.CCK.Utils.Logger;
 
@@ -10,6 +11,17 @@ namespace Nox.Relay.Runtime.Players {
 		#region Parameter module binding
 
 		private IParameterModule _module;
+
+		/// <summary>Parameter module of the attached avatar, or null while none is bound.</summary>
+		protected IParameterModule ParameterModule
+			=> _module;
+
+		/// <summary>
+		/// Raised while resolving the network flags of an avatar parameter. A feature that owns a
+		/// parameter (the voice status, for instance) can adjust <see cref="ParameterSyncEventArgs.Flags"/>,
+		/// including forcing <see cref="PropertyFlags.None"/> to keep it purely local.
+		/// </summary>
+		public readonly NoxEvent<ParameterSyncEventArgs> OnParameterSync = new();
 
 		/// <summary>Binds a parameter module and follows its registrations; null unbinds and releases.</summary>
 		protected internal void Bind(IParameterModule module) {
@@ -27,6 +39,7 @@ namespace Nox.Relay.Runtime.Players {
 			module.OnUnRegistred.AddListener(OnParameterUnregistered);
 
 			SynchronizeAvatarParameters(module.GetParameters(), IsLocal);
+			ApplyVoiceStatusToAvatar();
 		}
 
 		/// <summary>Unbinds the module, stops listening and releases the avatar parameters.</summary>
@@ -38,6 +51,7 @@ namespace Nox.Relay.Runtime.Players {
 		}
 
 		private void OnParameterRegistered(IParameter parameter) {
+			ApplyVoiceStatusToAvatar();
 			SynchronizeAvatarParameter(parameter, IsLocal);
 			Physical?.OnParameterChanged(parameter, true);
 		}
@@ -80,6 +94,11 @@ namespace Nox.Relay.Runtime.Players {
 				propertyFlags |= isLocal ? PropertyFlags.LocalEmit : PropertyFlags.RemoteEmit;
 			if (flags.HasFlag(ParameterFlags.ViewerSyncsToOwner))
 				propertyFlags |= isLocal ? PropertyFlags.RemoteEmit : PropertyFlags.LocalEmit;
+
+			// Let the features owning a parameter adjust its sync direction.
+			var sync = new ParameterSyncEventArgs(param, propertyFlags);
+			OnParameterSync.Invoke(sync);
+			propertyFlags = sync.Flags;
 
 			var key = param.Key;
 
@@ -138,5 +157,26 @@ namespace Nox.Relay.Runtime.Players {
 
 		#endregion
 
+	}
+
+	/// <summary>
+	/// Mutable arguments of <see cref="Player.OnParameterSync"/>.
+	/// <para>
+	/// The relay computes the property flags of an avatar parameter from its
+	/// <see cref="ParameterFlags"/>; a feature that owns a parameter can adjust them (for example
+	/// keep it local because another property already carries the value).
+	/// </para>
+	/// </summary>
+	public sealed class ParameterSyncEventArgs {
+		public ParameterSyncEventArgs(IParameter parameter, PropertyFlags flags) {
+			Parameter = parameter;
+			Flags     = flags;
+		}
+
+		/// <summary>Parameter being synchronized.</summary>
+		public IParameter Parameter { get; }
+
+		/// <summary>Property flags the relay is about to use; a handler may replace them.</summary>
+		public PropertyFlags Flags { get; set; }
 	}
 }

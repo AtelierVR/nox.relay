@@ -39,6 +39,7 @@ namespace Nox.Relay.Runtime.Players {
 			// Disabled for local player - no interpolation needed
 			UpdateNameplate();
 			TickVoice();
+			TickVoiceStatus();
 		}
 
 		// ── Voice (local) ──

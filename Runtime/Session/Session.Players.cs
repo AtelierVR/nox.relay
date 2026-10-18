@@ -62,8 +62,18 @@ namespace Nox.Relay.Runtime {
 			if (player.Reference.Flags.HasFlag(PlayerFlags.RoomMaster))
 				_entities.MasterId = player.Id;
 
-			if (player.IsLocal)
+			if (player.IsLocal) {
 				player.Respawn();
+
+				// Re-announce the private mutes we apply to the players already in the room.
+				NotifyMutedRemotes();
+			}
+
+			// The session aggregates the private mute relations owned by the remote players.
+			if (player is RemotePlayer remote) {
+				remote.OnMutesLocalPlayerChanged.RemoveListener(OnRemoteMutesLocalPlayerChanged);
+				remote.OnMutesLocalPlayerChanged.AddListener(OnRemoteMutesLocalPlayerChanged);
+			}
 
 			Main.CoreAPI.EventAPI.Emit("session_player_joined", this, player);
 			OnPlayerJoined.Invoke(player);
@@ -75,6 +85,9 @@ namespace Nox.Relay.Runtime {
 		private void OnPlayerLeftOrQuitedHandler(Player player) {
 			if (_entities.MasterId == player.Id)
 				_entities.MasterId = Runtime.Entities.InvalidEntityId;
+
+			if (player is RemotePlayer remote)
+				remote.OnMutesLocalPlayerChanged.RemoveListener(OnRemoteMutesLocalPlayerChanged);
 
 			Main.CoreAPI.EventAPI.Emit("session_player_left", this, player);
 			OnPlayerLeft.Invoke(player);

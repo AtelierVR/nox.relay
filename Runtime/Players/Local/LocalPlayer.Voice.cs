@@ -41,6 +41,14 @@ namespace Nox.Relay.Runtime.Players {
 		private int _voiceFrameIndex;
 		private float _voiceStartedAt;
 
+		/// <summary>The local player is muted when its microphone capture is paused.</summary>
+		public override bool IsSelfMuted
+			=> Speak == SpeakMode.Muted;
+
+		/// <summary>Deafen is the voice channel being silent (muted, muted by a parent, or at volume 0).</summary>
+		public override bool IsDeafened
+			=> Main.AudioAPI?.GetChannel("voice")?.IsSilent() ?? false;
+
 		/// <summary>The audio mod's microphone registry, or null while that mod is not loaded.</summary>
 		private static IMicrophoneAPI MicrophoneAPI
 			=> Main.CoreAPI?.ModAPI
@@ -138,6 +146,7 @@ namespace Nox.Relay.Runtime.Players {
 			_voiceEvents = new[] {
 				Main.CoreAPI.EventAPI.Subscribe("audio.microphone.current_changed", OnMicrophoneCurrentChanged),
 				Main.CoreAPI.EventAPI.Subscribe("audio.microphone.mute_changed", OnMicrophoneMuteChanged),
+				Main.CoreAPI.EventAPI.Subscribe("audio.microphone.volume_changed", OnMicrophoneVolumeChanged),
 				Main.CoreAPI.EventAPI.Subscribe("audio.microphone.removed", OnMicrophoneRemoved)
 			};
 
@@ -146,10 +155,8 @@ namespace Nox.Relay.Runtime.Players {
 			_voiceSender = null;
 			StartSender();
 
-			// The new device may already be muted: announce its state right away.
-			if (Speak != SpeakMode.Muted)
-				_speakWhenUnmuted = Speak;
-			Speak = microphone.IsMuted ? SpeakMode.Muted : _speakWhenUnmuted;
+			// The new device may already be muted (or at volume 0): announce its state right away.
+			ApplyMicrophoneSilence();
 		}
 
 		/// <summary>Stops the bound device, unsubscribes its events and forgets the capture.</summary>
@@ -220,17 +227,41 @@ namespace Nox.Relay.Runtime.Players {
 			BindMicrophone(api?.Current ?? api?.Default);
 		}
 
-		/// <summary>Mute is announced as <see cref="SpeakMode.Muted"/>, and lifted back to the chosen mode.</summary>
+		/// <summary>
+		/// The captured device became silent (muted, or its volume reached 0): announce
+		/// <see cref="SpeakMode.Muted"/> and lift it back to the chosen mode when it stops.
+		/// </summary>
 		private void OnMicrophoneMuteChanged(EventData context) {
 			if (!context.TryGet<IMicrophone>(0, out var microphone) || microphone != _microphone)
 				return;
 
-			var muted = context.TryGet<bool>(1, out var value) && value;
+			ApplyMicrophoneSilence();
+		}
+
+		/// <summary>Volume 0 captures nothing: it is a mute for every consumer of the voice state.</summary>
+		private void OnMicrophoneVolumeChanged(EventData context) {
+			if (!context.TryGet<IMicrophone>(0, out var microphone) || microphone != _microphone)
+				return;
+
+			ApplyMicrophoneSilence();
+		}
+
+		/// <summary>Announces whether the bound device is silent (<see cref="MicrophoneExtensions.IsSilent"/>).</summary>
+		private void ApplyMicrophoneSilence() {
+			if (_microphone == null)
+				return;
 
 			if (Speak != SpeakMode.Muted)
 				_speakWhenUnmuted = Speak;
-			Speak = muted ? SpeakMode.Muted : _speakWhenUnmuted;
+			Speak = _microphone.IsSilent() 
+				? SpeakMode.Muted 
+				: _speakWhenUnmuted;
 		}
+
+		// ── Mute notifications ────────────────────────────────────────────────
+		//
+		// The private "you have been muted" relations are handled by the session
+		// (<c>Session.Voice.cs</c>): the local player only carries its own voice state.
 
 		// ── Emission ──────────────────────────────────────────────────────────
 

@@ -41,6 +41,10 @@ namespace Nox.Relay.Runtime {
 
 				property.Deserialize(param.Value);
 				property.IsDirty = false;
+
+				// Players interpret some properties (voice status) as soon as they arrive.
+				if (entity is Players.Player player)
+					player.OnPropertyUpdated(property);
 			}
 		}
 	}

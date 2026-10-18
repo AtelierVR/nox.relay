@@ -13,8 +13,10 @@ namespace Nox.Relay.Runtime.Players {
 		private void OnDataChanged(string[] key, object @new, object @old) {
 			if (key.Length == 1 && key[0] == "volume")
 				OnVolume.Invoke(Volume, EffectiveVolume);
-			else if (key.Length == 1 && key[0] == "mute")
+			else if (key.Length == 1 && key[0] == "mute") {
 				OnMute.Invoke(IsMuted, IsEffectivelyMuted);
+				ApplyVoiceStatusToAvatar();
+			}
 		}
 	}
 }
