@@ -4,7 +4,6 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using Cysharp.Threading.Tasks;
-using UnityEngine;
 using UnityEngine.Events;
 using Buffer = Nox.CCK.Utils.Buffer;
 using Logger = Nox.CCK.Utils.Logger;
@@ -29,17 +28,17 @@ namespace Nox.Relay.Core.Connectors {
 		private bool _isDisposing;
 
 		public string Protocol => PROTOCOL_NAME;
-		
+
 		public bool IsConnected => _socket is { Connected: true } && !_isDisposing;
-		
+
 		public EndPoint EndPoint => _socket?.LocalEndPoint;
-		
-		public ushort Mtu { get; set; } = 1460; 
-		
-		public UnityEvent<Buffer> OnReceived { get; } = new();
-		
+
+		public ushort Mtu { get; set; } = 1460;
+
+		public UnityEvent<ReceivedPacket> OnReceived { get; } = new();
+
 		public UnityEvent<bool> OnConnected { get; } = new();
-		
+
 		public UnityEvent<string> OnDisconnected { get; } = new ();
 
 		public async UniTask<bool> Connect(string address, ushort port, CancellationToken token = default) {
@@ -54,7 +53,7 @@ namespace Nox.Relay.Core.Connectors {
 				if (!IPAddress.TryParse(address, out var ipAddress)) {
 					var hostEntry = await Dns.GetHostEntryAsync(address);
 					ipAddress = hostEntry.AddressList.FirstOrDefault(ip => ip.AddressFamily == AddressFamily.InterNetwork);
-					
+
 					if (ipAddress == null) {
 						Logger.LogError($"No IPv4 address found for {address}", tag: nameof(TcpConnector));
 						return false;
@@ -128,7 +127,7 @@ namespace Nox.Relay.Core.Connectors {
 				await UniTask.Delay(100);
 
 				// Fermeture gracieuse
-				if (_socket.Connected) 
+				if (_socket.Connected)
 					_socket.Shutdown(SocketShutdown.Both);
 
 				_socket.Close();
@@ -161,13 +160,13 @@ namespace Nox.Relay.Core.Connectors {
 					while (sent < buffer.Length) {
 						var bytesToSend = Math.Min(buffer.Length - sent, Mtu);
 						var sentNow = _socket.Send(buffer.Data, sent, bytesToSend, SocketFlags.None);
-						
+
 						if (sentNow <= 0) {
 							Logger.LogError("Send failed: connection closed", tag: nameof(TcpConnector));
 							HandleDisconnection("Send failed");
 							return UniTask.FromResult(false);
 						}
-						
+
 						sent += sentNow;
 					}
 				}
@@ -230,7 +229,7 @@ namespace Nox.Relay.Core.Connectors {
 			var newLength = _receiveBuffer.Length + bytesReceived;
 			if (newLength > _receiveBuffer.Data.Length) {
 				var newSize = Math.Max(_receiveBuffer.Data.Length * 2, newLength);
-				
+
 				if (newSize > MAX_MESSAGE_SIZE * 2) {
 					Logger.LogError($"Receive buffer too large: {newSize} bytes", tag: nameof(TcpConnector));
 					return false;
@@ -248,7 +247,7 @@ namespace Nox.Relay.Core.Connectors {
 		}
 
 		private void ProcessReceivedData() {
-			_receiveBuffer.Start(); 
+			_receiveBuffer.Start();
 
 			while (_receiveBuffer.Remaining >= 2) {
 				var messageLength = _receiveBuffer.ReadUShort();
@@ -258,7 +257,7 @@ namespace Nox.Relay.Core.Connectors {
 					HandleDisconnection("Invalid message length");
 					return;
 				}
-				
+
 				var messageDataLength = messageLength - 2;
 				if (_receiveBuffer.Remaining < messageDataLength) {
 					_receiveBuffer.Move(-2);
@@ -266,15 +265,16 @@ namespace Nox.Relay.Core.Connectors {
 				}
 
 				var messageBuffer = new Buffer();
-				messageBuffer.Write(messageLength); 
+				messageBuffer.Write(messageLength);
 				var messageData = _receiveBuffer.ReadBytes((ushort)messageDataLength);
 				messageBuffer.Write(messageData);
-				messageBuffer.Start(); 
-				
-				// Invocation sur le main thread depuis le ThreadPool
+				messageBuffer.Start();
+
+				var packet = ReceivedPacket.Now(messageBuffer);
+
 				UniTask.Post(() => {
 					try {
-						OnReceived?.Invoke(messageBuffer);
+						OnReceived?.Invoke(packet);
 					}
 					catch (Exception ex) {
 						Logger.LogError(new Exception("Error in OnReceived handler", ex), tag: nameof(TcpConnector));
@@ -312,7 +312,7 @@ namespace Nox.Relay.Core.Connectors {
 			}
 		}
 
-		public UniTask Dispose() 
+		public UniTask Dispose()
 			=> Close();
 	}
 }

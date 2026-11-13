@@ -77,7 +77,7 @@ namespace Nox.Relay.Core.Connectors {
 			set => _maxPacketSize = value;
 		}
 
-		public UnityEvent<Buffer> OnReceived { get; } = new();
+		public UnityEvent<ReceivedPacket> OnReceived { get; } = new();
 		public UnityEvent<bool> OnConnected { get; } = new();
 		public UnityEvent<string> OnDisconnected { get; } = new();
 
@@ -100,7 +100,7 @@ namespace Nox.Relay.Core.Connectors {
 			// Set provisional endpoint from the call parameters so EndPoint is
 			// available as soon as Connect() completes, regardless of whether
 			// the MsQuic RemoteEndPoint is populated at Connected-event time.
-			_endPoint = IPAddress.TryParse(address, out var parsedIp) 
+			_endPoint = IPAddress.TryParse(address, out var parsedIp)
 				? new IPEndPoint(parsedIp, port)
 				: new DnsEndPoint(address, port);
 
@@ -176,16 +176,13 @@ namespace Nox.Relay.Core.Connectors {
 			=> AttachStreamHandlers(stream);
 
 		private void HandleDatagramReceived(QuicPeerConnection _, ReadOnlySpan<byte> span) {
-			// Copy immediately — the native span is only valid for the duration of this callback.
 			var data = span.ToArray();
-			// Dispatch processing to the Unity main thread so OnReceived subscribers
-			// can safely interact with Unity objects.
-			UniTask.Post(() => {
-				var buff = new Buffer();
-				buff.Write(data);
-				buff.Start();
-				OnReceived?.Invoke(buff);
-			});
+			var buff = new Buffer();
+			buff.Write(data);
+			buff.Start();
+
+			var packet = ReceivedPacket.Now(buff);
+			UniTask.Post(() => OnReceived?.Invoke(packet));
 		}
 
 		// ── Stream helpers ───────────────────────────────────────────────────
@@ -231,14 +228,14 @@ namespace Nox.Relay.Core.Connectors {
 			private const int MinMessageSize  = 5; // length(2) + state(2) + type(1)
 			private const int InitialCapacity = 8 * 1024;
 
-			private readonly UnityEvent<Buffer>        _onReceived;
+			private readonly UnityEvent<ReceivedPacket> _onReceived;
 			private readonly ConcurrentBag<QuicStream> _openStreams;
 
 			private byte[] _buffer = new byte[InitialCapacity];
 			private int    _length;
 			private bool   _desynced;
 
-			public StreamReceiver(UnityEvent<Buffer> onReceived, ConcurrentBag<QuicStream> openStreams) {
+			public StreamReceiver(UnityEvent<ReceivedPacket> onReceived, ConcurrentBag<QuicStream> openStreams) {
 				_onReceived  = onReceived;
 				_openStreams = openStreams;
 			}
@@ -315,13 +312,14 @@ namespace Nox.Relay.Core.Connectors {
 			/// Les abonnés de <see cref="OnReceived"/> touchent des objets Unity : on repasse
 			/// donc sur le thread principal avant de publier le message.
 			/// </summary>
-			private void Dispatch(byte[] frame)
-				=> UniTask.Post(() => {
-					var buff = new Buffer();
-					buff.Write(frame);
-					buff.Start();
-					_onReceived?.Invoke(buff);
-				});
+			private void Dispatch(byte[] frame) {
+				var buff = new Buffer();
+				buff.Write(frame);
+				buff.Start();
+
+				var packet = ReceivedPacket.Now(buff);
+				UniTask.Post(() => _onReceived?.Invoke(packet));
+			}
 
 			public void OnShutdownComplete(QuicPeerConnection sender, bool connectionShutdown, bool appCloseInProgress) {
 				// When the relay closes its send side the stream reaches SHUTDOWN_COMPLETE.
@@ -428,7 +426,7 @@ namespace Nox.Relay.Core.Connectors {
 
 			if (_disposed)
 				return;
-			
+
 			_disposed    = true;
 			_isConnected = false;
 

@@ -29,7 +29,7 @@ namespace Nox.Relay.Core.Connectors {
 		public EndPoint EndPoint
 			=> _socket?.RemoteEndPoint;
 
-		public UnityEvent<Buffer> OnReceived { get; } = new();
+		public UnityEvent<ReceivedPacket> OnReceived { get; } = new();
 
 		public UnityEvent<bool>         OnConnected    { get; } = new();
 		
@@ -157,7 +157,7 @@ namespace Nox.Relay.Core.Connectors {
 			var data   = buffer.ReadBytes(len); // Read complete packet including length field
 			var packet = new Buffer();
 			packet.Write(data);
-			OnReceived.Invoke(packet);
+			OnReceived.Invoke(ReceivedPacket.Now(packet));
 		}
 
 			if (_receiving)

@@ -13,7 +13,7 @@ namespace Nox.Relay.Core.Types.Stream {
 	/// </para>
 	/// <para>
 	/// <b>Sample</b> (0x00):
-	/// <c>[sub_type:0x00][player_id:u16][channel_id:u32][level_flags:u8][sample:bytes…]</c>
+	/// <c>[sub_type:0x00][player_id:u16][channel_id:u32][level_flags:u8][sample:bytes...]</c>
 	/// </para>
 	/// <para>
 	/// <b>Control</b> (0x01):

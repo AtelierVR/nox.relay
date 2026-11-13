@@ -1,4 +1,5 @@
 using System;
+using Nox.CCK.Utils;
 using Buffer = Nox.CCK.Utils.Buffer;
 using Nox.Relay.Core.Types.Contents;
 
@@ -33,8 +34,8 @@ namespace Nox.Relay.Core.Types.Latency {
 		/// <returns></returns>
 		public static LatencyRequest Now()
 			=> new() {
-				InitialTime = DateTime.UtcNow,
-				Challenge   = DateTime.UtcNow.Ticks
+				InitialTime = Clock.UtcNow,
+				Challenge   = BitConverter.ToInt64(Guid.NewGuid().ToByteArray(), 0)
 			};
 	}
 }

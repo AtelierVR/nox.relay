@@ -264,7 +264,7 @@ namespace Nox.Relay.Core.Rooms {
 				Logger.LogWarning("Failed to parse TransformEvent", tag: Tag);
 				return;
 			}
-			
+
 			OnTransform.Invoke(transform);
 		}
 
@@ -524,7 +524,7 @@ namespace Nox.Relay.Core.Rooms {
 		/// <param name="state"></param>
 		/// <param name="send"></param>
 		/// <returns></returns>
-		public async UniTask<Relay.EmitResult> Emit(Buffer request, PacketType type, ushort state = Relay.Broadcast, SendType send = SendType.Auto) {
+		public async UniTask<Relay.EmitResult> Emit(Buffer request, PacketType type, ushort state = Relay.BROADCAST, SendType send = SendType.Auto) {
 			var buffer = new Buffer();
 			buffer.Write(InternalId);
 			buffer.Write(request);
@@ -545,9 +545,9 @@ namespace Nox.Relay.Core.Rooms {
 			RoomRequest request,
 			PacketType @out,
 			PacketType @in,
-			ushort state = Relay.Broadcast,
+			ushort state = Relay.BROADCAST,
 			SendType send = SendType.Auto,
-			ushort timeout = Relay.DefaultTimeout,
+			ushort timeout = Relay.DEFAULT_TIMEOUT,
 			CancellationToken token = default)
 			where T : RoomResponse, new() {
 			request.Room = this;
@@ -585,7 +585,7 @@ namespace Nox.Relay.Core.Rooms {
 					token: token
 				))
 				?? TravelingEvent.Unknown(this, "Unknown traveling request");
-		
+
 		public async UniTask<AvatarChangedEvent> ChangeAvatar(AvatarChangedRequest request)
 			=> (await Request<AvatarChangedEvent>(
 					request,

@@ -1,5 +1,4 @@
-using Nox.Avatars;
-using Nox.CCK.Avatars;
+using Nox.Assets;
 using Nox.CCK.Utils;
 using Nox.Relay.Core.Types.Contents.Rooms;
 using Buffer = Nox.CCK.Utils.Buffer;
@@ -10,7 +9,7 @@ namespace Nox.Relay.Core.Types.Avatars {
 	/// </summary>
 	/// <remarks>
 	/// Wire format (after the iid byte prepended by Room.Emit):
-	/// [pid: u32][avatar_id: u32][server: string][version: u16]
+	/// [pid: u32][avatar_id: u32][server: string][release: u32]
 	/// </remarks>
 	public class AvatarChangedRequest : RoomRequest {
 		/// <summary>
@@ -53,10 +52,10 @@ namespace Nox.Relay.Core.Types.Avatars {
 			// pid — uint.MaxValue means "self" on the server side
 			buffer.Write(PlayerId);
 
-			// avatar_id, server, version
+			// avatar_id, server, release
 			buffer.Write(Identifier.NumericId);
 			buffer.Write(Identifier.Server);
-			buffer.Write(Identifier.GetVersion());
+			buffer.Write(Identifier.GetRelease());
 
 			return buffer;
 		}

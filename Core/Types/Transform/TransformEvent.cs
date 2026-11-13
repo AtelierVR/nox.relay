@@ -44,6 +44,11 @@ namespace Nox.Relay.Core.Types.Transform {
 		/// </summary>
 		public uint SenderId;
 
+		/// <summary>
+		/// Clock of the sender when the transform was sampled, in milliseconds (0 = not set).
+		/// </summary>
+		public uint SenderTime;
+
 		public override bool FromBuffer(Buffer buffer) {
 			buffer.Start();
 			
@@ -63,6 +68,7 @@ namespace Nox.Relay.Core.Types.Transform {
 
 			Transform = new TransformObject();
 			var flags = buffer.ReadEnum<TransformFlags>();
+			SenderTime = buffer.ReadUInt();
 			if (flags.HasFlag(TransformFlags.Position))
 				Transform.SetPosition(buffer.ReadVector3());
 			if (flags.HasFlag(TransformFlags.Rotation))
@@ -82,6 +88,6 @@ namespace Nox.Relay.Core.Types.Transform {
 			=> $"{GetType().Name}[InternalId={Room.InternalId}, Type={Type}"
 				+ $"{(Type == TransformType.EntityPart ? $", EntityId={EntityId}, PartRig={PartRig}" : "")}"
 				+ $"{(Type == TransformType.ByPath ? $", Path={Path}" : "")}"
-				+ $", Transform={Transform}, ByEntityId={SenderId}]";
+				+ $", Transform={Transform}, ByEntityId={SenderId}, SenderTime={SenderTime}]";
 	}
 }

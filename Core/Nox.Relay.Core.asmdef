@@ -11,6 +11,7 @@
     "Nox.CCK.Worlds",
     "Nox.Avatars",
     "Nox.CCK.Avatars",
+    "Nox.CCK.Assets",
     "StirlingLabs.MsQuic.Bindings"
   ],
   "includePlatforms": [],

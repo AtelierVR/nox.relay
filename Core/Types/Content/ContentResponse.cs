@@ -24,6 +24,12 @@ namespace Nox.Relay.Core.Types.Contents {
 		public (DateTime, DateTime) Time;
 
 		/// <summary>
+		/// Instant at which the transport read the packet, before it was handed to the main thread.
+		/// Default when the response was built from a buffer that carries no arrival stamp.
+		/// </summary>
+		public DateTime ReceivedAt;
+
+		/// <summary>
 		/// Populates the current ContentResponse instance from a <see cref="byte[]"/> buffer.
 		/// Is recommended to return false if the buffer is invalid or corrupted.
 		/// And override should always call <see cref="Buffer.Start"/> before reading from the buffer.

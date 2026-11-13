@@ -125,9 +125,8 @@ namespace Nox.Relay.Runtime.Physicals {
 				.GetModules<IParameterModule>()
 				.FirstOrDefault();
 
-			// "EyeHeight" is the legacy name kept for avatars authored before the rename.
 			_heightParameter = module?.GetParameter("Height") 
-				?? module?.GetParameter("EyeHeight");
+				?? module?.GetParameter("Height/Eye");
 			return _heightParameter;
 		}
 
@@ -138,7 +137,7 @@ namespace Nox.Relay.Runtime.Physicals {
 		/// </summary>
 		private void OnNameplateParameterChanged(IParameter parameter) {
 			var name = parameter?.Name;
-			if (name != "Height" && name != "EyeHeight")
+			if (name != "Height" && name != "Height/Eye")
 				return;
 
 			InvalidateHeight();

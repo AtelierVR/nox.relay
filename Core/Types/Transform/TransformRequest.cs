@@ -41,6 +41,14 @@ namespace Nox.Relay.Core.Types.Transform {
 		/// And the first segment (before the first slash) is usually the index of the dimension.
 		/// </summary>
 		public string Path;
+
+		/// <summary>
+		/// Clock of this client when the transform was sampled, in milliseconds (0 = not set).
+		/// A receiver derives its own offset from it, so the interpolation follows the sender cadence
+		/// instead of the jittered arrival times.
+		/// </summary>
+		public uint SenderTime;
+
         public static readonly uint SELF = uint.MaxValue;
 
         /// <summary>
@@ -127,6 +135,7 @@ namespace Nox.Relay.Core.Types.Transform {
 			}
 
 			buffer.Write(Transform.Flags);
+			buffer.Write(SenderTime);
 			if (Transform.Flags.HasFlag(TransformFlags.Position))
 				buffer.Write(Transform.GetPosition());
 			if (Transform.Flags.HasFlag(TransformFlags.Rotation))

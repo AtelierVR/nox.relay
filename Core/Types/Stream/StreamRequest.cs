@@ -20,7 +20,7 @@ namespace Nox.Relay.Core.Types.Stream {
 	/// the payload begins with a <see cref="StreamSubType"/> byte.
 	/// <para>
 	/// <b>Sample</b> (0x00):
-	/// <c>[sub_type:0x00][channel_id:u32][level_flags:u8][?group_id:u16][frame_index:i32][timestamp:f64][sample:bytes…]</c>
+	/// <c>[sub_type:0x00][channel_id:u32][level_flags:u8][?group_id:u16][frame_index:i32][timestamp:f64][sample:bytes...]</c>
 	/// </para>
 	/// <para>
 	/// <b>Control</b> (0x01):
@@ -47,7 +47,7 @@ namespace Nox.Relay.Core.Types.Stream {
 		/// </summary>
 		/// <param name="hasGroup">Whether the sample carries a group id.</param>
 		public static int FramingOverhead(bool hasGroup = false)
-			=> Relay.HeaderSize
+			=> Relay.HEADER_SIZE
 				+ InstancePrefixSize
 				+ SampleHeaderSize
 				+ (hasGroup ? GroupIdSize : 0);

@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using Cysharp.Threading.Tasks;
+using Nox.Assets;
 using Nox.Avatars;
 using Nox.Avatars.Parameters;
 using Nox.Avatars.Rigging;
@@ -44,15 +45,12 @@ namespace Nox.Relay.Runtime.Physicals {
 		}
 
 		private async UniTask Setup() {
-			_partStates.Clear();
+			rigidbody.isKinematic = true;
 
 			if (Reference?.Parts.TryGetValue(EntityRig.Base.ToIndex(), out var part) == true) {
-				transform.position        = part.Position;
-				transform.rotation        = part.Rotation;
-				transform.localScale      = part.Scale;
-				rigidbody.linearVelocity  = part.Velocity;
-				rigidbody.angularVelocity = part.Angular;
-				_tickInterval = Reference.Reference.Room.Tps > 0 ? 1f / Reference.Reference.Room.Tps : 0.05f;
+				transform.position = part.Position;
+				transform.rotation = part.Rotation;
+				transform.localScale = part.Scale;
 			}
 
 			if (RuntimeAvatar != null) {
@@ -143,8 +141,7 @@ namespace Nox.Relay.Runtime.Physicals {
 
 			if (!Main.AvatarAPI.HasInCache(hash)) {
 				var download = Main.AvatarAPI.DownloadToCache(
-					asset.Url,
-					hash: hash,
+					new IdentifierCache(identifier, asset),
 					token: AvatarLoadingCts.Token
 				);
 				await download.Start();
@@ -169,6 +166,8 @@ namespace Nox.Relay.Runtime.Physicals {
 
 			Logger.LogDebug($"Avatar loaded: {identifier.ToString()}");
 			avatar.Identifier = identifier;
+			avatar.Owner = Reference?.Identifier
+				?? Identifier.Invalid;
 			await SetAvatar(avatar);
 			return avatar;
 		}
@@ -226,7 +225,6 @@ namespace Nox.Relay.Runtime.Physicals {
 
 			var old = RuntimeAvatar;
 			RuntimeAvatar = runtime;
-			_partStates.Clear();
 			_drivenBones.Clear();
 			_rigProvider = null;
 
@@ -274,8 +272,9 @@ namespace Nox.Relay.Runtime.Physicals {
 				await UniTask.WaitUntil(() => animator.runtimeAnimatorController);
 			}
 
-			_rigProvider = RuntimeAvatar?.Descriptor?.Anchor
-				?.GetComponentInChildren<IRigProvider>(true);
+			_rigProvider = RuntimeAvatar?.Descriptor
+				?.GetModules<IRigProvider>()
+				.FirstOrDefault();
 
 			var parameters = module.GetParameters();
 			foreach (var param in parameters) {
@@ -291,22 +290,22 @@ namespace Nox.Relay.Runtime.Physicals {
 				// Base + Head - leaving them active there pinned the arms to the rig's default (T-pose) targets.
 				// The owner's own value arrives as a change and re-arms the bones it actually drives.
 				switch (param.Name) {
-					case "rig/ik/head/target":
-					case "tracking/left_hand/active":
-					case "tracking/right_hand/active":
-					case "tracking/left_foot/active":
-					case "tracking/right_foot/active":
-					case "tracking/right_toes/active":
-					case "tracking/left_toes/active":
+					case "Rig/Ik/Head/Target":
+					case "Tracking/LeftHand/Active":
+					case "Tracking/RightHand/Active":
+					case "Tracking/LeftFoot/Active":
+					case "Tracking/RightFoot/Active":
+					case "Tracking/RightToes/Active":
+					case "Tracking/LeftToes/Active":
 						param.Value = false;
 						break;
 
-					case "rig/ik/spine/position_weight":
-					case "rig/ik/spine/hint_weight":
+					case "Rig/Ik/Spine/PositionWeight":
+					case "Rig/Ik/Spine/HintWeight":
 						param.Value = 0f;
 						break;
 
-					case "tracking/head/active":
+					case "Tracking/Head/Active":
 					case "IsLocal":
 						param.Value = true;
 						break;

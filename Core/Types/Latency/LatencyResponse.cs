@@ -19,11 +19,6 @@ namespace Nox.Relay.Core.Types.Latency {
 		public DateTime IntermediateTime;
 
 		/// <summary>
-		/// The time when the latency test response was sent back to the client.
-		/// </summary>
-		public DateTime FinalTime;
-
-		/// <summary>
 		/// A challenge number used to check if the response corresponds to the request.
 		/// see <see cref="LatencyRequest.Challenge"/>.
 		/// </summary>
@@ -41,14 +36,23 @@ namespace Nox.Relay.Core.Types.Latency {
 		/// </summary>
 		/// <returns></returns>
 		public TimeSpan GetDownLatency()
-			=> FinalTime - IntermediateTime;
+			=> ReceivedAt - IntermediateTime;
 
 		/// <summary>
 		/// Gets the total latency (round-trip time).
+		/// Both ends are precise: <see cref="InitialTime"/> comes back from the relay in Unix
+		/// microseconds and <see cref="ContentResponse.ReceivedAt"/> is stamped by the transport
+		/// when it read the packet.
+		/// <para>
+		/// A negative value means the response carries no usable round trip (failed probe, or an
+		/// arrival stamp the transport did not set): it must not be read as a 0 ms latency.
+		/// </para>
 		/// </summary>
 		/// <returns></returns>
 		public TimeSpan GetLatency()
-			=> FinalTime - InitialTime;
+			=> InitialTime == default || ReceivedAt == default
+				? TimeSpan.FromMilliseconds(-1)
+				: ReceivedAt - InitialTime;
 
 		public override bool FromBuffer(Buffer buffer) {
 			buffer.Start();
@@ -61,14 +65,13 @@ namespace Nox.Relay.Core.Types.Latency {
 
 			InitialTime = buffer.ReadDateTime();
 			IntermediateTime = buffer.ReadDateTime();
-			FinalTime = DateTime.UtcNow;
 			Challenge = buffer.ReadLong();
 			return true;
 		}
 
 		public override string ToString()
-			=> $"{GetType().Name}[ping={GetLatency().TotalMilliseconds}ms, up={GetUpLatency().TotalMilliseconds}ms, down={GetDownLatency().TotalMilliseconds}ms]";
-		
+			=> $"{GetType().Name}[ping={GetLatency().TotalMilliseconds:F3}ms, up={GetUpLatency().TotalMilliseconds:F3}ms, down={GetDownLatency().TotalMilliseconds:F3}ms]";
+
 		/// <summary>
 		/// Creates a failed LatencyResponse.
 		/// Created when the latency test could not be completed.
@@ -78,7 +81,7 @@ namespace Nox.Relay.Core.Types.Latency {
 			=> new LatencyResponse {
 				InitialTime = DateTime.MinValue,
 				IntermediateTime = DateTime.MinValue,
-				FinalTime = DateTime.MinValue,
+				ReceivedAt = DateTime.MinValue,
 				Challenge = -1
 			};
 	}

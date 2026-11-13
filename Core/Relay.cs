@@ -26,7 +26,7 @@ namespace Nox.Relay.Core {
 		/// <summary>
 		/// Current protocol version used by the relay system.
 		/// </summary>
-		public const ushort ProtocolVersion = 3;
+		public const ushort PROTOCOL_VERSION = 5;
 
 		/// <summary>
 		/// Size of the relay packet header in bytes.
@@ -35,18 +35,24 @@ namespace Nox.Relay.Core {
 		/// - State  <see cref="ushort"/> (2 bytes)
 		/// - Type   <see cref="PacketType"/> (1 byte)
 		/// </summary>
-		public const int HeaderSize = 5;
+		public const int HEADER_SIZE = 5;
 
 		/// <summary>
 		/// Default timeout duration in seconds for relay requests.
 		/// </summary>
-		public const ushort DefaultTimeout = 0;
+		public const ushort DEFAULT_TIMEOUT = 0;
+
+		/// <summary>
+		/// Timeout of the datagram latency probe, in seconds. Short on purpose: a lost datagram falls
+		/// back to a stream instead of stalling the keep-alive until the connection timeout.
+		/// </summary>
+		private const ushort LATENCY_DATAGRAM_TIMEOUT = 2;
 
 		/// <summary>
 		/// Special state value indicating a broadcast message.
 		/// Is used by only the server when the packet is not a response to a specific client request.
 		/// </summary>
-		public const ushort Broadcast = ushort.MaxValue;
+		public const ushort BROADCAST = ushort.MaxValue;
 
 		/// <summary>
 		/// Creates a new Relay instance using the specified <see cref="IConnector"/> type.
@@ -85,26 +91,31 @@ namespace Nox.Relay.Core {
 
 		/// <summary>
 		/// Generates the next state value for the next request.
-		/// Wraps around to 0 when reaching <see cref="Broadcast"/>.
+		/// Wraps around to 0 when reaching <see cref="BROADCAST"/>.
 		/// </summary>
 		/// <returns></returns>
 		public ushort NextState() {
-			if (_nextState >= Broadcast)
+			if (_nextState >= BROADCAST)
 				_nextState = ushort.MinValue;
 			return _nextState++;
 		}
 
-		private void OnReceived(Buffer buffer) 
-			=> OnReceivedAsync(buffer).Forget();
-		
-		private async UniTask OnReceivedAsync(Buffer buffer) {
+		private DateTime _receivedAt;
+
+		private void OnReceived(ReceivedPacket packet)
+			=> OnReceivedAsync(packet).Forget();
+
+		private async UniTask OnReceivedAsync(ReceivedPacket packet) {
 			await UniTask.SwitchToMainThread();
 
+			_receivedAt = packet.At;
+
+			var buffer = packet.Buffer;
 			buffer.Start();
 
-			if (buffer.Remaining < HeaderSize) {
+			if (buffer.Remaining < HEADER_SIZE) {
 				Logger.LogWarning(
-					$"Received buffer with insufficient data: {buffer.Remaining} < {HeaderSize}\n{buffer}");
+					$"Received buffer with insufficient data: {buffer.Remaining} < {HEADER_SIZE}\n{buffer}");
 				return;
 			}
 
@@ -113,9 +124,9 @@ namespace Nox.Relay.Core {
 			var length = buffer.ReadUShort();
 			var state  = buffer.ReadUShort();
 			var type   = buffer.ReadEnum<PacketType>();
-			if (length < HeaderSize || length > buffer.Length) {
+			if (length < HEADER_SIZE || length > buffer.Length) {
 				Logger.LogWarning(
-					$"Received invalid packet length: {length} (expected >= {HeaderSize} and <= {buffer.Length})\n{buffer}");
+					$"Received invalid packet length: {length} (expected >= {HEADER_SIZE} and <= {buffer.Length})\n{buffer}");
 				return;
 			}
 
@@ -135,22 +146,22 @@ namespace Nox.Relay.Core {
 				case PacketType.Stream:
 				case PacketType.Event:
 				case PacketType.Entities:
-					HandleInstance(state, type, buffer.Clone(HeaderSize, length));
+					HandleInstance(state, type, buffer.Clone(HEADER_SIZE, length));
 					break;
 				case PacketType.Disconnect:
-					HandleDisconnect(state, buffer.Clone(HeaderSize, length));
+					HandleDisconnect(state, buffer.Clone(HEADER_SIZE, length));
 					break;
 				case PacketType.Latency:
-					HandleLatency(state, buffer.Clone(HeaderSize, length));
+					HandleLatency(state, buffer.Clone(HEADER_SIZE, length), packet);
 					break;
 				case PacketType.Handshake:
-					HandleHandshake(state, buffer.Clone(HeaderSize, length));
+					HandleHandshake(state, buffer.Clone(HEADER_SIZE, length));
 					break;
 				case PacketType.Message:
-					HandleMessage(state, buffer.Clone(HeaderSize, length));
+					HandleMessage(state, buffer.Clone(HEADER_SIZE, length));
 					break;
 				case PacketType.Transfer:
-					HandleTransfer(state, buffer.Clone(HeaderSize, length));
+					HandleTransfer(state, buffer.Clone(HEADER_SIZE, length));
 					break;
 				case PacketType.Reliable:
 				case PacketType.Authentication:
@@ -163,7 +174,7 @@ namespace Nox.Relay.Core {
 					break;
 			}
 
-			OnReceivePacket.Invoke(state, type, buffer.Clone(HeaderSize, length));
+			OnReceivePacket.Invoke(state, type, buffer.Clone(HEADER_SIZE, length));
 		}
 
 		private void HandleMessage(ushort state, Buffer buffer) {
@@ -190,19 +201,22 @@ namespace Nox.Relay.Core {
 			if (!@event.FromBuffer(buffer))
 				return;
 			LastHandshake = @event;
-			if (LastHandshake.Protocol != ProtocolVersion)
+			if (LastHandshake.Protocol != PROTOCOL_VERSION)
 				Logger.LogWarning(
-					$"Protocol version mismatch: server={LastHandshake.Protocol}, client={ProtocolVersion}",
+					$"Protocol version mismatch: server={LastHandshake.Protocol}, client={PROTOCOL_VERSION}",
 					tag: nameof(Relay));
 			if (LastHandshake.MaxPacketSize > 0)
 				Connector.Mtu = LastHandshake.MaxPacketSize;
 		}
 
-		private void HandleLatency(ushort state, Buffer buffer) {
+		private void HandleLatency(ushort state, Buffer buffer, ReceivedPacket packet) {
 			buffer.Start();
 			var @event = new LatencyResponse { State = state, Connection = this };
 			if (!@event.FromBuffer(buffer))
 				return;
+			if (packet.At != default)
+				@event.ReceivedAt = packet.At;
+
 			LastLatency = @event;
 			OnLatency.Invoke(LastLatency);
 		}
@@ -263,7 +277,7 @@ namespace Nox.Relay.Core {
 					return DateTime.MinValue;
 				var server = LastLatency.IntermediateTime;
 				var local  = LastLatency.InitialTime;
-				var now    = DateTime.UtcNow;
+				var now    = Clock.UtcNow;
 				var diff   = now - local;
 				return server + diff;
 			}
@@ -297,11 +311,10 @@ namespace Nox.Relay.Core {
 		private async UniTaskVoid KeepAliveLoop(CancellationToken cancellationToken) {
 			try {
 				while (!cancellationToken.IsCancellationRequested) {
+					await Latency();
+
 					var interval = LastHandshake?.KeepAliveInterval ?? 5;
 					await UniTask.Delay(TimeSpan.FromSeconds(interval), cancellationToken: cancellationToken);
-					if (cancellationToken.IsCancellationRequested)
-						break;
-					await Latency();
 				}
 			} catch (OperationCanceledException) {
 				// Normal cancellation, do nothing
@@ -348,7 +361,7 @@ namespace Nox.Relay.Core {
 		public async UniTask<EmitResult> Emit(
 			Buffer      data,
 			PacketType type  = PacketType.None,
-			ushort      state = Broadcast,
+			ushort      state = BROADCAST,
 			SendType    send  = SendType.Auto
 		) {
 			if (!Connector.IsConnected)
@@ -357,12 +370,12 @@ namespace Nox.Relay.Core {
 					state
 				);
 
-			state = state == Broadcast
+			state = state == BROADCAST
 				? NextState()
 				: state;
 
 			var buffer = new Buffer();
-			buffer.Write((ushort)(data.Length + HeaderSize));
+			buffer.Write((ushort)(data.Length + HEADER_SIZE));
 			buffer.Write(state);
 			buffer.Write(type);
 
@@ -407,9 +420,9 @@ namespace Nox.Relay.Core {
 			ContentRequest                                                   request,
 			PacketType                                                      @out,
 			PacketType                                                     @in,
-			ushort                                                           state    = Broadcast,
+			ushort                                                           state    = BROADCAST,
 			SendType                                                         send     = SendType.Auto,
-			ushort                                                           timeout  = DefaultTimeout,
+			ushort                                                           timeout  = DEFAULT_TIMEOUT,
 			Func<Buffer, PacketType, ushort, SendType, UniTask<EmitResult>> emitter  = null,
 			Func<ValidateInput<T>, bool>                                     validate = null,
 			CancellationToken                                                token    = default
@@ -425,7 +438,7 @@ namespace Nox.Relay.Core {
 			emitter  ??= Emit;
 			validate ??= OnValidatePacket;
 
-			var initTime = DateTime.UtcNow;
+			var initTime = Clock.UtcNow;
 			var tcs      = new UniTaskCompletionSource<T>();
 
 			// Store the actual state in a boxed container to avoid capture issues
@@ -453,7 +466,7 @@ namespace Nox.Relay.Core {
 				token.ThrowIfCancellationRequested();
 
 				if (success) {
-					response.Time = (initTime, DateTime.UtcNow);
+					response.Time = (initTime, Clock.UtcNow);
 					return response;
 				}
 
@@ -480,6 +493,8 @@ namespace Nox.Relay.Core {
 					payload       = payload,
 				};
 
+				input.response.ReceivedAt = _receivedAt;
+
 				if (validate(input))
 					tcs.TrySetResult(input.response);
 				else
@@ -505,7 +520,7 @@ namespace Nox.Relay.Core {
 		)
 			=> await Request<Types.Handshakes.HandshakeResponse>(
 				new Types.Handshakes.HandshakeRequest {
-					ProtocolVersion = ProtocolVersion,
+					ProtocolVersion = PROTOCOL_VERSION,
 					Endpoint        = Connector.EndPoint,
 					Engine          = EngineExtensions.CurrentEngine,
 					Platform        = PlatformExtensions.CurrentPlatform,
@@ -529,8 +544,23 @@ namespace Nox.Relay.Core {
 				req,
 				PacketType.Latency,
 				PacketType.Latency,
-				NextState()
-			) ?? LatencyResponse.Failed();
+				NextState(),
+				SendType.Datagram,
+				LATENCY_DATAGRAM_TIMEOUT
+			);
+
+			if (res == null) {
+				req = LatencyRequest.Now();
+				res = await Request<LatencyResponse>(
+					req,
+					PacketType.Latency,
+					PacketType.Latency,
+					NextState()
+				);
+			}
+
+			if (res == null)
+				return LatencyResponse.Failed();
 
 			if (res.Challenge != req.Challenge)
 				Logger.LogWarning($"Latency response challenge mismatch: {res.Challenge} != {req.Challenge}", tag: nameof(Relay));

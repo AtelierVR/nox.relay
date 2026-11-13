@@ -64,7 +64,7 @@ namespace Nox.Relay.Core.Types.Handshakes {
         /// True when the relay authenticated the client from a transfer token: the client can skip
         /// the challenge-response exchange. Its identity comes from the enter response as usual.
         /// </summary>
-        public bool IsTransferred 
+        public bool IsTransferred
             => Flags.HasFlag(HandshakeFlags.Transferred);
 
         /// <summary>
@@ -78,11 +78,11 @@ namespace Nox.Relay.Core.Types.Handshakes {
 		/// Validates the handshake response to ensure all required fields are correctly set.
         /// </summary>
         public bool IsValid
-            => Protocol == Relay.ProtocolVersion;
+            => Protocol == Relay.PROTOCOL_VERSION;
 
         public override bool FromBuffer(Buffer buffer) {
             buffer.Start();
-            
+
             Protocol = buffer.ReadUShort();
             ClientId = buffer.ReadUShort();
 

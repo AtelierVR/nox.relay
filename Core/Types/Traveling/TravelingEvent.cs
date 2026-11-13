@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Nox.Assets;
 using Nox.CCK.Network;
 using Nox.CCK.Utils;
 using Nox.CCK.Worlds;
@@ -129,8 +130,9 @@ namespace Nox.Relay.Core.Types.Traveling {
 				Identifier = new Identifier(WorldIdentifierExtensions.WorldType, buffer.ReadUInt(), meta, buffer.ReadString());
 
 				var version = buffer.ReadUShort();
-				if (version != WorldIdentifierExtensions.DefaultVersion)
-					meta.Add(WorldIdentifierExtensions.VersionQuery, new[] { version.ToString() });
+				// 0 is the auto sentinel (no pinned release): storing it would pin a release named "0".
+				if (!AssetIdentifierExtensions.IsPreferredVersion(version))
+					meta.Add(AssetIdentifierExtensions.RELEASE_QUERY, new[] { version.ToString() });
 
 				if (UseHash) {
 					Hash = buffer.ReadBytes(32);

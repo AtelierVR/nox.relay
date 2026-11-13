@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Nox.Assets;
 using Nox.CCK.Utils;
 using Nox.Relay.Core.Rooms;
 using Nox.Relay.Core.Types.Content.Rooms;
@@ -49,12 +50,15 @@ namespace Nox.Relay.Core.Types.Avatars {
 				case AvatarChangedResult.Success:
 					break;
 				case AvatarChangedResult.Changing: {
-					PlayerId    = buffer.ReadUInt();
-					var id      = buffer.ReadUInt();
-					var server  = buffer.ReadString();
-					var version = buffer.ReadUShort();
-					var meta    = new Dictionary<string, string[]> { { "v", new[] { version.ToString() } } };
-					Identifier  = new Identifier("a", id, meta, server);
+					PlayerId   = buffer.ReadUInt();
+					var id     = buffer.ReadUInt();
+					var server = buffer.ReadString();
+					var release = buffer.ReadUInt();
+					var meta   = new Dictionary<string, string[]>();
+					// 0 is the auto sentinel (no pinned release): storing it would pin a release named "0".
+					if (!AssetIdentifierExtensions.IsPreferredVersion(release))
+						meta.Add(AssetIdentifierExtensions.RELEASE_QUERY, new[] { release.ToString() });
+					Identifier = new Identifier("a", id, meta, server);
 					break;
 				}
 				case AvatarChangedResult.Unknown:

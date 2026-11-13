@@ -56,9 +56,9 @@ namespace Nox.Relay.Core.Connectors {
 		UniTask Dispose();
 
 		/// <summary>
-		/// Event triggered when a buffer is received.
+		/// Event triggered when a packet is received.
 		/// </summary>
-		UnityEvent<Buffer> OnReceived { get; }
+		UnityEvent<ReceivedPacket> OnReceived { get; }
 
 		/// <summary>
 		/// Send a buffer through the connector.
