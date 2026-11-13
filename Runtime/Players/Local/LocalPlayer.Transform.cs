@@ -3,17 +3,20 @@ using Cysharp.Threading.Tasks;
 using Nox.CCK.Utils;
 using Nox.Relay.Core.Rooms;
 using Nox.Relay.Core.Types.Transform;
+using UnityEngine;
 
 namespace Nox.Relay.Runtime.Players {
 	public partial class LocalPlayer {
 
-		// Prevents concurrent execution of SendTransformsIfNeeded()
-		private bool _startTransform;
+		private bool _start;
+
+		private readonly List<(ushort partId, TransformObject delta)> _dirty = new();
+		private readonly List<UniTask<bool>> _tasks = new();
 
 		public override void Tick() {
 			base.Tick();
 
-			if (!_startTransform)
+			if (!_start)
 				SendTransformsIfNeeded().Forget();
 		}
 
@@ -23,39 +26,31 @@ namespace Nox.Relay.Runtime.Players {
 		/// is lower): that is the only limit, there is no per-tick cap here.
 		/// </summary>
 		async protected UniTask SendTransformsIfNeeded() {
-			_startTransform = true;
+			_start = true;
 
 			var room = Context?.Context.Room;
 			if (room == null)
 				goto end;
 
-			// Need active controller to read current transform values
 			var controller = Main.ControllerAPI.Current;
 			if (controller == null)
 				goto end;
 
-			// Collect parts that need updates (moved beyond threshold)
-			var dirtyParts = new List<(ushort partId, TransformObject delta)>();
+			_dirty.Clear();
 
-			// Ensure a sensible minimum threshold to avoid floating point precision issues
 			var threshold = room.Threshold < 0.0001f ? 0.0001f : room.Threshold;
 
 			foreach (var (index, value) in Parts) {
 				if (value is not Part cachedPart)
 					continue;
-
-				// Get current transform from controller
 				if (!controller.TryGetPart(index, out var currentTransform))
 					continue;
-
-				// Compare current vs cached and get only changed values exceeding threshold
 				var deltaTransform = GetChangedTransform(cachedPart, currentTransform, threshold);
 				if (deltaTransform == null)
 					continue;
 
-				dirtyParts.Add((partId: index, deltaTransform));
+				_dirty.Add((partId: index, deltaTransform));
 
-				// Update cache with values we're about to send
 				if (deltaTransform.Flags.HasFlag(TransformFlags.Position))
 					cachedPart.SetPosition(deltaTransform.GetPosition());
 				if (deltaTransform.Flags.HasFlag(TransformFlags.Rotation))
@@ -68,12 +63,11 @@ namespace Nox.Relay.Runtime.Players {
 					cachedPart.SetAngular(deltaTransform.GetAngular());
 			}
 
-			// Send all changes in a batch
-			if (dirtyParts.Count > 0)
-				await SendTransformsBatch(room, dirtyParts);
+			if (_dirty.Count > 0)
+				await SendTransformsBatch(room);
 
 		end:
-			_startTransform = false;
+			_start = false;
 		}
 
 		/// <summary>
@@ -103,15 +97,19 @@ namespace Nox.Relay.Runtime.Players {
 		/// <summary>
 		/// Sends a batch of transform updates to the room in parallel.
 		/// </summary>
-		private static async UniTask SendTransformsBatch(Room room, List<(ushort partId, TransformObject delta)> dirtyParts) {
-			var tasks = new List<UniTask<bool>>();
+		private async UniTask SendTransformsBatch(Room room) {
+			_tasks.Clear();
 
-			foreach (var (partId, deltaTransform) in dirtyParts) {
+			var time = (uint)(Time.timeAsDouble * 1000.0);
+
+			foreach (var (partId, deltaTransform) in _dirty) {
 				var request = TransformRequest.CreateEntity(TransformRequest.SELF, partId, deltaTransform);
-				tasks.Add(room.Transform(request));
+				request.SenderTime = time;
+				_tasks.Add(room.Transform(request));
 			}
 
-			await UniTask.WhenAll(tasks);
+			await UniTask.WhenAll(_tasks);
+			_tasks.Clear();
 		}
 
 	}

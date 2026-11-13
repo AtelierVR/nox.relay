@@ -129,7 +129,7 @@ namespace Nox.Relay.Runtime {
 
 					if (ReconnectMaxAttempts > 0 && attempt >= ReconnectMaxAttempts) {
 						Logger.LogError($"Failed to reconnect after {attempt} attempt(s)", tag: Tag);
-						UpdateState(Status.Error, $"Failed to reconnect after {attempt} attempt(s)", -1f);
+						await Helper.Fail(this, $"Failed to reconnect after {attempt} attempt(s)");
 						return;
 					}
 
@@ -170,7 +170,7 @@ namespace Nox.Relay.Runtime {
 
 		/// <summary>
 		/// Replays the connection state to a module that was loaded after the connection was
-		/// established (a world scene streamed in later, a module created on the fly, …).
+		/// established (a world scene streamed in later, a module created on the fly, ...).
 		/// </summary>
 		internal void TryNotifyConnected(ISessionModule module) {
 			if (module == null)

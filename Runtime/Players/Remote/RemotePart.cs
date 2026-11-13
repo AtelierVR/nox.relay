@@ -1,6 +1,7 @@
 using System;
 using Nox.CCK.Utils;
 using Nox.Entities;
+using Nox.Relay.Runtime.Physicals;
 using UnityEngine;
 
 namespace Nox.Relay.Runtime.Players {
@@ -15,6 +16,22 @@ namespace Nox.Relay.Runtime.Players {
 
 		readonly internal RemotePlayer Context;
 		public DateTime Updated { get; private set; } = DateTime.UtcNow;
+
+		internal readonly PartTransformBuffer Buffer = new();
+
+		internal void Capture(double time) {
+			var tps = Context.Reference?.Room?.Tps ?? 0;
+
+			Buffer.Push(
+				time,
+				tps > 0 ? 1f / tps : 0f,
+				GetPosition(),
+				GetRotation(),
+				GetScale(),
+				GetVelocity(),
+				GetAngular()
+			);
+		}
 
 		public ushort Id { get; }
 

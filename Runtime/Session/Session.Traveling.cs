@@ -1,8 +1,10 @@
 using System;
 using System.Threading;
 using Cysharp.Threading.Tasks;
+using Nox.Assets;
 using Nox.CCK.Utils;
 using Nox.CCK.Network.Assets;
+using Nox.Network.Assets;
 using Nox.Relay.Core.Types.Traveling;
 using Logger = Nox.CCK.Utils.Logger;
 
@@ -18,6 +20,8 @@ namespace Nox.Relay.Runtime {
 
 			string hash;
 			string url;
+			IAssetFile bundle = null;
+			Identifier bundleId = Identifier.Invalid;
 
 			var password = @event.Password;
 
@@ -44,6 +48,8 @@ namespace Nox.Relay.Runtime {
 
 				hash = asset.CacheKey();
 				url  = asset.Url;
+				bundle   = asset;
+				bundleId = Identifier.Parse(identifier);
 			} else {
 				progress?.Invoke(0.1f, "The traveling does not contain valid URL or master asset information");
 				Logger.LogError($"{@event} does not contain valid URL or master asset information", tag: Tag);
@@ -55,8 +61,9 @@ namespace Nox.Relay.Runtime {
 			progress?.Invoke(0.2f, "Searching for world");
 			if (!Main.WorldAPI.HasInCache(hash)) {
 				var download = Main.WorldAPI.DownloadToCache(
-					url,
-					hash: hash,
+					bundle != null && bundleId.IsValid()
+						? new IdentifierCache(bundleId, bundle)
+						: new UrlCache(url, hash),
 					progress: f => progress?.Invoke(0.2f + f * 0.45f, "Downloading world..."),
 					token: token
 				);

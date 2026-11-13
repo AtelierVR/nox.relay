@@ -1,4 +1,4 @@
-using Nox.Entities;
+using Nox.CCK;
 
 namespace Nox.Relay.Runtime.Players {
 	/// <summary>

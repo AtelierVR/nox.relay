@@ -71,10 +71,13 @@ namespace Nox.Relay.Runtime.Players {
 		private const string VoiceStatusProperty = "voice.status";
 
 		/// <summary>Avatar parameter carrying the self-mute state (driven by the session).</summary>
-		private const string MutedParameter = "Muted";
+		private const string MutedParameter = "Voice/Muted";
 
 		/// <summary>Avatar parameter carrying the deafen state (driven by the session).</summary>
-		private const string DeafenedParameter = "Deafened";
+		private const string DeafenedParameter = "Voice/Deafened";
+
+		/// <summary>Avatar parameter carrying the volume of the local voice (driven by the audio mod).</summary>
+		private const string VoiceVolumeParameter = "Voice/Volume";
 
 		/// <summary>Name of the targeted event telling a player it has been muted by someone.</summary>
 		internal const string VoiceMuteEventName = "voice.mute";
@@ -229,13 +232,14 @@ namespace Nox.Relay.Runtime.Players {
 		protected virtual void SetRemoteVoiceStatus(bool selfMuted, bool deafened) { }
 
 		/// <summary>
-		/// The voice status is carried by the dedicated <c>voice.status</c> property (public
-		/// self-mute/deafen, private listener mutes), so its avatar parameters never need a
+		/// The voice status and the team are carried by session values (the <c>voice.status</c>
+		/// property, the <c>team</c> data and relation matrix), so their avatar parameters never need a
 		/// second network path.
 		/// </summary>
 		private static void OnVoiceParameterSync(ParameterSyncEventArgs args) {
 			var name = args.Parameter?.Name;
-			if (name != MutedParameter && name != DeafenedParameter)
+			if (name != MutedParameter && name != DeafenedParameter && name != VoiceVolumeParameter
+				&& name != TeamAssignedParameter && name != TeamColorParameter && name != TeamRelationParameter)
 				return;
 
 			args.Flags = PropertyFlags.None;

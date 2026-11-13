@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using Nox.CCK.Utils;
-using Nox.Entities;
 using Nox.Relay.Core.Types.Transform;
 using Logger = Nox.CCK.Utils.Logger;
 
@@ -32,22 +31,20 @@ namespace Nox.Relay.Runtime {
 		private void ApplyEntityPartTransform(TransformEvent @event) {
 			var entity = _entities.GetEntity<Entity>(@event.EntityId);
 			if (entity == null) {
-				// The entity event travels on the reliable stream while the transform travels as a
-				// datagram: a part may arrive first. Keep it until the entity is created.
 				QueueEntityTransform(@event);
 				return;
 			}
 
-			// The local player drives its own parts: ignore the echo of our own transforms.
 			if (entity.IgnoresTransformEcho(@event.SenderId))
 				return;
 
-			ApplyPartTransform(entity.GetOrCreatePart(@event.PartRig), @event.Transform);
+			ApplyPartTransform(entity, @event.PartRig, @event.Transform, @event.SenderTime);
 		}
 
 		/// <summary>Copy the transform fields carried by the event onto a part.</summary>
-		private static void ApplyPartTransform(IPart part, TransformObject transform) {
-			if (part == null || transform == null)
+		private static void ApplyPartTransform(Entity entity, ushort partId, TransformObject transform, uint time) {
+			var part = transform == null ? null : entity.GetOrCreatePart(partId);
+			if (part == null)
 				return;
 
 			if (transform.Flags.HasFlag(TransformFlags.Position))
@@ -60,17 +57,18 @@ namespace Nox.Relay.Runtime {
 				part.Velocity = transform.GetVelocity();
 			if (transform.Flags.HasFlag(TransformFlags.Angular))
 				part.Angular = transform.GetAngular();
+
+			entity.OnPartTransformReceived(partId, time);
 		}
 
 		/// <summary>Part transforms that arrived before their entity (multipart sync), oldest first.</summary>
 		private readonly List<(uint EntityId, TransformEvent Event)> _pending = new();
 
 		/// <summary>Maximum number of buffered part-transform packets: past it, the oldest are dropped.</summary>
-		private const int MaxPending = 64;
+		private const int MAX_PENDING = 64;
 
 		private void QueueEntityTransform(TransformEvent @event) {
-			// FIFO: the buffer keeps the newest packets, the oldest ones are dropped to make room.
-			while (_pending.Count >= MaxPending)
+			while (_pending.Count >= MAX_PENDING)
 				_pending.RemoveAt(0);
 
 			_pending.Add((@event.EntityId, @event));
@@ -82,7 +80,6 @@ namespace Nox.Relay.Runtime {
 			if (entity == null)
 				return;
 
-			// Oldest first, so the newest transform wins; in place, so the remaining order is kept.
 			for (var i = 0; i < _pending.Count;) {
 				if (_pending[i].EntityId != entityId) {
 					i++;
@@ -91,7 +88,7 @@ namespace Nox.Relay.Runtime {
 
 				var pending = _pending[i].Event;
 				_pending.RemoveAt(i);
-				ApplyPartTransform(entity.GetOrCreatePart(pending.PartRig), pending.Transform);
+				ApplyPartTransform(entity, pending.PartRig, pending.Transform, pending.SenderTime);
 			}
 		}
 

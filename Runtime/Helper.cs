@@ -2,10 +2,12 @@ using System;
 using System.Linq;
 using System.Threading;
 using Cysharp.Threading.Tasks;
+using Nox.Assets;
 using Nox.CCK.Network;
 using Nox.CCK.Sessions;
 using Nox.CCK.Utils;
 using Nox.CCK.Network.Assets;
+using Nox.Network.Assets;
 using Nox.Relay.Core.Connectors;
 using Nox.Relay.Core.Rooms;
 using Nox.Relay.Core.Types.Authentication;
@@ -61,20 +63,52 @@ namespace Nox.Relay.Runtime {
 			} catch (Exception e) {
 				Logger.LogException(e, session.Tag);
 				try {
-					session.UpdateState(Status.Error, $"Connection failed: {e.Message}", -1f);
+					await Fail(session, $"Connection failed: {e.Message}", doE);
 				} catch (Exception stateError) {
 					// The session (or its UI) may already be disposed, never let this bubble up.
 					Logger.LogException(stateError, session.Tag);
 				}
-
-				if (doE) {
-					try {
-						await session.Dispose();
-					} catch (Exception disposeError) {
-						Logger.LogException(disposeError, session.Tag);
-					}
-				}
 			}
+		}
+
+		/// <summary>
+		/// Ends a failed connection attempt: reports the terminal <see cref="Status.Error"/> state,
+		/// then disposes and unregisters the session. A session that never reached
+		/// <see cref="Status.Ready"/> cannot be revived, so leaving it registered only keeps a dead
+		/// entry in the session list (and a stale "Connected" line in the sessions panel).
+		/// </summary>
+		internal static async UniTask Fail(Session session, string message, bool dispose = true) {
+			session.UpdateState(Status.Error, message, -1f);
+			Logger.LogError(message, session.Tag);
+
+			if (!dispose)
+				return;
+
+			await CloseSession(session);
+		}
+
+		/// <summary>
+		/// Disposes the session and removes it from the session API.
+		/// <see cref="ISessionAPI.Close(string, CancellationToken)"/> also performs the current-session
+		/// hand-over; calling <see cref="ISession.Dispose"/> alone would leave the session registered
+		/// (nothing else unregisters it, the session API only refreshes on add/remove events).
+		/// </summary>
+		private static async UniTask CloseSession(Session session) {
+			ISessionAPI api = null;
+
+			try {
+				api = Main.SessionAPI;
+			} catch (Exception) {
+				// The session mod is unloading (or not loaded): fall back to a plain dispose.
+			}
+
+			// The connect task starts before the session is registered (TryMake adds it afterwards).
+			if (api != null && api.Has(session.Id)) {
+				await api.Close(session.Id);
+				return;
+			}
+
+			await session.Dispose();
 		}
 
 		private static async UniTask ConnectInternal(Session session, bool doE, CancellationToken token) {
@@ -92,7 +126,7 @@ namespace Nox.Relay.Runtime {
 
 				if (asset == null || string.IsNullOrEmpty(hash) || string.IsNullOrEmpty(asset.Url)) {
 					Logger.LogError($"Failed to find a compatible bundle for world {world}", session.Tag);
-					session.UpdateState(Status.Error, $"World '{world}' not found", 1f);
+					await Fail(session, $"World '{world}' not found", doE);
 					return;
 				}
 
@@ -101,8 +135,7 @@ namespace Nox.Relay.Runtime {
 				if (!Main.WorldAPI.HasInCache(hash)) {
 					session.UpdateState(Status.Pending, $"Downloading world '{world}'...", 0.15f);
 					var download = Main.WorldAPI.DownloadToCache(
-						asset.Url,
-						hash: hash,
+						new IdentifierCache(world, asset),
 						progress: arg0 => session.UpdateState(Status.Pending, $"Downloading world '{world}'...",
 							0.15f + arg0 * 0.45f),
 						token: token
@@ -112,7 +145,7 @@ namespace Nox.Relay.Runtime {
 
 				if (!Main.WorldAPI.HasInCache(hash)) {
 					Logger.LogError($"Failed to download the bundle of world {world}", session.Tag);
-					session.UpdateState(Status.Error, $"Failed to download world '{world}'", 1f);
+					await Fail(session, $"Failed to download world '{world}'", doE);
 					return;
 				}
 			}
@@ -121,18 +154,16 @@ namespace Nox.Relay.Runtime {
 			// No bearer token is required or sent.
 			var (adapter, offline) = await ConnectAdapter(session, token);
 			if (adapter == null) {
+				// ConnectAdapter already reported the precise error state.
 				if (doE)
-					await session.Dispose();
+					await CloseSession(session);
 				return;
 			}
 
 			session.UpdateState(Status.Pending, "Fetching room...", 0.25f, cancelable: true);
 			var room = await ResolveRoom(session, adapter, null, token);
 			if (room == null) {
-				session.UpdateState(Status.Error, $"Failed to get room {instance}", -1f);
-				Logger.LogError($"Failed to get room {instance}", session.Tag);
-				if (doE)
-					await session.Dispose();
+				await Fail(session, $"Failed to get room {instance}", doE);
 				return;
 			}
 
@@ -146,10 +177,7 @@ namespace Nox.Relay.Runtime {
 				Password = session.GetProperty<string>("password".Hash()),
 			}, token);
 			if (enter.IsError) {
-				session.UpdateState(Status.Error, $"Failed to connect to room: {enter.Result} - {enter.Reason}", -1f);
-				Logger.LogError($"Failed to connect to room {instance}: {enter.Result} - {enter.Reason}", session.Tag);
-				if (doE)
-					await session.Dispose();
+				await Fail(session, $"Failed to connect to room: {enter.Result} - {enter.Reason}", doE);
 				return;
 			}
 
@@ -163,10 +191,8 @@ namespace Nox.Relay.Runtime {
 			// (UseBundle, e.g. a standalone relay with a configured world) — both are handled.
 			var travelInfos = await room.Traveling(TravelingRequest.Travel(), token);
 			if (!travelInfos.IsSuccess) {
-				session.UpdateState(Status.Error, $"Failed to travel to room: {travelInfos.Reason}", -1f);
+				await Fail(session, $"Failed to travel to room: {travelInfos.Reason}", doE);
 				Logger.LogError($"Failed to travel to room {instance}: {travelInfos.Results} - {travelInfos.Reason}", session.Tag);
-				if (doE)
-					await session.Dispose();
 				return;
 			}
 
@@ -178,9 +204,9 @@ namespace Nox.Relay.Runtime {
 			);
 
 			if (!traveling) {
-				session.UpdateState(Status.Pending, "Failed to travel to room", -1f);
-				Logger.LogError($"Failed to travel to room {instance}", session.Tag);
-				await session.Dispose();
+				// OnTravelingAsync already logged the precise cause (no master asset, download or
+				// scene load failure); the session must end in a terminal state, never in Pending.
+				await Fail(session, $"Failed to travel to room {instance}", doE);
 				return;
 			}
 
@@ -188,10 +214,8 @@ namespace Nox.Relay.Runtime {
 
 			var travelReady = await room.Traveling(TravelingRequest.Ready(), token);
 			if (!travelReady.IsReady) {
-				session.UpdateState(Status.Error, $"Failed to travel to room {travelInfos.Reason}", -1f);
+				await Fail(session, $"Failed to travel to room: {travelReady.Reason}", doE);
 				Logger.LogError($"Failed to travel to room {instance}: {travelReady.Results} - {travelReady.Reason}", session.Tag);
-				if (doE)
-					await session.Dispose();
 				return;
 			}
 

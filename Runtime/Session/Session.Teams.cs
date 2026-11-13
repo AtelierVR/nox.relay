@@ -1,6 +1,7 @@
 using Nox.CCK.Sessions;
 using Nox.Entities;
 using UnityEngine;
+using UnityEngine.Events;
 
 namespace Nox.Relay.Runtime {
 	/// <summary>
@@ -9,6 +10,18 @@ namespace Nox.Relay.Runtime {
 	/// </summary>
 	public sealed partial class Session {
 		private readonly TeamRegistry _teams = new();
+
+		/// <inheritdoc />
+		public UnityEvent<ITeam> OnTeamCreated
+			=> _teams.OnTeamCreated;
+
+		/// <inheritdoc />
+		public UnityEvent<ITeam> OnTeamRemoved
+			=> _teams.OnTeamRemoved;
+
+		/// <inheritdoc />
+		public UnityEvent<ITeamEntity> OnTeamChanged
+			=> _teams.OnTeamChanged;
 
 		/// <inheritdoc />
 		public ITeam[] GetTeams()
@@ -25,6 +38,13 @@ namespace Nox.Relay.Runtime {
 		/// <inheritdoc />
 		public bool RemoveTeam(int id)
 			=> _teams.RemoveTeam(id);
+
+		/// <summary>
+		/// Announces that <paramref name="entity"/> now belongs to another team (or to none), so the listeners
+		/// of <see cref="ITeamSession.OnTeamChanged"/> can refresh. Called by the entity itself.
+		/// </summary>
+		public void NotifyTeamChanged(ITeamEntity entity)
+			=> _teams.NotifyTeamChanged(entity);
 
 		/// <inheritdoc />
 		public TeamRelation GetRelation(ITeam team, ITeam other)

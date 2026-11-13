@@ -2,17 +2,22 @@ using System;
 using Nox.Avatars.Parameters;
 using Nox.CCK.Network;
 using Nox.Entities;
+using UnityEngine.Events;
 
 namespace Nox.Relay.Runtime {
 	/// <summary>
 	/// A property that is linked to an avatar parameter and automatically syncs changes.
 	/// </summary>
-	public class AvatarParameterProperty : IProperty {
+	public class AvatarParameterProperty : IProperty, IDisposable {
 		private readonly IParameter _parameter;
+
+		/// <summary>Event of the parameter, or <c>null</c> when it does not announce its writes.</summary>
+		private readonly UnityEvent<IParameter> _events;
+
 		private object _cachedValue;
 		private object _refreshedValue;
 
-		public AvatarParameterProperty(Entity context, IParameter parameter, PropertyFlags flags) {
+		public AvatarParameterProperty(Entity _, IParameter parameter, PropertyFlags flags) {
 			_parameter      = parameter ?? throw new ArgumentNullException(nameof(parameter));
 			Key             = parameter.Key;
 			Name            = parameter.Name;
@@ -20,12 +25,20 @@ namespace Nox.Relay.Runtime {
 			_cachedValue    = _parameter.Value;
 			_refreshedValue = _cachedValue;
 			UpdatedAt       = DateTime.UtcNow;
+
+			// The parameter announces its writes: the value is followed without polling it every tick.
+			_events = parameter.OnValueChanged;
+			_events?.AddListener(OnParameterValueChanged);
 		}
 
 		public int Key { get; }
 		public DateTime UpdatedAt { get; private set; }
 		public string Name { get; }
 		public PropertyFlags Flags { get; }
+
+		/// <summary>Category of the parameter, exposed so the editors can group the properties.</summary>
+		public string Category
+			=> _parameter.Category;
 
 		/// <summary>The parameter this property is bound to.</summary>
 		public IParameter Parameter
@@ -43,6 +56,14 @@ namespace Nox.Relay.Runtime {
 		}
 
 		/// <summary>
+		/// Whether the value is followed through the event of the parameter (see
+		/// <see cref="IParameter.OnValueChanged"/>): <see cref="Refresh"/> is then only a fallback for the
+		/// parameters that do not announce their writes, so the tick loop can skip this one.
+		/// </summary>
+		public bool IsObservable
+			=> _events != null;
+
+		/// <summary>
 		/// Captures the current parameter value once per tick.
 		/// Must be called before checking IsDirty or Serialize().
 		/// </summary>
@@ -51,6 +72,18 @@ namespace Nox.Relay.Runtime {
 			if (!AreValuesEqual(_refreshedValue, _cachedValue))
 				IsDirty = true;
 		}
+
+		/// <summary>The parameter was written: its new value is sent on the next tick.</summary>
+		private void OnParameterValueChanged(IParameter parameter) {
+			_refreshedValue = _parameter.Value;
+
+			if (!AreValuesEqual(_refreshedValue, _cachedValue))
+				IsDirty = true;
+		}
+
+		/// <summary>Stops following the parameter (the avatar is gone).</summary>
+		public void Dispose()
+			=> _events?.RemoveListener(OnParameterValueChanged);
 
 		public bool IsDirty { get; set; }
 

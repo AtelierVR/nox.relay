@@ -111,6 +111,11 @@ namespace Nox.Relay.Runtime {
 			if (IsDisposed)
 				return;
 
+			if (!AutoReconnect) {
+				await Helper.Fail(this, "Transfer failed");
+				return;
+			}
+
 			// The token is tied to this client and the room is gone: retrying is pointless, rebuild
 			// the room on the relay we can reach so the session never stays empty.
 			UpdateState(Status.Pending, "Transfer failed, reconnecting...", 0f, cancelable: true);

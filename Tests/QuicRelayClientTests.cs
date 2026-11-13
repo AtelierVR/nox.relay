@@ -16,9 +16,9 @@ namespace Nox.Relay.Tests {
 	public class QuicRelayClientTests {
 		// The server is heavy (starts a real QUIC listener) — create it once for the
 		// whole fixture to avoid rapid registration/teardown cycles in MsQuic.
-		private static TestQuicServer? _sharedServer;
+		private static TestQuicServer _sharedServer;
 
-		private QuicConnector? _client;
+		private QuicConnector _client;
 
 		// ── Fixture lifecycle (server) ────────────────────────────────────────
 
@@ -44,7 +44,7 @@ namespace Nox.Relay.Tests {
 		public async Task TearDown() {
 			if (_client != null) {
 				await _client.Close().AsTask().ConfigureAwait(false);
-				_client.Dispose();
+				await _client.Dispose().AsTask().ConfigureAwait(false);
 				_client = null;
 			}
 
@@ -94,7 +94,7 @@ namespace Nox.Relay.Tests {
 		}
 
 		[Test, Timeout(15_000)]
-		public async Task IsConnected_ShouldBeFalse_BeforeConnect() {
+		public void IsConnected_ShouldBeFalse_BeforeConnect() {
 			Assert.That(_client!.IsConnected, Is.False);
 		}
 
@@ -127,7 +127,7 @@ namespace Nox.Relay.Tests {
 			// which happens slightly after the client's Connected event.
 			await Task.Delay(200).ConfigureAwait(false);
 
-			var tcs = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+			var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
 			_client!.OnDisconnected.AddListener(((reason) => tcs.TrySetResult(reason)));
 
 			_sharedServer!.DisconnectClient();
@@ -231,7 +231,7 @@ namespace Nox.Relay.Tests {
 			await ConnectToServer().ConfigureAwait(false);
 
 			var tcs = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
-			_client!.OnReceived.AddListener((data) => tcs.TrySetResult(data));
+			_client!.OnReceived.AddListener((packet) => tcs.TrySetResult(packet.Buffer));
 
 			// Give the client a moment to register before the server sends
 			await Task.Delay(100).ConfigureAwait(false);
@@ -246,7 +246,7 @@ namespace Nox.Relay.Tests {
 			await ConnectToServer().ConfigureAwait(false);
 
 			var tcs = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
-			_client!.OnReceived.AddListener((data) => tcs.TrySetResult(data));
+			_client!.OnReceived.AddListener((packet) => tcs.TrySetResult(packet.Buffer));
 
 			await Task.Delay(100).ConfigureAwait(false);
 			_sharedServer!.SendDatagram(Encoding.UTF8.GetBytes("server datagram"));

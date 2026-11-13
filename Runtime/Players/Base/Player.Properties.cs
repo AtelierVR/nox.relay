@@ -40,6 +40,7 @@ namespace Nox.Relay.Runtime.Players {
 
 			SynchronizeAvatarParameters(module.GetParameters(), IsLocal);
 			ApplyVoiceStatusToAvatar();
+			ApplyTeamToAvatar();
 		}
 
 		/// <summary>Unbinds the module, stops listening and releases the avatar parameters.</summary>
@@ -52,6 +53,7 @@ namespace Nox.Relay.Runtime.Players {
 
 		private void OnParameterRegistered(IParameter parameter) {
 			ApplyVoiceStatusToAvatar();
+			ApplyTeamToAvatar();
 			SynchronizeAvatarParameter(parameter, IsLocal);
 			Physical?.OnParameterChanged(parameter, true);
 		}
@@ -150,6 +152,9 @@ namespace Nox.Relay.Runtime.Players {
 		private void ReleaseAvatarParameter(int key) {
 			if (!Properties.TryGetValue(key, out var prop) || prop is not AvatarParameterProperty avatarProp)
 				return;
+
+			// Stop following the parameter of the avatar that is going away.
+			avatarProp.Dispose();
 
 			Properties[key] = new UnassignedProperty(this, key, avatarProp.Value, avatarProp.Flags);
 			Logger.LogDebug($"Released avatar parameter '{avatarProp.Name}' (key={key}) to an unassigned property; the avatar is gone, its binding is no longer queried.", tag: GetType().Name);

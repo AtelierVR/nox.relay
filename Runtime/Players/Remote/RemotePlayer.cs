@@ -1,5 +1,7 @@
+using System;
 using Nox.CCK.Entities;
 using Nox.Entities;
+using UnityEngine;
 using CorePlayer = Nox.Relay.Core.Players.Player;
 
 namespace Nox.Relay.Runtime.Players {
@@ -9,19 +11,43 @@ namespace Nox.Relay.Runtime.Players {
 	/// <c>RemotePlayer.Physical.cs</c> and voice in <c>RemotePlayer.Voice.cs</c>.
 	/// </summary>
 	public partial class RemotePlayer : Player {
-		public RemotePlayer(Entities context, CorePlayer player) : base(context, player) {
-			// Initialize default parts for a basic player rig
-			InitializeDefaultParts();
-		}
+		public RemotePlayer(Entities context, CorePlayer player) : base(context, player)
+			=> InitializeDefaultParts();
 
 		protected override IPart CreatePart(ushort index)
 			=> new RemotePart(this, index);
+
+		private const double CLOCK_SMOOTHING = 0.05;
+		private const double CLOCK_RESYNC_THRESHOLD = 1.0;
+
+		private double _clockOffset;
+		private bool _hasClock;
+
+		protected internal override void OnPartTransformReceived(ushort partId, uint time) {
+			if (!Parts.TryGetValue(partId, out var part) || part is not RemotePart remote)
+				return;
+
+			var now = Time.timeAsDouble;
+			if (time == 0) {
+				remote.Capture(now);
+				return;
+			}
+
+			var sample = now - time * 0.001;
+			if (!_hasClock || Math.Abs(sample - _clockOffset) > CLOCK_RESYNC_THRESHOLD) {
+				_clockOffset = sample;
+				_hasClock = true;
+			} else {
+				_clockOffset += (sample - _clockOffset) * CLOCK_SMOOTHING;
+			}
+
+			remote.Capture(time * 0.001 + _clockOffset);
+		}
 
 		public override bool IsLocal
 			=> false;
 
 		private void InitializeDefaultParts() {
-			// Create base part at minimum
 			if (!Parts.ContainsKey(EntityRig.Base.ToIndex()))
 				Parts[EntityRig.Base.ToIndex()] = new RemotePart(this, EntityRig.Base.ToIndex());
 		}
@@ -35,7 +61,6 @@ namespace Nox.Relay.Runtime.Players {
 				Parts[partId] = part;
 			}
 
-			// Update the part's transform data
 			if (partData.Position != part.Position)
 				part.Position = partData.Position;
 			if (partData.Rotation != part.Rotation)

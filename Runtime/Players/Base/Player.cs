@@ -26,6 +26,7 @@ namespace Nox.Relay.Runtime.Players {
 			Persistent.OnChanged.AddListener(OnDataChanged);
 			Main.VoiceRegister?.OnVolume.AddListener(OnVolumeChanged);
 			Main.VoiceRegister?.OnMute.AddListener(OnMuteChanged);
+			Data.OnChanged.AddListener(OnTeamDataChanged);
 			SetupVoiceStatus();
 			OnVolume.Invoke(Volume, EffectiveVolume);
 			OnMute.Invoke(IsMuted, IsEffectivelyMuted);
@@ -35,6 +36,7 @@ namespace Nox.Relay.Runtime.Players {
 			Persistent.OnChanged.RemoveListener(OnDataChanged);
 			Main.VoiceRegister?.OnVolume.RemoveListener(OnVolumeChanged);
 			Main.VoiceRegister?.OnMute.RemoveListener(OnMuteChanged);
+			Data.OnChanged.RemoveListener(OnTeamDataChanged);
 			Persistent.Dispose();
 			base.Dispose();
 		}

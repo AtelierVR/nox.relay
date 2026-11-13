@@ -27,6 +27,11 @@ namespace Nox.Relay.Runtime {
 		public int Key { get; }
 		public DateTime UpdatedAt { get; set; }
 		public string Name { get; }
+
+		/// <summary>A raw property carries no category: the editors show it in the « general » section.</summary>
+		public string Category
+			=> null;
+
 		public object Value { get; set; }
 		public PropertyFlags Flags { get; }
 	}

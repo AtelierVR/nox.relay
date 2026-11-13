@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using Cysharp.Threading.Tasks;
+using Nox.CCK;
 using Nox.CCK.Network;
 using Nox.CCK.Sessions;
 using Nox.Entities;
@@ -127,6 +128,11 @@ namespace Nox.Relay.Runtime {
 		/// </summary>
 		public virtual bool IgnoresTransformEcho(uint senderId)
 			=> false;
+
+		/// <summary>Called once a received transform has been copied onto one of the parts.</summary>
+		/// <param name="partId">Part that was updated.</param>
+		/// <param name="time">Clock of the sender when the transform was sampled, in milliseconds (0 = not set).</param>
+		protected internal virtual void OnPartTransformReceived(ushort partId, uint time) { }
 
 		#endregion
 
@@ -273,8 +279,9 @@ namespace Nox.Relay.Runtime {
 				if (!property.Flags.HasFlag(PropertyFlags.LocalEmit))
 					continue;
 
-				// Capture current value once; sets IsDirty if changed
-				if (property is AvatarParameterProperty app)
+				// A parameter that announces its writes is already up to date (see IParameter.OnValueChanged);
+				// only the ones that cannot are captured here.
+				if (property is AvatarParameterProperty app && !app.IsObservable)
 					app.Refresh();
 
 				var overdue = resendEnabled && (now - property.UpdatedAt) >= resendInterval;
