@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Cysharp.Threading.Tasks;
-using Nox.Audio.Players;
 using Nox.Avatars.Parameters;
 using Nox.CCK;
 using Nox.CCK.Entities;
@@ -125,7 +125,7 @@ namespace Nox.Relay.Runtime.Physicals {
 				.GetModules<IParameterModule>()
 				.FirstOrDefault();
 
-			_heightParameter = module?.GetParameter("Height") 
+			_heightParameter = module?.GetParameter("Height")
 				?? module?.GetParameter("Height/Eye");
 			return _heightParameter;
 		}
@@ -181,17 +181,16 @@ namespace Nox.Relay.Runtime.Physicals {
 			if (api == null)
 				return;
 
-			CreateNameplateAsync(api, anchor).Forget();
+			CreateNameplateAsync(api, anchor, this.GetCancellationTokenOnDestroy()).Forget();
 		}
 
-		private async UniTaskVoid CreateNameplateAsync(INameplateAPI api, Transform anchor) {
+		private async UniTaskVoid CreateNameplateAsync(INameplateAPI api, Transform anchor, CancellationToken cancellationToken) {
 			_creatingNameplate = true;
 			try {
-				var plate = await api.Instantiate(anchor);
+				var plate = await api.Instantiate(anchor, cancellationToken);
 				if (!plate.IsAlive())
 					return;
 
-				// The physical (and its anchor) may have been destroyed while instantiating.
 				if (!this || !gameObject) {
 					plate.Dispose();
 					return;
@@ -342,7 +341,7 @@ namespace Nox.Relay.Runtime.Physicals {
 		}
 
 		private void DisposeNameplate() {
-			if (_nameplate.IsAlive()) 
+			if (_nameplate.IsAlive())
 				_nameplate.Dispose();
 			_nameplate = null;
 
