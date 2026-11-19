@@ -73,6 +73,8 @@ namespace Nox.Relay.Runtime.Physicals {
 				return NameplateAnchor;
 
 			var go = new GameObject("Nameplate Anchor");
+			if (Layers.LayerExists(Layers.Ui))
+				go.layer = LayerMask.NameToLayer(Layers.Ui);
 			go.transform.SetParent(transform, false);
 
 			NameplateAnchor = go.transform;
