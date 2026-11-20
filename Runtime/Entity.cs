@@ -255,6 +255,7 @@ namespace Nox.Relay.Runtime {
 		private bool              _startProperties;
 		private readonly List<IProperty>       _dirtyBuffer = new();
 		private readonly List<UniTask<bool>>   _taskBuffer  = new();
+		private readonly List<PropertiesRequest> _requestBuffer = new();
 
 		/// <summary>
 		/// Sends property updates for properties that are dirty and have LocalEmit flag.
@@ -307,25 +308,53 @@ namespace Nox.Relay.Runtime {
 		/// <param name="dirtyProperties">List of dirty properties to send</param>
 		private async UniTask SendPropertiesBatch(Core.Rooms.Room room, List<IProperty> dirtyProperties) {
 			_taskBuffer.Clear();
+			_requestBuffer.Clear();
 
 			for (var i = 0; i < dirtyProperties.Count; i += PropertiesRequest.MaxParameters) {
 				var count   = Math.Min(PropertiesRequest.MaxParameters, dirtyProperties.Count - i);
 				// Target this entity itself: a player targets itself, a prop targets the prop id.
 				var request = PropertiesRequest.Create(Id, dirtyProperties, i, count);
+				_requestBuffer.Add(request);
 				_taskBuffer.Add(room.Properties(request));
 			}
 
 			var results = await UniTask.WhenAll(_taskBuffer);
 
-			if (results.All(r => r)) {
-				foreach (var property in dirtyProperties) {
+			if (!results.All(r => r)) {
+				Logger.LogWarning($"Failed to send some properties for entity {Id}, will retry on next tick.", tag: nameof(Entity));
+				return;
+			}
+
+			// The payloads were captured when the requests were built: a value written while the packet was in
+			// flight was not part of it. Only the properties that still carry the sent payload are marked as
+			// delivered, otherwise the newer value (a velocity coming back to zero, for instance) would be
+			// reported as sent and would never reach the other clients.
+			foreach (var request in _requestBuffer)
+				foreach (var entry in request.Parameters) {
+					if (!TryGetProperty(entry.Key, out var property) || property == null)
+						continue;
+
+					if (!IsSamePayload(property.Serialize(), entry.Value))
+						continue;
+
 					property.IsDirty = false;
 					if (property is AvatarParameterProperty avatarProp)
 						avatarProp.UpdateCache();
 				}
-			} else {
-				Logger.LogWarning($"Failed to send some properties for entity {Id}, will retry on next tick.", tag: nameof(Entity));
-			}
+		}
+
+		private static bool IsSamePayload(byte[] sent, byte[] current) {
+			if (ReferenceEquals(sent, current))
+				return true;
+
+			if (sent == null || current == null || sent.Length != current.Length)
+				return false;
+
+			for (var i = 0; i < sent.Length; i++)
+				if (sent[i] != current[i])
+					return false;
+
+			return true;
 		}
 
 		#endregion
