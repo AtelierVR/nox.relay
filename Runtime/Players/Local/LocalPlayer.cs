@@ -14,6 +14,9 @@ namespace Nox.Relay.Runtime.Players {
 			// We are the client: our own platform/engine are the announced ones.
 			Platform = PlatformExtensions.CurrentPlatform;
 			Engine   = EngineExtensions.CurrentEngine;
+
+			OnSelfMuteChanged.AddListener(OnNameplateVoiceStatusChanged);
+			OnDeafenChanged.AddListener(OnNameplateVoiceStatusChanged);
 		}
 
 		protected override IPart CreatePart(ushort index)
@@ -53,6 +56,8 @@ namespace Nox.Relay.Runtime.Players {
 		}
 
 		public override void Dispose() {
+			OnSelfMuteChanged.RemoveListener(OnNameplateVoiceStatusChanged);
+			OnDeafenChanged.RemoveListener(OnNameplateVoiceStatusChanged);
 			Data.OnChanged.RemoveListener(OnEntityDataChanged);
 			base.Dispose();
 		}

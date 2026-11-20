@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using Nox.Avatars.Parameters;
+using Nox.Audio.Players;
 using Nox.CCK;
 using Nox.CCK.Entities;
 using Nox.CCK.Utils;
@@ -335,9 +336,17 @@ namespace Nox.Relay.Runtime.Physicals {
 			if (!string.IsNullOrEmpty(_relationIcon))
 				status[RelationIconPath(_relationIcon)] = _relationIcon;
 			if (player.IsMutedForView)
-				status[NameplateExtensions.StatusIcon("mute")] = "mute";
+				status[NameplateExtensions.VoiceIcon("mute")] = "mute";
 			if (player.IsDeafened)
 				status[NameplateExtensions.StatusIcon("deaf")] = "deaf";
+
+			// Whisper, loud and broadcast announce themselves as a status icon of their own (the sprites of the
+			// voice HUD). A self-muted player is already shown by the mute icon.
+			var mode = player.Speak;
+			if (!player.IsSelfMuted && mode is >= SpeakMode.Whisper and <= SpeakMode.Broadcast && mode != SpeakMode.Normal) {
+				var icon = mode.ToString().ToSnakeCase();
+				status[NameplateExtensions.VoiceIcon(icon)] = icon;
+			}
 
 			plate.Set(Keys.STATUS, status);
 		}
