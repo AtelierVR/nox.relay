@@ -32,6 +32,7 @@ namespace Nox.Relay.Runtime.Physicals {
 			NotifyActuallyDestroyed();
 			DisposeNameplate();
 			CancelAvatarLoading();
+			UnbindRigProvider(RuntimeAvatar);
 			if (RuntimeAvatar == null) return;
 			Reference?.Unbind();
 			RuntimeAvatar.Dispose().Forget();
@@ -224,9 +225,9 @@ namespace Nox.Relay.Runtime.Physicals {
 			}
 
 			var old = RuntimeAvatar;
+			UnbindRigProvider(old);
 			RuntimeAvatar = runtime;
 			_drivenBones.Clear();
-			_rigProvider = null;
 
 			// The plate reads a parameter of this avatar: its cache must not survive the swap.
 			InvalidateHeight();
@@ -234,6 +235,7 @@ namespace Nox.Relay.Runtime.Physicals {
 			if (RuntimeAvatar == null) {
 				Logger.LogWarning("Setting avatar to null, removing current avatar.");
 				RuntimeAvatar = old;
+				BindRigProvider(old);
 				return false;
 			}
 
@@ -241,6 +243,7 @@ namespace Nox.Relay.Runtime.Physicals {
 			if (!root) {
 				Logger.LogError("Avatar descriptor root is null, cannot set avatar.");
 				RuntimeAvatar = old;
+				BindRigProvider(old);
 				return false;
 			}
 
@@ -255,6 +258,8 @@ namespace Nox.Relay.Runtime.Physicals {
 			root.transform.SetParent(transform, false);
 			root.transform.localPosition = Vector3.zero;
 			root.transform.localRotation = Quaternion.identity;
+
+			BindRigProvider(runtime);
 
 			var module = RuntimeAvatar?.Descriptor
 				?.GetModules<IParameterModule>()
@@ -271,10 +276,6 @@ namespace Nox.Relay.Runtime.Physicals {
 				Logger.LogDebug("Waiting for Animator to be ready...");
 				await UniTask.WaitUntil(() => animator.runtimeAnimatorController);
 			}
-
-			_rigProvider = RuntimeAvatar?.Descriptor
-				?.GetModules<IRigProvider>()
-				.FirstOrDefault();
 
 			var parameters = module.GetParameters();
 			foreach (var param in parameters) {
@@ -316,6 +317,58 @@ namespace Nox.Relay.Runtime.Physicals {
 			Reference?.UpdateAvatar(runtime);
 
 			return true;
+		}
+
+		/// <summary>
+		/// Binds the rig provider of <paramref name="runtime"/> and follows its modules from then on: the rig
+		/// module is added while the avatar is prepared (possibly after this call) and a backend hot-swap
+		/// replaces it, so the provider is never read once and forgotten.
+		/// </summary>
+		private void BindRigProvider(IRuntimeAvatar runtime) {
+			var descriptor = runtime?.Descriptor;
+			if (descriptor == null) {
+				SetRigProvider(null);
+				return;
+			}
+
+			// Removed first: a call on an avatar that is already bound must not register twice.
+			descriptor.OnModuleRegistered.RemoveListener(OnAvatarModuleRegistered);
+			descriptor.OnModuleRegistered.AddListener(OnAvatarModuleRegistered);
+			descriptor.OnModuleUnregistered.RemoveListener(OnAvatarModuleUnregistered);
+			descriptor.OnModuleUnregistered.AddListener(OnAvatarModuleUnregistered);
+
+			SetRigProvider(descriptor.GetModules<IRigProvider>().FirstOrDefault());
+		}
+
+		/// <summary>Stops listening to the modules of <paramref name="runtime"/> and forgets the rig provider.</summary>
+		private void UnbindRigProvider(IRuntimeAvatar runtime) {
+			var descriptor = runtime?.Descriptor;
+			if (descriptor != null) {
+				descriptor.OnModuleRegistered.RemoveListener(OnAvatarModuleRegistered);
+				descriptor.OnModuleUnregistered.RemoveListener(OnAvatarModuleUnregistered);
+			}
+
+			SetRigProvider(null);
+		}
+
+		/// <summary>A module joined the avatar: it may be the rig provider.</summary>
+		private void OnAvatarModuleRegistered(IAvatarModule module) {
+			if (module is IRigProvider provider)
+				SetRigProvider(provider);
+		}
+
+		/// <summary>The rig provider left the avatar: the parts have nowhere to go until another one arrives.</summary>
+		private void OnAvatarModuleUnregistered(IAvatarModule module) {
+			if (ReferenceEquals(module, _rigProvider))
+				SetRigProvider(null);
+		}
+
+		private void SetRigProvider(IRigProvider provider) {
+			if (ReferenceEquals(_rigProvider, provider))
+				return;
+
+			_rigProvider = provider;
+			_drivenBones.Clear();
 		}
 
 	}

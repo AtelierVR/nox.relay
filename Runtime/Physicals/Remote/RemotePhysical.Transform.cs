@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Nox.Avatars.Rigging;
 using Nox.CCK.Avatars.Rigging;
 using Nox.CCK.Entities;
 using Nox.Relay.Runtime.Players;
@@ -16,12 +17,22 @@ namespace Nox.Relay.Runtime.Physicals {
 		/// </summary>
 		private readonly HashSet<HumanBodyBones> _drivenBones = new();
 
+		/// <summary>Rig the bones above were declared on: a hot-swap must declare them again.</summary>
+		private IRigging _declaredRig;
+
 		private void Update() {
 			UpdateNameplate();
 
 			if (Reference == null) return;
 
 			var activeRig = _rigProvider?.Rig;
+
+			// The rig may be created after the avatar (or replaced by a backend hot-swap): the controller
+			// channel has to be declared again on the new one.
+			if (!ReferenceEquals(activeRig, _declaredRig)) {
+				_declaredRig = activeRig;
+				_drivenBones.Clear();
+			}
 
 			var now = Time.timeAsDouble;
 			var dt = Time.deltaTime;
