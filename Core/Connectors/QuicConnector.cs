@@ -13,8 +13,9 @@ using Logger = Nox.CCK.Utils.Logger;
 namespace Nox.Relay.Core.Connectors {
 	public class QuicConnector : IConnector {
 		public const string PROTOCOL_NAME = "quic";
-		private const string AlpnToken = "relay";
-		private const int ConnectTimeoutMs = 10_000;
+		private const string ALPN_TOKEN = "relay";
+		private const int CONNECT_TIMEOUT_MS = 10_000;
+		private const int SHUTDOWN_TIMEOUT_MS = 3_000;
 
 		private readonly QuicRegistration _registration;
 		private readonly QuicClientConfiguration _config;
@@ -23,6 +24,14 @@ namespace Nox.Relay.Core.Connectors {
 		// Stores the TCS for the current Connect() call; shared with named callbacks
 		// so no lambda captures are needed (IL2CPP AOT safety).
 		private TaskCompletionSource<bool> _connectTcs;
+
+		// Completed by ConnectionShutdownComplete, latched for the whole lifetime of the connection:
+		// a close that misses the event (peer already gone) must not wait for it again.
+		private UniTaskCompletionSource _shutdownTcs;
+		private bool _shutdownCompleted;
+		// Serializes the native teardown: closing the registration while a connection close is still
+		// in flight is a use-after-close in MsQuic and takes the whole process down.
+		private UniTaskCompletionSource _teardownGate;
 		// Streams opened for outgoing requests — tracked so we can ensure they are
 		// fully shut down before the registration is disposed. (Prevents the
 		// MsQuicClose crash where a native worker thread is still delivering a
@@ -36,7 +45,7 @@ namespace Nox.Relay.Core.Connectors {
 
 		public QuicConnector() {
 			_registration = new QuicRegistration("relay-client");
-			_config       = new QuicClientConfiguration(_registration, AlpnToken);
+			_config       = new QuicClientConfiguration(_registration, ALPN_TOKEN);
 			// NO_CERTIFICATE_VALIDATION: relay servers use self-signed certs; skip native
 			// certificate validation entirely so the managed DefaultManagedCallback never
 			// tries to call SignedCms.Decode(ReadOnlySpan<byte>), which is absent from
@@ -93,9 +102,10 @@ namespace Nox.Relay.Core.Connectors {
 				throw new ObjectDisposedException(nameof(QuicConnector));
 
 			// Tear down any previous connection (registration & config are reused)
-			await DropConnection().ConfigureAwait(false);
+			await DropConnection();
 
 			_connection = new QuicClientConnection(_config);
+			_shutdownCompleted = false;
 
 			// Set provisional endpoint from the call parameters so EndPoint is
 			// available as soon as Connect() completes, regardless of whether
@@ -115,16 +125,17 @@ namespace Nox.Relay.Core.Connectors {
 			// Named instance methods instead of lambdas: IL2CPP generates correct AOT
 			// trampolines for method-group delegates, whereas lambda closures that capture
 			// variables can silently fail inside native MsQuic callbacks in IL2CPP builds.
-			_connection.Connected            += HandleConnected;
-			_connection.ConnectionShutdown   += HandleConnectionShutdown;
-			_connection.IncomingStream       += HandleIncomingStream;
-			_connection.DatagramReceived     += HandleDatagramReceived;
+			_connection.Connected                  += HandleConnected;
+			_connection.ConnectionShutdown         += HandleConnectionShutdown;
+			_connection.ConnectionShutdownComplete += HandleConnectionShutdownComplete;
+			_connection.IncomingStream             += HandleIncomingStream;
+			_connection.DatagramReceived           += HandleDatagramReceived;
 
 			try {
 				// Start is fire-and-forget; Connected / ConnectionShutdown drive the TCS
 				_connection.Start(address, port);
 
-				var timeout  = Task.Delay(ConnectTimeoutMs);
+				var timeout  = Task.Delay(CONNECT_TIMEOUT_MS);
 				var finished = await Task.WhenAny(_connectTcs.Task, timeout).ConfigureAwait(false);
 
 				token.ThrowIfCancellationRequested();
@@ -174,6 +185,11 @@ namespace Nox.Relay.Core.Connectors {
 
 		private void HandleIncomingStream(QuicPeerConnection _, QuicStream stream)
 			=> AttachStreamHandlers(stream);
+
+		private void HandleConnectionShutdownComplete(QuicPeerConnection _, bool appCloseInProgress, bool transportShutdown, bool _unused) {
+			_shutdownCompleted = true;
+			_shutdownTcs?.TrySetResult();
+		}
 
 		private void HandleDatagramReceived(QuicPeerConnection _, ReadOnlySpan<byte> span) {
 			var data = span.ToArray();
@@ -378,9 +394,7 @@ namespace Nox.Relay.Core.Connectors {
 				throw new InvalidOperationException($"Send must be called from the Unity main thread (your current {Thread.CurrentThread.ManagedThreadId} thread is not allowed to call Send).");
 
 			_isConnected = false;
-			await DropConnection().ConfigureAwait(false);
-
-			await UniTask.SwitchToMainThread();
+			await DropConnection();
 		}
 
 		/// <summary>
@@ -389,35 +403,70 @@ namespace Nox.Relay.Core.Connectors {
 		/// remain alive and are reused on the next <see cref="Connect"/> call.
 		/// </summary>
 		/// <remarks>
-		/// Awaits <c>ConnectionShutdownComplete</c> before disposing the connection
-		/// handle. This is essential: MsQuic fires <c>DataReceived</c> callbacks
-		/// directly on its internal worker threads; calling
-		/// <see cref="QuicRegistration.Dispose"/> (→ <c>MsQuicClose</c>) before
-		/// those callbacks return crashes the process.
+		/// Two rules make the native close safe, and breaking either one crashes the process with
+		/// "Got a UNKNOWN while executing native code" inside <c>MsQuicConnectionClose</c>:
+		///
+		/// 1. Streams are closed <b>before</b> waiting for <c>ConnectionShutdownComplete</c>. A live
+		/// stream keeps the connection from ever reaching SHUTDOWN_COMPLETE, so waiting first always
+		/// burns the timeout and then calls ConnectionClose the instant MsQuic starts working on the
+		/// connection (the streams just being closed) — the native close then races MsQuic's worker
+		/// thread on a handle it is actively shutting down.
+		/// 2. Nothing here runs on a thread-pool continuation: the close must happen on the Unity main
+		/// thread, one teardown at a time, never overlapping another close for this connector.
 		/// </remarks>
-		private async Task DropConnection() {
+		private async UniTask DropConnection() {
+			// Another teardown is already running (a reconnect racing a session dispose for instance):
+			// wait for it instead of closing the same native objects twice.
+			while (_teardownGate != null)
+				await _teardownGate.Task;
+
 			var conn = _connection;
 			_connection = null;
 			if (conn == null)
 				return;
 
-			// Latch the native SHUTDOWN_COMPLETE — at that point MsQuic guarantees
-			// no further callbacks will fire for this connection or its streams.
-			var shutdownDone = new TaskCompletionSource<bool>(
-				TaskCreationOptions.RunContinuationsAsynchronously);
-			conn.ConnectionShutdownComplete += (_, _, _, _) => shutdownDone.TrySetResult(true);
+			var gate = _teardownGate = new UniTaskCompletionSource();
+			try {
+				await Teardown(conn);
+			} finally {
+				_teardownGate = null;
+				gate.TrySetResult();
+			}
+		}
 
-			try { conn.Shutdown(); } catch (Exception) { shutdownDone.TrySetResult(true); }
+		private async UniTask Teardown(QuicClientConnection conn) {
+			_shutdownTcs = new UniTaskCompletionSource();
 
-			// 3-second safety cap so Dispose() never hangs indefinitely.
-			await Task.WhenAny(shutdownDone.Task, Task.Delay(3_000)).ConfigureAwait(false);
+			// The streams must be gone before the connection can complete its shutdown (see above),
+			// including the ones whose ShutdownComplete never fired.
+			while (_openStreams.TryTake(out var stream))
+				try { stream.Dispose(); } catch (Exception) {
+					// ignored
+				}
 
-			// Drain any tracked streams whose ShutdownComplete did not fire
-			// (e.g. timed-out paths or streams opened but never started).
-			while (_openStreams.TryTake(out var s))
-				try { s.Dispose(); } catch { }
+			// Only a connection we shut down ourselves can still deliver the completion event: when
+			// the peer already closed it, the event fired before this teardown was even requested.
+			var shuttingDown = false;
+			if (_isConnected)
+				try {
+					conn.Shutdown();
+					shuttingDown = true;
+				} catch (Exception e) {
+					Logger.LogWarning($"[QuicConnector] Shutdown failed, closing anyway: {e.GetType().Name}: {e.Message}");
+				}
 
-			try { conn.Dispose(); } catch (Exception) { }
+			if (shuttingDown && !_shutdownCompleted) {
+				var win = await UniTask.WhenAny(_shutdownTcs.Task, UniTask.Delay(SHUTDOWN_TIMEOUT_MS));
+				if (win == 1)
+					Logger.LogWarning($"[QuicConnector] No ConnectionShutdownComplete after {SHUTDOWN_TIMEOUT_MS} ms, closing the connection anyway.");
+			}
+
+			_shutdownTcs = null;
+			_isConnected = false;
+
+			try { conn.Dispose(); } catch (Exception e) {
+				Logger.LogWarning($"[QuicConnector] Connection close failed: {e.GetType().Name}: {e.Message}");
+			}
 		}
 
 		public async UniTask Dispose() {
