@@ -64,6 +64,12 @@ namespace Nox.Relay.Runtime.Players {
 
 		internal readonly LocalPlayer Context;
 
+		/// <summary>
+		/// Scratch delta of the send loop: filled and consumed during the same tick (the wire encoder
+		/// reads it before the send is awaited), one per part so a tick allocates nothing.
+		/// </summary>
+		internal readonly TransformObject Delta = new();
+
 		public ushort Id { get; }
 
 		public bool IsDirty {

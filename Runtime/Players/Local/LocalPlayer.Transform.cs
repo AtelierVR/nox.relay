@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Cysharp.Threading.Tasks;
 using Nox.CCK.Utils;
@@ -10,7 +11,7 @@ namespace Nox.Relay.Runtime.Players {
 
 		private bool _start;
 
-		private readonly List<(ushort partId, TransformObject delta)> _dirty = new();
+		private readonly List<Part> _dirty = new();
 		private readonly List<UniTask<bool>> _tasks = new();
 
 		public override void Tick() {
@@ -38,29 +39,43 @@ namespace Nox.Relay.Runtime.Players {
 
 			_dirty.Clear();
 
-			var threshold = room.Threshold < 0.0001f ? 0.0001f : room.Threshold;
+			var threshold = room.Threshold < 0.0001f
+				? 0.0001f
+				: room.Threshold;
+			var now = DateTime.UtcNow;
+			var keyframe = room.PropertyResendInterval;
 
 			foreach (var (index, value) in Parts) {
-				if (value is not Part cachedPart)
+				if (value is not Part part)
 					continue;
-				if (!controller.TryGetPart(index, out var currentTransform))
-					continue;
-				var deltaTransform = GetChangedTransform(cachedPart, currentTransform, threshold);
-				if (deltaTransform == null)
+				if (!controller.TryGetPart(index, out var current))
 					continue;
 
-				_dirty.Add((partId: index, deltaTransform));
+				var delta = part.Delta;
+				delta.Clear();
 
-				if (deltaTransform.Flags.HasFlag(TransformFlags.Position))
-					cachedPart.SetPosition(deltaTransform.GetPosition());
-				if (deltaTransform.Flags.HasFlag(TransformFlags.Rotation))
-					cachedPart.SetRotation(deltaTransform.GetRotation());
-				if (deltaTransform.Flags.HasFlag(TransformFlags.Scale))
-					cachedPart.SetScale(deltaTransform.GetScale());
-				if (deltaTransform.Flags.HasFlag(TransformFlags.Velocity))
-					cachedPart.SetVelocity(deltaTransform.GetVelocity());
-				if (deltaTransform.Flags.HasFlag(TransformFlags.Angular))
-					cachedPart.SetAngular(deltaTransform.GetAngular());
+				var changed = FillChangedTransform(part, current, delta, threshold);
+
+				if (!changed
+					&& keyframe > 0
+					&& (now - part.Updated).TotalSeconds >= keyframe)
+					changed = FillFullTransform(current, delta);
+
+				if (!changed)
+					continue;
+
+				_dirty.Add(part);
+
+				if (delta.Flags.HasFlag(TransformFlags.Position))
+					part.SetPosition(delta.GetPosition());
+				if (delta.Flags.HasFlag(TransformFlags.Rotation))
+					part.SetRotation(delta.GetRotation());
+				if (delta.Flags.HasFlag(TransformFlags.Scale))
+					part.SetScale(delta.GetScale());
+				if (delta.Flags.HasFlag(TransformFlags.Velocity))
+					part.SetVelocity(delta.GetVelocity());
+				if (delta.Flags.HasFlag(TransformFlags.Angular))
+					part.SetAngular(delta.GetAngular());
 			}
 
 			if (_dirty.Count > 0)
@@ -71,11 +86,10 @@ namespace Nox.Relay.Runtime.Players {
 		}
 
 		/// <summary>
-		/// Compares current transform with cached values and builds a delta TransformObject.
+		/// Fills <paramref name="delta"/> with the values that changed beyond the threshold.
+		/// Returns <c>false</c> when nothing changed (the delta is then left empty).
 		/// </summary>
-		private static TransformObject GetChangedTransform(Part cached, TransformObject current, float threshold) {
-			var delta = new TransformObject();
-
+		private static bool FillChangedTransform(TransformObject cached, TransformObject current, TransformObject delta, float threshold) {
 			if (current.Flags.HasFlag(TransformFlags.Position) && !current.IsSamePosition(cached.GetPosition(), threshold))
 				delta.SetPosition(current.GetPosition());
 
@@ -91,7 +105,27 @@ namespace Nox.Relay.Runtime.Players {
 			if (current.Flags.HasFlag(TransformFlags.Angular) && !current.IsSameAngular(cached.GetAngular(), threshold))
 				delta.SetAngular(current.GetAngular());
 
-			return delta.Flags != TransformFlags.None ? delta : null;
+			return delta.Flags != TransformFlags.None;
+		}
+
+		/// <summary>
+		/// Fills <paramref name="delta"/> with every value the controller provides, for the periodic
+		/// keyframe: a peer that missed an update gets the complete pose instead of a delta it cannot
+		/// apply. Returns <c>false</c> when the controller provides nothing.
+		/// </summary>
+		private static bool FillFullTransform(TransformObject current, TransformObject delta) {
+			if (current.Flags.HasFlag(TransformFlags.Position))
+				delta.SetPosition(current.GetPosition());
+			if (current.Flags.HasFlag(TransformFlags.Rotation))
+				delta.SetRotation(current.GetRotation());
+			if (current.Flags.HasFlag(TransformFlags.Scale))
+				delta.SetScale(current.GetScale());
+			if (current.Flags.HasFlag(TransformFlags.Velocity))
+				delta.SetVelocity(current.GetVelocity());
+			if (current.Flags.HasFlag(TransformFlags.Angular))
+				delta.SetAngular(current.GetAngular());
+
+			return delta.Flags != TransformFlags.None;
 		}
 
 		/// <summary>
@@ -102,13 +136,17 @@ namespace Nox.Relay.Runtime.Players {
 
 			var time = (uint)(Time.timeAsDouble * 1000.0);
 
-			foreach (var (partId, deltaTransform) in _dirty) {
-				var request = TransformRequest.CreateEntity(TransformRequest.SELF, partId, deltaTransform);
+			foreach (var part in _dirty) {
+				var request = TransformRequest.CreateEntity(TransformRequest.SELF, part.Id, part.Delta);
 				request.SenderTime = time;
 				_tasks.Add(room.Transform(request));
 			}
 
-			await UniTask.WhenAll(_tasks);
+			if (_tasks.Count == 1)
+				await _tasks[0];
+			else
+				await UniTask.WhenAll(_tasks);
+
 			_tasks.Clear();
 		}
 
