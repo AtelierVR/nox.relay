@@ -2,6 +2,7 @@ using System;
 using Cysharp.Threading.Tasks;
 using Nox.Audio;
 using Nox.Audio.Players;
+using Nox.CCK;
 using Nox.CCK.Audio;
 using Nox.CCK.Audio.Opus;
 using Nox.CCK.Mods.Events;
@@ -24,22 +25,25 @@ namespace Nox.Relay.Runtime.Players {
 		/// <summary>Key the device is started/stopped with, so it can be shared with other consumers.</summary>
 		private const string MicrophoneOwner = "voice";
 
-		private OpusAudioSender _voiceSender;
-
 		/// <summary>Device currently capturing for this player, or null while none is bound.</summary>
 		private IMicrophone _microphone;
 
-		/// <summary>Subscriptions to the audio mod's microphone events, while a device is bound.</summary>
+		/// <summary>Subscriptions to the microphone and speak-mode events.</summary>
 		private EventSubscription[] _voiceEvents = Array.Empty<EventSubscription>();
 
-		/// <summary>Mode announced while the device is live; a muted device announces <see cref="SpeakMode.Muted"/>.</summary>
-		private SpeakMode _speakWhenUnmuted = SpeakMode.Normal;
+		private VoiceModeState _modeState = new() {
+			Desired = SpeakMode.Normal,
+			AllowedModes = VoiceModeSettings.ALL_SPEAK_MODES,
+		};
+
+		/// <inheritdoc/>
+		public SpeakMode DesiredSpeak
+			=> _modeState.Desired;
 
 		/// <summary>Set once the "no microphone" warning was emitted, to keep the per-frame retry quiet.</summary>
 		private bool _microphoneWarned;
 
-		private int _voiceFrameIndex;
-		private float _voiceStartedAt;
+		private VoicePipeline _pipeline;
 
 		/// <summary>The local player is muted when its microphone capture is paused.</summary>
 		public override bool IsSelfMuted
@@ -60,7 +64,10 @@ namespace Nox.Relay.Runtime.Players {
 		/// before a device exists: <see cref="TickVoice"/> retries until one shows up.
 		/// </summary>
 		internal void StartVoice() {
-			if (_voiceSender != null)
+			ResubscribeVoiceEvents();
+			RefreshSessionVoice();
+
+			if (_pipeline.Sender != null)
 				return;
 
 			BindMicrophone();
@@ -70,9 +77,10 @@ namespace Nox.Relay.Runtime.Players {
 
 		/// <summary>Stops the capture and releases the emission pipeline. Safe to call when it never started.</summary>
 		internal void StopVoice() {
-			_voiceSender?.Dispose();
-			_voiceSender = null;
+			_pipeline.Sender?.Dispose();
+			_pipeline.Sender = null;
 
+			UnsubscribeVoiceEvents();
 			UnbindMicrophone();
 
 			// Nothing is captured anymore: stay silent until a device is bound again.
@@ -85,35 +93,142 @@ namespace Nox.Relay.Runtime.Players {
 		/// entered the room.
 		/// </summary>
 		internal void TickVoice() {
-			if (_voiceSender == null) {
+			if (_pipeline.Sender == null) {
 				StartVoice();
-				if (_voiceSender == null)
+				if (_pipeline.Sender == null)
 					return;
 			} else {
 				// The transport payload moves with the path MTU (QUIC re-negotiates it live): the emitter
 				// re-sizes itself in place, and ignores a budget that did not change.
-				_voiceSender.MaxPayloadSize = VoicePayloadBudget;
+				_pipeline.Sender.MaxPayloadSize = VoicePayloadBudget;
 			}
 
 			// Muted: keep the pipeline alive but emit nothing.
 			if (Speak == SpeakMode.Muted) {
-				_voiceSender.Pause();
+				_pipeline.Sender.Pause();
 				return;
 			}
 
 			// Resume() re-arms the read cursor: calling it while already running would reset that
 			// cursor every frame, and Tick() would never see a single new sample.
-			if (!_voiceSender.IsRunning)
-				_voiceSender.Resume();
+			if (!_pipeline.Sender.IsRunning)
+				_pipeline.Sender.Resume();
 
-			_voiceSender.Tick();
+			_pipeline.Sender.Tick();
+		}
+
+		// ── Speak mode ────────────────────────────────────────────────────────
+
+		private void ResubscribeVoiceEvents() {
+			UnsubscribeVoiceEvents();
+
+			if (Main.CoreAPI == null)
+				return;
+
+			var api = Main.CoreAPI.EventAPI;
+			var events = _microphone == null
+				? new EventSubscription[1]
+				: new EventSubscription[5];
+
+			events[0] = api.Subscribe("voice.speak_mode.next", OnNextSpeakMode);
+
+			if (_microphone != null) {
+				events[1] = api.Subscribe("audio.microphone.current_changed", OnMicrophoneCurrentChanged);
+				events[2] = api.Subscribe("audio.microphone.mute_changed", OnMicrophoneMuteChanged);
+				events[3] = api.Subscribe("audio.microphone.volume_changed", OnMicrophoneVolumeChanged);
+				events[4] = api.Subscribe("audio.microphone.removed", OnMicrophoneRemoved);
+			}
+
+			_voiceEvents = events;
+			Context.Context?.Data?.OnChanged.AddListener(OnSessionDataChanged);
+		}
+
+		private void UnsubscribeVoiceEvents() {
+			if (_voiceEvents.Length == 0)
+				return;
+
+			if (Main.CoreAPI != null)
+				foreach (var subscription in _voiceEvents)
+					Main.CoreAPI.EventAPI.Unsubscribe(subscription);
+
+			_voiceEvents = Array.Empty<EventSubscription>();
+			Context.Context?.Data?.OnChanged.RemoveListener(OnSessionDataChanged);
+		}
+
+		/// <summary>
+		/// Switches to the next mode of the cycle. A muted device keeps announcing
+		/// <see cref="SpeakMode.Muted"/>: only the mode restored on unmute moves.
+		/// </summary>
+		private void OnNextSpeakMode(EventData context) {
+			var next = Next(_modeState.Desired);
+
+			if (!VoiceModeSettings.IsAllowed(next, _modeState.AllowedModes))
+				next = SpeakMode.Normal;
+
+			SetDesiredSpeak(next);
+		}
+
+		private static SpeakMode Next(SpeakMode mode) {
+			if (mode is < SpeakMode.Whisper or > SpeakMode.Broadcast)
+				return SpeakMode.Normal;
+
+			return mode == SpeakMode.Broadcast
+				? SpeakMode.Whisper
+				: (SpeakMode)((int)mode + 1);
+		}
+
+		private void OnSessionDataChanged(string[] key, object value, object previous) {
+			if (key is not { Length: > 0 })
+				return;
+
+			var name = string.Join(".", key);
+			if (name != VoiceModeSettings.SPEAK_MODE_KEY
+				&& name != VoiceModeSettings.ALLOWED_MODES_KEY
+				&& name != VoiceModeSettings.FORCE_MUTE_KEY)
+				return;
+
+			RefreshSessionVoice();
+		}
+
+		private void RefreshSessionVoice() {
+			var data = Context.Context?.Data;
+
+			_modeState.ForceMute = data?.Get(VoiceModeSettings.FORCE_MUTE_KEY, false) ?? false;
+			_modeState.AllowedModes = data?.Get(VoiceModeSettings.ALLOWED_MODES_KEY, VoiceModeSettings.ALL_SPEAK_MODES) ?? VoiceModeSettings.ALL_SPEAK_MODES;
+			_modeState.Session = data != null && data.Has(VoiceModeSettings.SPEAK_MODE_KEY)
+				? VoiceModeSettings.ParseMode(data.Get<object>(VoiceModeSettings.SPEAK_MODE_KEY))
+				: null;
+
+			SetDesiredSpeak(VoiceModeSettings.Resolve(_modeState.Session, VoiceModeSettings.ChangeOnJoin, _modeState.AllowedModes));
+		}
+
+		private void SetDesiredSpeak(SpeakMode mode) {
+			_modeState.Desired = mode;
+			ApplySpeakState();
+			PushNameplateStatus();
+
+			if (_modeState.Announced == mode)
+				return;
+
+			_modeState.Announced = mode;
+			Main.CoreAPI?.EventAPI.Emit("voice.speak_mode_changed", this, mode);
+		}
+
+		private void ApplySpeakState() {
+			var muted = _modeState.ForceMute || _microphone == null || _microphone.IsSilent();
+			var wanted = muted
+				? SpeakMode.Muted
+				: _modeState.Desired;
+
+			if (Speak != wanted)
+				Speak = wanted;
 		}
 
 		// ── Microphone capture ────────────────────────────────────────────────
 
 		/// <summary>Binds the audio mod's current microphone, falling back to its default one.</summary>
 		private void BindMicrophone() {
-			var api        = MicrophoneAPI;
+			var api = MicrophoneAPI;
 			var microphone = api?.Current ?? api?.Default;
 
 			if (microphone == null) {
@@ -135,24 +250,21 @@ namespace Nox.Relay.Runtime.Players {
 
 			UnbindMicrophone();
 
-			if (microphone == null)
+			if (microphone == null) {
+				ResubscribeVoiceEvents();
 				return;
+			}
 
 			_microphone = microphone;
 
 			var clip = microphone.Start(MicrophoneOwner);
-			Audio    = clip ? new CapturedMicrophone(clip, microphone) : null;
+			Audio = clip ? new CapturedMicrophone(clip, microphone) : null;
 
-			_voiceEvents = new[] {
-				Main.CoreAPI.EventAPI.Subscribe("audio.microphone.current_changed", OnMicrophoneCurrentChanged),
-				Main.CoreAPI.EventAPI.Subscribe("audio.microphone.mute_changed", OnMicrophoneMuteChanged),
-				Main.CoreAPI.EventAPI.Subscribe("audio.microphone.volume_changed", OnMicrophoneVolumeChanged),
-				Main.CoreAPI.EventAPI.Subscribe("audio.microphone.removed", OnMicrophoneRemoved)
-			};
+			ResubscribeVoiceEvents();
 
 			// The emitter reads the capture it was built with, and a device switch replaced it: rebuild.
-			_voiceSender?.Dispose();
-			_voiceSender = null;
+			_pipeline.Sender?.Dispose();
+			_pipeline.Sender = null;
 			StartSender();
 
 			// The new device may already be muted (or at volume 0): announce its state right away.
@@ -161,15 +273,9 @@ namespace Nox.Relay.Runtime.Players {
 
 		/// <summary>Stops the bound device, unsubscribes its events and forgets the capture.</summary>
 		private void UnbindMicrophone() {
-			if (_voiceEvents.Length > 0) {
-				foreach (var subscription in _voiceEvents)
-					Main.CoreAPI.EventAPI.Unsubscribe(subscription);
-				_voiceEvents = Array.Empty<EventSubscription>();
-			}
-
 			_microphone?.Stop(MicrophoneOwner);
 			_microphone = null;
-			Audio       = null;
+			Audio = null;
 		}
 
 		/// <summary>
@@ -193,14 +299,14 @@ namespace Nox.Relay.Runtime.Players {
 
 		/// <summary>Creates the emitter once a capture is available; no-op otherwise.</summary>
 		private void StartSender() {
-			if (_voiceSender != null || Audio?.Clip == null)
+			if (_pipeline.Sender != null || Audio?.Clip == null)
 				return;
 
 			var settings = OpusAudioSender.Settings.FromBudget(VoicePayloadBudget);
 
-			_voiceFrameIndex = 0;
-			_voiceStartedAt  = Time.time;
-			_voiceSender     = new OpusAudioSender(Audio, SendVoicePacket, settings);
+			_pipeline.Index = 0;
+			_pipeline.StartedAt = Time.time;
+			_pipeline.Sender = new OpusAudioSender(Audio, SendVoicePacket, settings);
 
 			Logger.LogDebug(
 				$"Voice emitter: {settings.Bitrate / 1000} kbps, {settings.FrameDurationMs} ms frames, "
@@ -213,7 +319,7 @@ namespace Nox.Relay.Runtime.Players {
 		/// <summary>The audio mod switched to another device: capture that one instead.</summary>
 		private void OnMicrophoneCurrentChanged(EventData context) {
 			var microphone = context.TryGet<IMicrophone>(0, out var mic) ? mic : null;
-			var api        = MicrophoneAPI;
+			var api = MicrophoneAPI;
 
 			BindMicrophone(microphone ?? api?.Current ?? api?.Default);
 		}
@@ -251,11 +357,7 @@ namespace Nox.Relay.Runtime.Players {
 			if (_microphone == null)
 				return;
 
-			if (Speak != SpeakMode.Muted)
-				_speakWhenUnmuted = Speak;
-			Speak = _microphone.IsSilent() 
-				? SpeakMode.Muted 
-				: _speakWhenUnmuted;
+			ApplySpeakState();
 		}
 
 		// ── Mute notifications ────────────────────────────────────────────────
@@ -271,18 +373,32 @@ namespace Nox.Relay.Runtime.Players {
 				return;
 
 			var flags = Speak switch {
-				SpeakMode.Whisper   => StreamLevelFlags.Whisper,
+				SpeakMode.Whisper => StreamLevelFlags.Whisper,
 				SpeakMode.Broadcast => StreamLevelFlags.Broadcast,
-				_                   => StreamLevelFlags.Normal
+				_ => StreamLevelFlags.Normal
 			};
 
 			room.Stream(StreamRequest.MakeSample(
 					flags,
 					packet,
-					_voiceFrameIndex++,
-					Time.time - _voiceStartedAt
+					_pipeline.Index++,
+					Time.time - _pipeline.StartedAt
 				))
 				.Forget();
+		}
+
+		private struct VoiceModeState {
+			public SpeakMode Desired;
+			public SpeakMode? Announced;
+			public SpeakMode? Session;
+			public int AllowedModes;
+			public bool ForceMute;
+		}
+
+		private struct VoicePipeline {
+			public OpusAudioSender Sender;
+			public int Index;
+			public float StartedAt;
 		}
 	}
 }
