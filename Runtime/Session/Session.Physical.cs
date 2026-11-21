@@ -1,9 +1,10 @@
 using Nox.CCK.Sessions;
+using Nox.Sessions;
 using UnityEngine;
 
 namespace Nox.Relay.Runtime {
 	/// <summary>Physics environment owned by the session (simulation + gravity).</summary>
-	public sealed partial class Session {
+	public sealed partial class Session : IPhysicalSession {
 		/// <inheritdoc cref="IPhysicalSession.Simulation"/>
 		public bool Simulation {
 			get => this.GetSimulation();

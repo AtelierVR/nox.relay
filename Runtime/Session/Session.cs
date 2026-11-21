@@ -4,6 +4,7 @@ using Cysharp.Threading.Tasks;
 using Nox.CCK;
 using Nox.CCK.Properties;
 using Nox.CCK.Sessions;
+using Nox.Entities;
 using Nox.Relay.Core.Rooms;
 using Nox.Relay.Core.Types.ServerConfig;
 using Nox.Sessions;
@@ -11,7 +12,7 @@ using UnityEngine.Events;
 using Logger = Nox.CCK.Utils.Logger;
 
 namespace Nox.Relay.Runtime {
-	public sealed partial class Session : BaseEditablePropertyObject, INetSession, ITeamSession, IPhysicalSession {
+	public sealed partial class Session : BaseEditablePropertyObject {
 		internal Session(string id) {
 			Id         = id;
 			_state = new State(Status.Pending, "Session is initializing", 0f, cancelable: true);
@@ -79,6 +80,7 @@ namespace Nox.Relay.Runtime {
 			if (!_roomInfoHooked) {
 				_roomInfoHooked = true;
 				Room.OnServerConfig.AddListener(OnRoomConfigUpdated);
+				Room.OnPlayerUpdated.AddListener(OnPlayerUpdatedHandler);
 			}
 
 			PublishRoomInfo();
@@ -124,6 +126,8 @@ namespace Nox.Relay.Runtime {
 				Room?.OnServerConfig.RemoveListener(OnRoomConfigUpdated);
 			}
 
+			ReleasePlayerCollisions();
+
 			_data.Dispose();
 			_entities?.Dispose();
 			_dimensions?.Dispose();
@@ -134,10 +138,9 @@ namespace Nox.Relay.Runtime {
 		private int _lastKnownTps;
 
 		public void Update() {
-			var entities = _entities.GetEntities<Entity>();
-
-			foreach (var player in entities)
-				player.Update();
+			foreach (var entity in _entities.GetEntities())
+				if (entity is IUpdateEntity update)
+					update.Update();
 
 			var tps = Room?.Tps ?? 0;
 			if (tps != _lastKnownTps) {
@@ -156,8 +159,12 @@ namespace Nox.Relay.Runtime {
 				return;
 			_lastTick = now;
 
-			foreach (var player in entities)
-				player.Tick();
+			foreach (var entity in _entities.GetEntities())
+				if (entity is IUpdateEntity update)
+					update.Tick();
+
+			// The state of what the local player owns (itself included) leaves after its own tick.
+			SendOwnedStreams();
 
 			var tick = ++_tickCounter;
 			foreach (var module in GetModules())

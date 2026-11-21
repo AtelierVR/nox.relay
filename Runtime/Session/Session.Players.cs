@@ -6,6 +6,7 @@ using Nox.Relay.Core.Players;
 using Nox.Relay.Core.Types.Enter;
 using Nox.Relay.Core.Types.Join;
 using Nox.Relay.Core.Types.Leave;
+using Nox.Relay.Core.Types.PlayerUpdate;
 using Nox.Relay.Core.Types.Quit;
 using Nox.Relay.Core.Types.Traveling;
 using Nox.Relay.Runtime.Players;
@@ -80,6 +81,8 @@ namespace Nox.Relay.Runtime {
 
 			foreach (var module in GetModules())
 				module.OnPlayerJoined(player);
+
+			RefreshPlayerCollisions();
 		}
 
 		private void OnPlayerLeftOrQuitedHandler(Player player) {
@@ -96,6 +99,8 @@ namespace Nox.Relay.Runtime {
 				module.OnPlayerLeft(player);
 
 			player.Dispose();
+
+			RefreshPlayerCollisions();
 		}
 
 		internal void OnPlayerEnteredHandler(EnterResponse @event)
@@ -150,6 +155,28 @@ namespace Nox.Relay.Runtime {
 
 			foreach (var module in GetModules())
 				module.OnAuthorityTransferred(@new, old);
+
+			RefreshMasterOwnership(@new, old);
+		}
+
+		/// <summary>
+		/// A player's data changed on the relay. The flags carry the authority: when the master leaves, the
+		/// relay hands it over to another player and only this update tells the clients who it is.
+		/// </summary>
+		private void OnPlayerUpdatedHandler(PlayerUpdateResponse response) {
+			if (response == null || !response.Flags.HasFlag(PlayerUpdateFlags.Flags))
+				return;
+
+			var player = _entities.GetEntity<Player>(response.PlayerId);
+			if (player?.Reference == null)
+				return;
+
+			player.Reference.Flags = (PlayerFlags)response.PlayerFlags;
+
+			if (player.Reference.Flags.HasFlag(PlayerFlags.RoomMaster))
+				_entities.MasterId = player.Id;
+			else if (_entities.MasterId == player.Id)
+				_entities.MasterId = Runtime.Entities.InvalidEntityId;
 		}
 
 		public void OnPlayerVisibilityChangedHandler(IPlayer player, bool isVisible) {
@@ -160,6 +187,9 @@ namespace Nox.Relay.Runtime {
 
 			foreach (var module in GetModules())
 				module.OnPlayerVisibilityChanged(player, isVisible);
+
+			// The body of a culled player is gone, and a shown one has a fresh physical to read.
+			RefreshPlayerCollisions();
 		}
 	}
 }

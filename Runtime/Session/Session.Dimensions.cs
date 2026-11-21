@@ -137,14 +137,20 @@ namespace Nox.Relay.Runtime {
 				module.OnSceneUnloaded(index);
 		}
 
-		public void OnControllerChanged(IController controller)
-			=> _entities.LocalPlayer?.UpdateController(controller);
+		public void OnControllerChanged(IController controller) {
+			_entities.LocalPlayer?.UpdateController(controller);
+			RefreshPlayerCollisions();
+		}
 
-		public void OnAvatarOfControllerChanged(IRuntimeAvatar avatar)
-			=> _entities.LocalPlayer?.UpdateAvatar(avatar);
+		public void OnAvatarOfControllerChanged(IRuntimeAvatar avatar) {
+			_entities.LocalPlayer?.UpdateAvatar(avatar);
+			RefreshPlayerCollisions();
+		}
 
 		public async UniTask OnDeselect(ISession @new) {
 			Logger.LogDebug("Deselecting session", tag: Tag);
+
+			ReleasePlayerCollisions();
 
 			if (_dimensions == null) {
 				Logger.LogWarning("The scene has no dimension assigned. Skipping visibility updates.", tag: Tag);

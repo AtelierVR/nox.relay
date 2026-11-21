@@ -253,6 +253,7 @@ namespace Nox.Relay.Runtime {
 				Room.OnEntered.RemoveListener(OnPlayerEnteredHandler);
 				Room.OnTraveling.RemoveListener(OnTraveling);
 				Room.OnServerConfig.RemoveListener(OnRoomConfigUpdated);
+				Room.OnPlayerUpdated.RemoveListener(OnPlayerUpdatedHandler);
 				Room.Players.Clear();
 				Room = null;
 			}

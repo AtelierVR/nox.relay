@@ -1,16 +1,32 @@
 using System;
+using System.Threading;
 using Cysharp.Threading.Tasks;
 using Nox.Relay.Core.Types.Latency;
+using Nox.Sessions;
 using UnityEngine.Events;
 using Logger = Nox.CCK.Utils.Logger;
 
 namespace Nox.Relay.Runtime {
 	/// <summary>Adapter binding, connection lifecycle events and latency reporting.</summary>
-	public sealed partial class Session {
+	public sealed partial class Session : INetworkSession {
 		public UnityEvent OnConnected { get; } = new();
 		public UnityEvent<string> OnDisconnected { get; } = new();
 
 		public UnityEvent<double> OnPingChanged { get; } = new();
+
+		/// <summary>Cancelled once the connector of the session lost the server connection.</summary>
+		private readonly CancellationTokenSource _connectionCts = new();
+
+		/// <summary>
+		/// Cancelled when the server disconnects from the connector: anything waiting on the network can
+		/// stop with it.
+		/// </summary>
+		public CancellationToken ConnectionToken
+			=> _connectionCts.Token;
+
+		/// <summary>Timeout the relay granted to this connection (seconds), like the client requests.</summary>
+		internal TimeSpan ConnectionTimeout
+			=> TimeSpan.FromSeconds(Adapter?.LastHandshake?.ConnectionTimeout ?? 15);
 
 		public bool IsConnected
 			=> Adapter?.Connector.IsConnected ?? false;
@@ -38,6 +54,10 @@ namespace Nox.Relay.Runtime {
 
 		private void OnDisconnectedHandler(string reason) {
 			OnDisconnected.Invoke(reason);
+
+			// Everything waiting on the network of this connection stops here.
+			if (!_connectionCts.IsCancellationRequested)
+				_connectionCts.Cancel();
 
 			if (_disposed)
 				return;
