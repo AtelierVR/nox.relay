@@ -14,6 +14,7 @@ using Nox.Nameplate;
 using Nox.Players;
 using Nox.CCK.Language;
 using Nox.Relay.Runtime.Commands;
+using Nox.Scripting;
 
 namespace Nox.Relay.Runtime {
 	public class Main : ISessionRegister {
@@ -47,7 +48,7 @@ namespace Nox.Relay.Runtime {
 
 			_events = new[] {
 				api.EventAPI.Subscribe("controller_changed", OnControllerChanged),
-				api.EventAPI.Subscribe("controller_avatar_changed", OnAvatarOfControllerChanged)
+				api.EventAPI.Subscribe("controller_avatar_changed", OnAvatarOfControllerChanged),
 			};
 
 			_commands = new TerminalCommands(api);
@@ -97,6 +98,12 @@ namespace Nox.Relay.Runtime {
 				.GetMod("worlds")
 				.GetInstance<IWorldAPI>();
 
+
+		/// <summary>Scripting API of the optional <c>scripting</c> mod.</summary>
+		internal static IScriptingAPI ScriptingAPI
+			=> CoreAPI?.ModAPI?
+				.GetMod("scripting")
+				?.GetInstance<IScriptingAPI>();
 
 		/// <summary>Audio API of the audio mod (channels, deafen state).</summary>
 		internal static IAudioAPI AudioAPI

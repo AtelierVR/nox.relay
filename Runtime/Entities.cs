@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nox.CCK.Utils;
@@ -37,19 +38,24 @@ namespace Nox.Relay.Runtime {
 		public Player MasterPlayer
 			=> GetEntity<Player>(MasterId);
 
-		private readonly Dictionary<uint, Entity> _entities = new();
+		private readonly Dictionary<uint, IEntity> _entities = new();
 
-		internal void RegisterEntity(Entity entity) {
-			if (!_entities.TryAdd(entity.Id, entity)) {
+		internal void RegisterEntity(IEntity entity) {
+			if (_entities.TryGetValue(entity.Id, out var known)) {
+				if (ReferenceEquals(known, entity))
+					return;
+
 				Logger.LogWarning($"Entity with ID {entity.Id} is already registered.", tag: Context.Tag);
 				return;
 			}
+
+			_entities.Add(entity.Id, entity);
 
 			Context.OnEntityRegisteredHandler(entity);
 			OnEntityAdded.Invoke(entity);
 		}
 
-		internal void UnregisterEntity(Entity entity) {
+		internal void UnregisterEntity(IEntity entity) {
 			if (!_entities.Remove(entity.Id)) {
 				Logger.LogWarning($"Entity with ID {entity.Id} is already not registered.", tag: Context.Tag);
 				return;
@@ -89,7 +95,9 @@ namespace Nox.Relay.Runtime {
 		// ReSharper disable Unity.PerformanceAnalysis
 		public void Dispose() {
 			foreach (var entity in _entities.Values.ToArray())
-				entity.Dispose();
+				if (entity is IDisposable disposable)
+					disposable.Dispose();
+
 			_entities.Clear();
 		}
 	}

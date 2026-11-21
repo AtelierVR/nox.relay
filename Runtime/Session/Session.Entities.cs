@@ -31,6 +31,8 @@ namespace Nox.Relay.Runtime {
 		public void OnEntityUnregisteredHandler(IEntity entity) {
 			Logger.LogDebug($"OnEntityUnregistered: {entity}", tag: Tag);
 
+			DropStream(entity.Id);
+
 			Main.CoreAPI.EventAPI.Emit("session_entity_unregistered", this, entity);
 			OnEntityUnregistered.Invoke(entity);
 

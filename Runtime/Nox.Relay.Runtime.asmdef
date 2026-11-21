@@ -34,7 +34,10 @@
         "Nox.CCK.Scripting",
         "Nox.Scripting",
         "StirlingLabs.MsQuic.Bindings",
-        "Nox.CCK.Network"
+        "Nox.CCK.Network",
+        "Nox.Interactions",
+        "Nox.CCK.Interactions.Network",
+        "Nox.CCK.Worlds.Entities"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

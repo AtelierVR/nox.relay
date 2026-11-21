@@ -6,30 +6,62 @@ using Cysharp.Threading.Tasks;
 using Nox.CCK;
 using Nox.CCK.Network;
 using Nox.CCK.Sessions;
+using Nox.CCK.Utils;
 using Nox.Entities;
-using Nox.Relay.Core.Types.Properties;
+using Nox.Players;
+using Nox.Sessions;
+using UnityEngine.Events;
 using Logger = Nox.CCK.Utils.Logger;
 
 namespace Nox.Relay.Runtime {
-	public class Entity : IEntity, IMultiPartEntity<IPart> {
+	public partial class Entity : IMultiPartEntity<IPart>, IPhysicalEntity, ISessionEntity, IDisposable {
 		readonly internal Entities Context;
 		protected Physicals.Physical Physical;
+		private PhysicalState _state;
 
-		readonly internal Dictionary<int, IProperty> Properties = new();
+		readonly internal Dictionary<int, IProperty> PropertyMap = new();
 
 		protected Entity(Entities context, uint id) {
-			Id      = id;
+			Id = id;
 			Context = context;
 			context.RegisterEntity(this);
 		}
 
-		public uint Id { get; }
+		public uint Id { get; set; }
 
-		public IProperty[] GetProperties()
-			=> Properties.Values.ToArray();
+		/// <summary>
+		/// Entity id of the player owning this entity (its creator, then whoever the relay granted it to).
+		/// <see cref="IOwnedEntity.MASTER_OWNER_ID"/> (the default) means it belongs to the session master.
+		/// </summary>
+		public uint OwnerId { get; internal set; } = IOwnedEntity.MASTER_OWNER_ID;
 
-		public bool TryGetProperty(int key, out IProperty property) {
-			if (Properties.TryGetValue(key, out var prop)) {
+		/// <summary>Apply an ownership decided by the session (the entity may propagate it further).</summary>
+		public virtual void ApplyOwner(IPlayer receiver, IPlayer requester)
+			=> OwnerId = receiver?.Id
+				?? IOwnedEntity.MASTER_OWNER_ID;
+
+		/// <summary>
+		/// The player owning this entity: the session master while it has no explicit owner, and the
+		/// master again when the player it was granted to is gone.
+		/// </summary>
+		public IPlayer Owner
+			=> OwnerId == IOwnedEntity.MASTER_OWNER_ID
+				? Context?.Context?.MasterPlayer
+				: Context?.GetEntity<IPlayer>(OwnerId)
+					?? Context?.Context?.MasterPlayer;
+
+		/// <summary>Invoked when the ownership of this entity changes (new owner, previous owner).</summary>
+		public virtual UnityEvent<IPlayer, IPlayer> OnOwnershipChanged { get; } = new();
+
+		/// <summary>The local client owns this entity: the session streams the pose of its parts.</summary>
+		internal bool IsLocalOwner
+			=> IsNetworked && Owner is { IsLocal: true };
+
+		public virtual IProperty[] Properties
+			=> PropertyMap.Values.ToArray();
+
+		public virtual bool TryGetProperty(int key, out IProperty property) {
+			if (PropertyMap.TryGetValue(key, out var prop)) {
 				property = prop;
 				return true;
 			}
@@ -38,15 +70,27 @@ namespace Nox.Relay.Runtime {
 			return false;
 		}
 
-		public void SetProperty(IProperty property)
-			=> Properties[property.Key] = property;
+		public virtual bool SetProperty(IProperty property) {
+			if (PropertyMap.TryGetValue(property.Key, out var previous) && previous != null && !ReferenceEquals(previous, property))
+				previous.OnUpdated.RemoveListener(NotifyProperty);
+
+			PropertyMap[property.Key] = property;
+			property.OnUpdated.AddListener(NotifyProperty);
+			return true;
+		}
+
+		private UnityAction<IProperty> _notifyProperty;
+
+		/// <summary>Raised on <see cref="OnProperty"/> whenever one of the properties of the entity is applied.</summary>
+		private UnityAction<IProperty> NotifyProperty
+			=> _notifyProperty ??= OnProperty.Invoke;
 
 		/// <summary>
 		/// Declare a string property of this entity (no-op when it already exists). Its value travels
 		/// as UTF-8 bytes, like any other property value.
 		/// </summary>
-		public bool DefineProperty(string name, string value = null, PropertyFlags flags = PropertyFlags.Synced) {
-			if (string.IsNullOrEmpty(name) || Properties.ContainsKey(name.Hash()))
+		public virtual bool DefineProperty(string name, object value = null, PropertyFlags flags = PropertyFlags.Synced) {
+			if (string.IsNullOrEmpty(name) || PropertyMap.ContainsKey(name.Hash()))
 				return false;
 
 			SetProperty(new Property(this, name, value, flags));
@@ -59,9 +103,9 @@ namespace Nox.Relay.Runtime {
 				return null;
 
 			return property.Value switch {
-				string str                 => str,
+				string str => str,
 				byte[] { Length: > 0 } raw => Encoding.UTF8.GetString(raw),
-				_                          => null,
+				_ => null,
 			};
 		}
 
@@ -82,7 +126,7 @@ namespace Nox.Relay.Runtime {
 
 		#region Data
 
-		// Not stored in Properties on purpose: data must never be picked up by the avatar parameter
+		// Not stored in PropertyMap on purpose: data must never be picked up by the avatar parameter
 		// synchronization, so an avatar cannot read or write it (anti-cheat).
 		private readonly DataContainer _data = new();
 
@@ -122,23 +166,46 @@ namespace Nox.Relay.Runtime {
 			return part;
 		}
 
+		/// <summary>A pose received for a part unknown yet creates it: the sender only names the parts it drives.</summary>
+		public void ApplyPart(ushort id, TransformObject transform, uint time = 0)
+			=> GetOrCreatePart(id)?.Apply(transform, time);
+
 		/// <summary>
 		/// Whether a transform sent by <paramref name="senderId"/> must be ignored because the parts
 		/// of this entity are authoritative locally (the local player drives its own rig).
 		/// </summary>
 		public virtual bool IgnoresTransformEcho(uint senderId)
-			=> false;
+			=> senderId != 0 && senderId == Context?.LocalId;
 
 		/// <summary>Called once a received transform has been copied onto one of the parts.</summary>
 		/// <param name="partId">Part that was updated.</param>
 		/// <param name="time">Clock of the sender when the transform was sampled, in milliseconds (0 = not set).</param>
 		protected internal virtual void OnPartTransformReceived(ushort partId, uint time) { }
 
+		public virtual UnityEvent<IProperty> OnProperty { get; } = new();
+
+		/// <summary>Raise <see cref="OnEvent"/> (a session event was routed to this entity).</summary>
+		internal void RaiseEvent(long name, byte[] payload, uint senderId)
+			=> OnEvent.Invoke(name, payload, senderId);
+
+		public virtual UnityEvent<long, byte[], uint> OnEvent { get; } = new();
+
+		ISession ISessionEntity.Session
+			=> Context?.Context;
+
+		void ISessionEntity.Setup(ISession session) { }
+
+		bool IOwnedEntity.IsOwner
+			=> IsLocalOwner;
+
+		void ISessionEntity.EmitEvent(long name, byte[] payload)
+			=> Context?.Context?.EmitEvent(name, payload).Forget();
+
 		#endregion
 
-		virtual protected Physicals.Physical InstantiatePhysical() {
+		virtual protected UniTask<Physicals.Physical> InstantiatePhysical() {
 			Logger.LogWarning($"Entity {Id} does not implement {nameof(InstantiatePhysical)}, cannot create physical representation.", tag: nameof(Entity));
-			return null;
+			return UniTask.FromResult<Physicals.Physical>(null);
 		}
 
 		/// <summary>
@@ -153,31 +220,19 @@ namespace Nox.Relay.Runtime {
 
 		public virtual void Update() {
 			if (IsVisible) {
-				if (!HasPhysical())
-					MakePhysical();
+				if (!Physical)
+					MakePhysical().Forget();
 				else if (Physical.IsDestroying)
 					// Physical exists but is hidden (delayed destroy pending): cancel and re-enable
 					Physical.CancelDestroy();
 			} else {
-				if (HasPhysical() && !Physical.IsDestroying)
+				if (Physical && !Physical.IsDestroying)
 					DestroyPhysical();
 			}
 		}
 
-		public virtual void Tick() {
-			// Only a relay-replicated entity has properties to push (a local-only entity never leaves
-			// the client).
-			if (!IsNetworked)
-				return;
-
-			// Check if any properties need to be sent and send them
-			// Note: Tick() is already rate-limited by the Room's TPS via Session.Update()
-			if (!_startProperties)
-				SendPropertiesIfNeeded().Forget();
-		}
-
-		public bool HasPhysical()
-			=> Physical;
+		public PhysicalState PhysicalState
+			=> _state;
 
 		public bool TryGetPhysical<T>(out T physical) where T : Physical {
 			if (Physical is T p) {
@@ -189,22 +244,34 @@ namespace Nox.Relay.Runtime {
 			return false;
 		}
 
-		public bool MakePhysical() {
+		public async UniTask<bool> MakePhysical() {
 			if (Physical)
 				return true;
-			Physical = InstantiatePhysical();
-			var success = Physical;
-			if (success) {
-					Physical.ActuallyDestroyed.AddListener(HandlePhysicalActuallyDestroyed);
-				OnPhysicalCreated();
+
+			if (_state != PhysicalState.None)
+				return false;
+
+			_state = PhysicalState.Creating;
+			try {
+				Physical = await InstantiatePhysical();
+			} finally {
+				_state = PhysicalState.None;
 			}
-			return success;
+
+			if (!Physical)
+				return false;
+
+			Physical.ActuallyDestroyed.AddListener(HandlePhysicalActuallyDestroyed);
+			OnPhysicalCreated();
+			return true;
 		}
 
 		private void HandlePhysicalActuallyDestroyed() {
 			if (!Physical)
 				return;
+
 			Physical = null;
+			_state = PhysicalState.None;
 			OnPhysicalDestroyed();
 		}
 
@@ -224,17 +291,21 @@ namespace Nox.Relay.Runtime {
 			// Base implementation does nothing
 		}
 
-		void IEntity.DestroyPhysical()
-			=> DestroyPhysical(true);
+		UniTask IPhysicalEntity.DestroyPhysical() {
+			DestroyPhysical(true);
+			return UniTask.CompletedTask;
+		}
 
 		public void DestroyPhysical(bool immediate = false) {
 			if (!Physical)
 				return;
 
 			var physical = Physical;
+			_state = PhysicalState.Destroying;
 
 			if (immediate) {
 				Physical = null;
+				_state = PhysicalState.None;
 				physical.Destroy(true);
 				OnPhysicalDestroyed();
 				return;
@@ -248,116 +319,6 @@ namespace Nox.Relay.Runtime {
 			_data.Clear();
 			Context.UnregisterEntity(this);
 		}
-
-		#region Properties Synchronization
-
-		// Prevents concurrent execution of SendPropertiesIfNeeded()
-		private bool              _startProperties;
-		private readonly List<IProperty>       _dirtyBuffer = new();
-		private readonly List<UniTask<bool>>   _taskBuffer  = new();
-		private readonly List<PropertiesRequest> _requestBuffer = new();
-
-		/// <summary>
-		/// Sends property updates for properties that are dirty and have LocalEmit flag.
-		/// Called from Tick() which is already rate-limited by the Room's TPS.
-		/// Only sends properties that are marked as dirty and have the appropriate sync flags.
-		/// Clears the dirty flag after successful send.
-		/// </summary>
-		async protected UniTask SendPropertiesIfNeeded() {
-			_startProperties = true;
-
-			var room = Context?.Context.Room;
-			if (room == null)
-				goto end;
-
-			var resendSeconds  = room.PropertyResendInterval;
-			var resendEnabled  = resendSeconds > 0;
-			var resendInterval = TimeSpan.FromSeconds(resendSeconds);
-			var now            = DateTime.UtcNow;
-
-			_dirtyBuffer.Clear();
-			foreach (var property in Properties.Values) {
-				if (!property.Flags.HasFlag(PropertyFlags.LocalEmit))
-					continue;
-
-				// A parameter that announces its writes is already up to date (see IParameter.OnValueChanged);
-				// only the ones that cannot are captured here.
-				if (property is AvatarParameterProperty app && !app.IsObservable)
-					app.Refresh();
-
-				var overdue = resendEnabled && (now - property.UpdatedAt) >= resendInterval;
-				if (!property.IsDirty && !overdue)
-					continue;
-
-				_dirtyBuffer.Add(property);
-			}
-
-			if (_dirtyBuffer.Count > 0)
-				await SendPropertiesBatch(room, _dirtyBuffer);
-
-		end:
-			_startProperties = false;
-		}
-
-		/// <summary>
-		/// Sends a batch of property updates to the room.
-		/// Splits properties into chunks if they exceed MaxParameters limit.
-		/// Clears the dirty flag for each property after successful send.
-		/// </summary>
-		/// <param name="room">The room to send properties to</param>
-		/// <param name="dirtyProperties">List of dirty properties to send</param>
-		private async UniTask SendPropertiesBatch(Core.Rooms.Room room, List<IProperty> dirtyProperties) {
-			_taskBuffer.Clear();
-			_requestBuffer.Clear();
-
-			for (var i = 0; i < dirtyProperties.Count; i += PropertiesRequest.MaxParameters) {
-				var count   = Math.Min(PropertiesRequest.MaxParameters, dirtyProperties.Count - i);
-				// Target this entity itself: a player targets itself, a prop targets the prop id.
-				var request = PropertiesRequest.Create(Id, dirtyProperties, i, count);
-				_requestBuffer.Add(request);
-				_taskBuffer.Add(room.Properties(request));
-			}
-
-			var results = await UniTask.WhenAll(_taskBuffer);
-
-			if (!results.All(r => r)) {
-				Logger.LogWarning($"Failed to send some properties for entity {Id}, will retry on next tick.", tag: nameof(Entity));
-				return;
-			}
-
-			// The payloads were captured when the requests were built: a value written while the packet was in
-			// flight was not part of it. Only the properties that still carry the sent payload are marked as
-			// delivered, otherwise the newer value (a velocity coming back to zero, for instance) would be
-			// reported as sent and would never reach the other clients.
-			foreach (var request in _requestBuffer)
-				foreach (var entry in request.Parameters) {
-					if (!TryGetProperty(entry.Key, out var property) || property == null)
-						continue;
-
-					if (!IsSamePayload(property.Serialize(), entry.Value))
-						continue;
-
-					property.IsDirty = false;
-					if (property is AvatarParameterProperty avatarProp)
-						avatarProp.UpdateCache();
-				}
-		}
-
-		private static bool IsSamePayload(byte[] sent, byte[] current) {
-			if (ReferenceEquals(sent, current))
-				return true;
-
-			if (sent == null || current == null || sent.Length != current.Length)
-				return false;
-
-			for (var i = 0; i < sent.Length; i++)
-				if (sent[i] != current[i])
-					return false;
-
-			return true;
-		}
-
-		#endregion
 
 		public override string ToString()
 			=> $"{GetType().Name}[Id={Id}]";

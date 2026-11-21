@@ -72,6 +72,10 @@
       "id": "terminal",
       "type": "depends",
       "register": "git+https://github.com/AtelierVR/nox.terminal.git"
+    },
+    {
+      "id": "scripting",
+      "type": "recommends"
     }
   ],
   "constraints": [
