@@ -35,9 +35,40 @@ namespace Nox.Relay.Runtime.Players {
 
 		public ushort Id { get; }
 
+		/// <summary>Fields of the poses received so far: a field never received is not written to the rig.</summary>
+		internal TransformFlags Received { get; private set; } = TransformFlags.None;
+
+		/// <summary>The part is never the one sending its pose, the received fields describe it.</summary>
+		public TransformFlags Kind
+			=> Received;
+
 		public bool IsDirty {
 			get => false;
 			set { }
+		}
+
+		/// <summary>
+		/// The pose received from the owner is stored, then captured for interpolation: the remote player
+		/// needs the sender clock the generic copy does not use.
+		/// </summary>
+		public void Apply(TransformObject transform, uint time = 0) {
+			if (transform == null)
+				return;
+
+			Received |= transform.Flags;
+
+			if (transform.Flags.HasFlag(TransformFlags.Position))
+				Position = transform.GetPosition();
+			if (transform.Flags.HasFlag(TransformFlags.Rotation))
+				Rotation = transform.GetRotation();
+			if (transform.Flags.HasFlag(TransformFlags.Scale))
+				Scale = transform.GetScale();
+			if (transform.Flags.HasFlag(TransformFlags.Velocity))
+				Velocity = transform.GetVelocity();
+			if (transform.Flags.HasFlag(TransformFlags.Angular))
+				Angular = transform.GetAngular();
+
+			Context.OnPartTransformReceived(Id, time);
 		}
 
 		public Vector3 Position {

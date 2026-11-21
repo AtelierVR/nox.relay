@@ -148,7 +148,9 @@ namespace Nox.Relay.Runtime.Players {
 				this,
 				VoiceStatusProperty,
 				(byte)VoiceStatusFlags.None,
-				IsLocal ? PropertyFlags.LocalEmit : PropertyFlags.RemoteEmit
+				IsLocal
+					? PropertyFlags.LocalEmit | PropertyFlags.Keyframe
+					: PropertyFlags.RemoteEmit
 			);
 
 			SetProperty(_voiceStatusProperty);
@@ -246,7 +248,7 @@ namespace Nox.Relay.Runtime.Players {
 		}
 
 		/// <summary>Dispatches a received property to the voice status when it is its own.</summary>
-		internal virtual void OnPropertyUpdated(IProperty property) {
+		private void OnVoiceStatusProperty(IProperty property) {
 			if (IsLocal || property.Key != VoiceStatusKey)
 				return;
 

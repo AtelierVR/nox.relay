@@ -1,15 +1,18 @@
+using System.Collections.Generic;
 using System.Linq;
 using Cysharp.Threading.Tasks;
 using Nox.Avatars.Players;
 using Nox.CCK.Entities;
 using Nox.CCK.Utils;
 using Nox.Audio.Players;
+using Nox.Entities;
 using Nox.Nameplate;
 using Nox.Players;
 using Nox.Worlds.Spawns;
 using UnityEngine;
 using Logger = Nox.CCK.Utils.Logger;
 using CorePlayer = Nox.Relay.Core.Players.Player;
+using Nox.Relay.Core.Players;
 
 namespace Nox.Relay.Runtime.Players {
 
@@ -20,7 +23,8 @@ namespace Nox.Relay.Runtime.Players {
 		public Identifier Identifier { get; }
 
 		protected Player(Entities context, CorePlayer player) : base(context, player.Id) {
-			Reference  = player;
+			OwnerId = player.Id;
+			Reference = player;
 			Identifier = player.Identifier;
 			Persistent = Main.PlayerAPI.Get(Identifier);
 			Persistent.OnChanged.AddListener(OnDataChanged);
@@ -28,11 +32,12 @@ namespace Nox.Relay.Runtime.Players {
 			Main.VoiceRegister?.OnMute.AddListener(OnMuteChanged);
 			Data.OnChanged.AddListener(OnTeamDataChanged);
 			SetupVoiceStatus();
+			OnProperty.AddListener(OnVoiceStatusProperty);
 			OnVolume.Invoke(Volume, EffectiveVolume);
 			OnMute.Invoke(IsMuted, IsEffectivelyMuted);
 		}
 
-        public override void Dispose() {
+		public override void Dispose() {
 			Persistent.OnChanged.RemoveListener(OnDataChanged);
 			Main.VoiceRegister?.OnVolume.RemoveListener(OnVolumeChanged);
 			Main.VoiceRegister?.OnMute.RemoveListener(OnMuteChanged);
@@ -68,6 +73,15 @@ namespace Nox.Relay.Runtime.Players {
 		public bool IsMaster
 			=> Context.MasterId == Id;
 
+		public bool IsPrivileged
+			=> IsMaster
+				|| (Reference.Flags & (PlayerFlags.RoomModerator
+					| PlayerFlags.RoomOwner
+					| PlayerFlags.GuildModerator
+					| PlayerFlags.NodeModerator
+					| PlayerFlags.WorldOwner
+					| PlayerFlags.WorldModerator)) != 0;
+
 		/// <summary>A player is replicated by the relay (it owns its id and lifecycle).</summary>
 		public override bool IsNetworked
 			=> true;
@@ -84,7 +98,7 @@ namespace Nox.Relay.Runtime.Players {
 			Position = position;
 			Rotation = rotation;
 			Velocity = Vector3.zero;
-			Angular  = Vector3.zero;
+			Angular = Vector3.zero;
 		}
 
 		public bool NeedsRespawn { get; internal set; }
@@ -96,13 +110,13 @@ namespace Nox.Relay.Runtime.Players {
 				return;
 			}
 
-            if (descriptor.GetModules().FirstOrDefault(e => e is ISpawnModule) is not ISpawnModule module) {
-                Logger.LogWarning("No spawn module found for respawning player.");
-                NeedsRespawn = false;
-                return;
-            }
+			if (descriptor.GetModules().FirstOrDefault(e => e is ISpawnModule) is not ISpawnModule module) {
+				Logger.LogWarning("No spawn module found for respawning player.");
+				NeedsRespawn = false;
+				return;
+			}
 
-            NeedsRespawn = false;
+			NeedsRespawn = false;
 			var spawn = module.ChoiceSpawn();
 			Teleport(spawn.Position, spawn.Rotation);
 			Logger.Log($"Player {Id} respawned to {spawn.Position}.");
@@ -157,14 +171,24 @@ namespace Nox.Relay.Runtime.Players {
 
 		override protected void OnPhysicalCreated() {
 			Context.Context.OnPlayerVisibilityChangedHandler(this, true);
+
+			if (Physical is IPhysicalColliders body)
+				body.OnCollidersChanged.AddListener(OnBodyCollidersChanged);
 		}
 
 		override protected void OnPhysicalDestroyed() {
+			if (Physical is IPhysicalColliders body)
+				body.OnCollidersChanged.RemoveListener(OnBodyCollidersChanged);
+
 			Context.Context.OnPlayerVisibilityChangedHandler(this, false);
 			// The avatar goes away with the physical: Unbind() also detaches the parameter bindings,
 			// instead of leaving properties that would query a disposed playable.
 			Unbind();
 		}
+
+		/// <summary>The body of this player announces new colliders: the session applies the team rules again.</summary>
+		private void OnBodyCollidersChanged(IReadOnlyList<Collider> _)
+			=> Context.Context.RefreshPlayerCollisions();
 
 		#endregion
 

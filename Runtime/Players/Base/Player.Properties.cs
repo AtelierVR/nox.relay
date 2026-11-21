@@ -25,9 +25,10 @@ namespace Nox.Relay.Runtime.Players {
 
 		/// <summary>Binds a parameter module and follows its registrations; null unbinds and releases.</summary>
 		protected internal void Bind(IParameterModule module) {
-			// Same module: keep it, its properties are already in sync with it.
-			if (module != null && ReferenceEquals(_module, module))
+			if (module != null && ReferenceEquals(_module, module)) {
+				SynchronizeAvatarParameters(module.GetParameters(), IsLocal);
 				return;
+			}
 
 			Unbind();
 
@@ -79,9 +80,9 @@ namespace Nox.Relay.Runtime.Players {
 				}
 
 			// Remove AvatarParameterProperty entries no longer present in the avatar's parameter list
-			foreach (var key in Properties.Keys.ToList())
-				if (Properties[key] is AvatarParameterProperty && !paramKeys.Contains(key)) {
-					Properties.Remove(key);
+			foreach (var key in PropertyMap.Keys.ToList())
+				if (PropertyMap[key] is AvatarParameterProperty && !paramKeys.Contains(key)) {
+					PropertyMap.Remove(key);
 					Logger.LogDebug($"Removed avatar parameter property (key={key}) no longer present in avatar.", tag: GetType().Name);
 				}
 		}
@@ -93,22 +94,30 @@ namespace Nox.Relay.Runtime.Players {
 			var propertyFlags = PropertyFlags.None;
 
 			if (flags.HasFlag(ParameterFlags.OwnerSyncsToViewers))
-				propertyFlags |= isLocal ? PropertyFlags.LocalEmit : PropertyFlags.RemoteEmit;
+				propertyFlags |= isLocal
+					? PropertyFlags.LocalEmit
+					: PropertyFlags.RemoteEmit;
 			if (flags.HasFlag(ParameterFlags.ViewerSyncsToOwner))
-				propertyFlags |= isLocal ? PropertyFlags.RemoteEmit : PropertyFlags.LocalEmit;
+				propertyFlags |= isLocal
+					? PropertyFlags.RemoteEmit
+					: PropertyFlags.LocalEmit;
 
 			// Let the features owning a parameter adjust its sync direction.
 			var sync = new ParameterSyncEventArgs(param, propertyFlags);
 			OnParameterSync.Invoke(sync);
 			propertyFlags = sync.Flags;
 
+			if (propertyFlags.HasFlag(PropertyFlags.LocalEmit))
+				propertyFlags |= PropertyFlags.Keyframe;
+
 			var key = param.Key;
 
-			if (Properties.TryGetValue(key, out var existingProp)) {
+			if (PropertyMap.TryGetValue(key, out var existingProp)) {
 				if (existingProp is AvatarParameterProperty avatarProp) {
-					// The key is stable across avatars, the IParameter instance is not: a property
-					// still bound to the previous avatar reads its disposed playable graph.
 					if (!ReferenceEquals(avatarProp.Parameter, param)) {
+						var stored = avatarProp.Value;
+						if (propertyFlags.HasFlag(PropertyFlags.RemoteEmit) && stored != null)
+							param.Value = stored;
 						var reboundProp = new AvatarParameterProperty(this, param, propertyFlags);
 						if (propertyFlags.HasFlag(PropertyFlags.LocalEmit))
 							reboundProp.IsDirty = true; // send the initial value immediately
@@ -118,6 +127,9 @@ namespace Nox.Relay.Runtime.Players {
 						avatarProp.UpdateCache();
 					}
 				} else if (existingProp is UnassignedProperty) {
+					var stored = existingProp.Value;
+					if (propertyFlags.HasFlag(PropertyFlags.RemoteEmit) && stored != null)
+						param.Value = stored;
 					var newProp = new AvatarParameterProperty(this, param, propertyFlags);
 					if (propertyFlags.HasFlag(PropertyFlags.LocalEmit))
 						newProp.IsDirty = true; // send the initial value immediately
@@ -145,18 +157,18 @@ namespace Nox.Relay.Runtime.Players {
 		/// <see cref="Unbind"/> takes care of it.
 		/// </remarks>
 		protected internal void ReleaseAvatarParameters() {
-			foreach (var key in Properties.Keys.ToList())
+			foreach (var key in PropertyMap.Keys.ToList())
 				ReleaseAvatarParameter(key);
 		}
 
 		private void ReleaseAvatarParameter(int key) {
-			if (!Properties.TryGetValue(key, out var prop) || prop is not AvatarParameterProperty avatarProp)
+			if (!PropertyMap.TryGetValue(key, out var prop) || prop is not AvatarParameterProperty avatarProp)
 				return;
 
 			// Stop following the parameter of the avatar that is going away.
 			avatarProp.Dispose();
 
-			Properties[key] = new UnassignedProperty(this, key, avatarProp.Value, avatarProp.Flags);
+			PropertyMap[key] = new UnassignedProperty(this, key, avatarProp.Value, avatarProp.Flags);
 			Logger.LogDebug($"Released avatar parameter '{avatarProp.Name}' (key={key}) to an unassigned property; the avatar is gone, its binding is no longer queried.", tag: GetType().Name);
 		}
 

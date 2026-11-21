@@ -15,7 +15,7 @@ namespace Nox.Relay.Runtime.Players {
 
 			Avatar = identifier;
 
-			if (!HasPhysical()) {
+			if (!Physical) {
 				Logger.LogDebug($"No physical yet for RemotePlayer {Id}, avatar will be set when physical is created", tag: nameof(RemotePlayer));
 				return true;
 			}

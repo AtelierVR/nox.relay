@@ -2,6 +2,7 @@ using System.Linq;
 using Nox.Avatars;
 using Nox.Avatars.Parameters;
 using Nox.CCK.Events;
+using Nox.Entities;
 
 namespace Nox.Relay.Runtime.Players {
 	public abstract partial class Player {
@@ -29,9 +30,25 @@ namespace Nox.Relay.Runtime.Players {
 				.FirstOrDefault();
 			Bind(module);
 
-			// A null avatar is a teardown (unbind), not a load: nothing to announce.
-			if (avatar != null)
-				OnAvatarLoaded.Invoke(avatar);
+			if (avatar == null)
+				return;
+
+			AnnounceLocalProperties();
+			OnAvatarLoaded.Invoke(avatar);
+		}
+
+		/// <summary>
+		/// Marks the properties this client feeds as dirty, so their current value leaves again: they are only
+		/// sent when they change, and an avatar measured/sized after the binding (its size, its height) would
+		/// otherwise never be announced.
+		/// </summary>
+		private void AnnounceLocalProperties() {
+			if (!IsLocal)
+				return;
+
+			foreach (var property in Properties)
+				if (property.Flags.HasFlag(PropertyFlags.LocalEmit))
+					property.IsDirty = true;
 		}
 
 	}

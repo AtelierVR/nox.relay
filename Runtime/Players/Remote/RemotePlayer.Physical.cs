@@ -1,4 +1,4 @@
-using Nox.CCK.Sessions;
+using Cysharp.Threading.Tasks;
 using Nox.CCK.Utils;
 using Nox.Relay.Runtime.Physicals;
 using UnityEngine;
@@ -14,28 +14,29 @@ namespace Nox.Relay.Runtime.Players {
 
 		override protected bool IsVisible
 			=> Vector3.Distance(Position, Context.LocalPlayer.Position)
-				< Mathf.Min(Context.Context.Room.RenderEntity, Settings.RenderEntityDistance);
+				< Mathf.Min(Context.Context.Room.RenderEntity, CCK.Sessions.Settings.RenderEntityDistance);
 
-		override protected Physical InstantiatePhysical() {
+		override protected UniTask<Physical> InstantiatePhysical() {
 			var asset = Main.CoreAPI.AssetAPI.GetAsset<GameObject>("remote_physical.prefab");
 			if (!asset) {
 				Logger.LogError("Failed to load remote physical prefab");
-				return null;
+				return UniTask.FromResult<Physical>(null);
 			}
 
 			var instance = asset.Instantiate();
 			instance.name = $"[{typeof(RemotePhysical).Name}_{Id}]";
+			instance.transform.SetLayer(Layers.Player);
 
 			var physical = instance.GetComponent<RemotePhysical>();
 			if (!physical) {
 				Logger.LogError("Remote physical prefab is missing RemotePhysical component");
 				instance.Destroy();
-				return null;
+				return UniTask.FromResult<Physical>(null);
 			}
 
 			physical.Reference = this;
 			Object.DontDestroyOnLoad(instance);
-			return physical;
+			return UniTask.FromResult<Physical>(physical);
 		}
 
 		/// <summary>

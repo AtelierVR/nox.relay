@@ -31,6 +31,7 @@ namespace Nox.Relay.Runtime.Physicals {
 		public void OnDestroy() {
 			NotifyActuallyDestroyed();
 			DisposeNameplate();
+			UnbindBodySize();
 			CancelAvatarLoading();
 			UnbindRigProvider(RuntimeAvatar);
 			if (RuntimeAvatar == null) return;
@@ -259,6 +260,7 @@ namespace Nox.Relay.Runtime.Physicals {
 			root.transform.localPosition = Vector3.zero;
 			root.transform.localRotation = Quaternion.identity;
 
+			InvalidateColliders();
 			BindRigProvider(runtime);
 
 			var module = RuntimeAvatar?.Descriptor
@@ -283,7 +285,7 @@ namespace Nox.Relay.Runtime.Physicals {
 				// while this avatar was still loading - the property slot survives the swap) must not be
 				// clobbered by the defaults below, otherwise it stays wrong on this client until the owner's
 				// value happens to change (e.g. hands/feet tracking turned off even though the owner sends it).
-				if (Reference != null && Reference.Properties.ContainsKey(param.Key))
+				if (Reference != null && Reference.PropertyMap.ContainsKey(param.Key))
 					continue;
 
 				// Default to Animation for the tracked bones: the remote client drives them through the parts it

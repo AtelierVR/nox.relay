@@ -8,7 +8,7 @@ namespace Nox.Relay.Runtime {
 	/// <summary>
 	/// A property that is linked to an avatar parameter and automatically syncs changes.
 	/// </summary>
-	public class AvatarParameterProperty : IProperty, IDisposable {
+	public class AvatarParameterProperty : IProperty, IObservableProperty, IDisposable {
 		private readonly IParameter _parameter;
 
 		/// <summary>Event of the parameter, or <c>null</c> when it does not announce its writes.</summary>
@@ -35,6 +35,8 @@ namespace Nox.Relay.Runtime {
 		public DateTime UpdatedAt { get; private set; }
 		public string Name { get; }
 		public PropertyFlags Flags { get; }
+
+		public UnityEvent<IProperty> OnUpdated { get; } = new();
 
 		/// <summary>Category of the parameter, exposed so the editors can group the properties.</summary>
 		public string Category

@@ -10,7 +10,7 @@ namespace Nox.Relay.Runtime {
 		/// <param name="name"></param>
 		/// <param name="value"></param>
 		/// <param name="flags"></param>
-		public UnassignedProperty(Entity context, string name, object value, PropertyFlags flags = PropertyFlags.Synced) 
+		public UnassignedProperty(IEntity context, string name, object value, PropertyFlags flags = PropertyFlags.Synced) 
 			: base(context, name, value, flags) { }
 
 		/// <summary>
@@ -21,7 +21,7 @@ namespace Nox.Relay.Runtime {
 		/// <param name="key"></param>
 		/// <param name="value"></param>
 		/// <param name="flags"></param>
-		public UnassignedProperty(Entity context, int key, object value, PropertyFlags flags = PropertyFlags.Synced) 
+		public UnassignedProperty(IEntity context, int key, object value, PropertyFlags flags = PropertyFlags.Synced) 
 			: base(context, key, value, flags) { }
 	}
 }

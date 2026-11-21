@@ -64,13 +64,16 @@ namespace Nox.Relay.Runtime.Players {
 
 		internal readonly LocalPlayer Context;
 
-		/// <summary>
-		/// Scratch delta of the send loop: filled and consumed during the same tick (the wire encoder
-		/// reads it before the send is awaited), one per part so a tick allocates nothing.
-		/// </summary>
-		internal readonly TransformObject Delta = new();
-
 		public ushort Id { get; }
+
+		/// <summary>
+		/// The fields the part carries: the ones of the controller part while it is bound (a desktop head
+		/// only gives a rotation), its own otherwise.
+		/// </summary>
+		public TransformFlags Kind
+			=> ActiveController != null && ActiveController.TryGetPart(Id, out var part)
+				? part.Flags
+				: Flags;
 
 		public bool IsDirty {
 			get => false;

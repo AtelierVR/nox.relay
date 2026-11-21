@@ -128,8 +128,8 @@ namespace Nox.Relay.Runtime.Physicals {
 				.GetModules<IParameterModule>()
 				.FirstOrDefault();
 
-			_heightParameter = module?.GetParameter("Height")
-				?? module?.GetParameter("Height/Eye");
+			_heightParameter = module?.GetParameter(HEIGHT_PARAMETER)
+				?? module?.GetParameter(EYE_HEIGHT_PARAMETER);
 			return _heightParameter;
 		}
 
@@ -139,12 +139,12 @@ namespace Nox.Relay.Runtime.Physicals {
 		/// asynchronously, so the plate reacts here instead of polling for <c>Height</c> to appear.
 		/// </summary>
 		private void OnNameplateParameterChanged(IParameter parameter) {
-			var name = parameter?.Name;
-			if (name != "Height" && name != "Height/Eye")
+			if (!IsBodySizeParameter(parameter?.Name))
 				return;
 
 			InvalidateHeight();
 			RefreshNameplate();
+			UpdateBodyCollider();
 		}
 
 		private void InvalidateHeight()

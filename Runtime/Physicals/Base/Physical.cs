@@ -1,24 +1,74 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using Nox.Avatars.Parameters;
 using Nox.CCK.Development;
 using Nox.CCK.Events;
-using Nox.CCK.Sessions;
 using Nox.CCK.Utils;
+using Nox.Entities;
 using Nox.Relay.Runtime.Players;
 using UnityEngine;
+using UnityEngine.Events;
 using Gizmos = Nox.CCK.Development.Gizmos;
 
 namespace Nox.Relay.Runtime.Physicals {
 	[Gizmos("relay.remote_physical")]
-	public abstract class Physical : Nox.Entities.Physical, IGizmos {
+	public abstract class Physical : Nox.Entities.Physical, IGizmos, IPhysicalColliders {
 		protected Player Reference { get; set; }
+
+		/// <summary>Colliders of the body, re-read by <see cref="InvalidateColliders"/>.</summary>
+		private readonly List<Collider> _colliders = new();
+
+		/// <summary>Scratch list of the last read, compared with <see cref="_colliders"/>.</summary>
+		private readonly List<Collider> _readColliders = new();
+
+		/// <inheritdoc />
+		public IReadOnlyList<Collider> Colliders
+			=> _colliders;
+
+		/// <inheritdoc />
+		public UnityEvent<IReadOnlyList<Collider>> OnCollidersChanged { get; } = new();
+
+		/// <summary>
+		/// Reads the colliders of the body again and announces them when the set actually changed: the
+		/// body gains its colliders at runtime (an avatar is attached, swapped or removed, a collider is
+		/// added or removed), so the list is never read once and kept.
+		/// </summary>
+		public void InvalidateColliders() {
+			GetComponentsInChildren(true, _readColliders);
+
+			var same = AreSame(_readColliders, _colliders);
+
+			if (!same) {
+				_colliders.Clear();
+				_colliders.AddRange(_readColliders);
+			}
+
+			_readColliders.Clear();
+
+			if (same)
+				return;
+
+			OnCollidersChanged.Invoke(_colliders);
+		}
+
+		private static bool AreSame(List<Collider> first, List<Collider> second) {
+			if (first.Count != second.Count)
+				return false;
+
+			for (var i = 0; i < first.Count; i++)
+				if (first[i] != second[i])
+					return false;
+
+			return true;
+		}
 
 		// DateTime.MaxValue = "no delayed destruction scheduled"
 		public DateTime DelayDestroyed { get; private set; } = DateTime.MaxValue;
 
-		public bool IsDestroying => DelayDestroyed != DateTime.MaxValue;
+		public bool IsDestroying
+			=> DelayDestroyed != DateTime.MaxValue;
 
 		private CancellationTokenSource _destroyCts;
 
@@ -36,7 +86,7 @@ namespace Nox.Relay.Runtime.Physicals {
 			// Hide now and schedule actual destruction (cancellable if re-used later)
 			_destroyCts?.Cancel();
 			_destroyCts = new CancellationTokenSource();
-			DelayDestroyed = DateTime.UtcNow.AddSeconds(Settings.ClearPhysicalAfterSeconds);
+			DelayDestroyed = DateTime.UtcNow.AddSeconds(CCK.Sessions.Settings.ClearPhysicalAfterSeconds);
 			if (gameObject.activeSelf)
 				gameObject.SetActive(false);
 			DestroyAfterDelay(_destroyCts.Token).Forget();
@@ -44,7 +94,7 @@ namespace Nox.Relay.Runtime.Physicals {
 
 		private async UniTaskVoid DestroyAfterDelay(CancellationToken ct) {
 			await UniTask.Delay(
-				TimeSpan.FromSeconds(Settings.ClearPhysicalAfterSeconds),
+				TimeSpan.FromSeconds(CCK.Sessions.Settings.ClearPhysicalAfterSeconds),
 				cancellationToken: ct
 			);
 			if (ct.IsCancellationRequested || !this || !gameObject)
@@ -82,6 +132,7 @@ namespace Nox.Relay.Runtime.Physicals {
 		virtual protected void OnEnable() {
 			_destroyCts?.Cancel();
 			DelayDestroyed = DateTime.MaxValue;
+			InvalidateColliders();
 		}
 
 		virtual protected void OnDisable() {

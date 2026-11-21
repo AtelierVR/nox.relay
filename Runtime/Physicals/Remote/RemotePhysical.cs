@@ -13,6 +13,7 @@ namespace Nox.Relay.Runtime.Physicals {
 			get => (RemotePlayer)base.Reference;
 			set {
 				base.Reference = value;
+				BindBodySize();
 				Setup().Forget();
 			}
 		}
@@ -25,6 +26,7 @@ namespace Nox.Relay.Runtime.Physicals {
 
 		override protected void OnEnable() {
 			base.OnEnable();
+			BindBodySize();
 			Setup().Forget();
 		}
 

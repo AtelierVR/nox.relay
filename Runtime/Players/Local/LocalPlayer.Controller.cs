@@ -3,6 +3,7 @@ using Nox.Avatars.Controllers;
 using Nox.CCK.Nameplate;
 using Nox.CCK.Sessions;
 using Nox.Controllers;
+using UnityEngine.Events;
 
 namespace Nox.Relay.Runtime.Players {
 	/// <summary>
@@ -12,7 +13,12 @@ namespace Nox.Relay.Runtime.Players {
 	/// </summary>
 	public partial class LocalPlayer {
 
+		/// <summary>Event of the controller announcing its colliders, to unsubscribe from it when it goes away.</summary>
+		private UnityEvent<IController> _ec;
+
 		internal void UpdateController(IController controller) {
+			FollowController(controller);
+
 			if (controller == null) {
 				RemoveController();
 				return;
@@ -45,10 +51,31 @@ namespace Nox.Relay.Runtime.Players {
 		}
 
 		internal void RemoveController() {
+			FollowController(null);
+
 			foreach (var part in Parts.Values)
 				if (part is Part p)
 					p.Store();
 		}
+
+		/// <summary>
+		/// Follows the body of the controller: the capsule and the colliders its avatar adds, which the
+		/// session applies the team rules on.
+		/// </summary>
+		private void FollowController(IController controller) {
+			_ec?.RemoveListener(OnControllerCollidersChanged);
+			_ec = null;
+
+			if (controller == null)
+				return;
+
+			_ec = controller.OnCollidersChanged;
+			_ec?.AddListener(OnControllerCollidersChanged);
+		}
+
+		/// <summary>The body of the controller announces new colliders: the session applies the team rules again.</summary>
+		private void OnControllerCollidersChanged(IController _)
+			=> Context.Context.RefreshPlayerCollisions();
 
 		/// <summary>
 		/// Pushes the local player state onto the controller: the movement abilities

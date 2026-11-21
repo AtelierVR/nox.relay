@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using Nox.Avatars.Rigging;
 using Nox.CCK.Avatars.Rigging;
 using Nox.CCK.Entities;
+using Nox.CCK.Utils;
 using Nox.Relay.Runtime.Players;
 using UnityEngine;
 
@@ -27,8 +28,6 @@ namespace Nox.Relay.Runtime.Physicals {
 
 			var activeRig = _rigProvider?.Rig;
 
-			// The rig may be created after the avatar (or replaced by a backend hot-swap): the controller
-			// channel has to be declared again on the new one.
 			if (!ReferenceEquals(activeRig, _declaredRig)) {
 				_declaredRig = activeRig;
 				_drivenBones.Clear();
@@ -55,8 +54,12 @@ namespace Nox.Relay.Runtime.Physicals {
 					transform.position = pose.Position;
 					transform.rotation = pose.Rotation;
 					transform.localScale = pose.Scale;
-				} else if (activeRig != null)
-					RigPartDriver.Write(activeRig, partId, pose.Position, pose.Rotation);
+				} else if (activeRig != null) {
+					if (remote.Received.HasFlag(TransformFlags.Position))
+						RigPartDriver.Write(activeRig, partId, pose.Position, pose.Rotation);
+					else if (RigPartDriver.TryGetPart(activeRig, partId, out var bone))
+						bone.rotation = pose.Rotation;
+				}
 			}
 		}
 
